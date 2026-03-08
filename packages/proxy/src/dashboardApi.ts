@@ -92,6 +92,32 @@ dashboardApi.get('/stats/models', (req, res) => {
     }
 });
 
+// /api/projects - List of projects with cost aggregations
+dashboardApi.get('/projects', (req, res) => {
+    try {
+        const db = getDb();
+
+        // Join projects with requests to get total spend per project
+        const stmt = db.prepare(`
+            SELECT 
+                p.id, 
+                p.name, 
+                p.daily_budget as daily_budget,
+                COALESCE(SUM(r.cost_usd), 0) as total_spend_today,
+                COUNT(r.id) as total_requests_today
+            FROM projects p
+            LEFT JOIN requests r ON p.id = r.project_id AND date(r.created_at) = date('now')
+            GROUP BY p.id
+        `);
+        const data = stmt.all();
+
+        res.json({ data });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
 // /api/requests - Paginated list of requests
 dashboardApi.get('/requests', (req, res) => {
     try {
