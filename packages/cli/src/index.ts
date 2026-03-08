@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import { setupStatusCommands } from './commands/status';
 import { setupProjectsCommands } from './commands/projects';
 import { setupLogsCommands } from './commands/logs';
+import { setupStartCommands } from './commands/start';
 
 const program = new Command();
 
@@ -17,6 +18,7 @@ program
 setupStatusCommands(program);
 setupProjectsCommands(program);
 setupLogsCommands(program);
+setupStartCommands(program);
 
 // Handle unknown commands
 program.on('command:*', function (operands) {

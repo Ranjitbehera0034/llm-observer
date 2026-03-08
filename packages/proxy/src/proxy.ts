@@ -4,6 +4,10 @@ import { IProvider } from './providers/base';
 import { OpenAIProvider } from './providers/openai';
 import { AnthropicProvider } from './providers/anthropic';
 import { insertRequest } from '@llm-observer/database';
+import chalk from 'chalk';
+
+// Simple in-memory tracker for requests (project_id -> timestamps[])
+const requestWindow: Record<string, number[]> = {};
 
 export const proxy = httpProxy.createProxyServer({
     changeOrigin: true,
@@ -88,6 +92,23 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 request_body: requestBodyStr,
                 response_body: responseData
             });
+
+            // Anomaly Detection Engine
+            const projectId = 'default';
+            const now = Date.now();
+            const windowStart = now - 60000; // 60 seconds
+
+            if (!requestWindow[projectId]) requestWindow[projectId] = [];
+            // Clean up old requests
+            requestWindow[projectId] = requestWindow[projectId].filter(t => t > windowStart);
+            // Add current request
+            requestWindow[projectId].push(now);
+
+            // Log if > 10 requests / minute
+            if (requestWindow[projectId].length > 10) {
+                console.log(chalk.yellow(`\n[ANOMALY DETECTED] High volume of requests (${requestWindow[projectId].length}/min) for project '${projectId}'!`));
+            }
+
         } catch (err) {
             console.error('Error logging request:', err);
         }
