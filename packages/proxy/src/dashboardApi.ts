@@ -1,6 +1,6 @@
 import express, { Router } from 'express';
 import { EventEmitter } from 'events';
-import { getDb, createProject, updateBudget, deleteProject, getAlerts, acknowledgeAlert, getStatsByProvider, createApiKey, getAlertRules, createAlertRule, deleteAlertRule, getCostOptimizationSuggestions, getPromptCacheSuggestions, getSavedFilters, updateSavedFilters } from '@llm-observer/database';
+import { getDb, createProject, updateBudget, deleteProject, getAlerts, acknowledgeAlert, getStatsByProvider, createApiKey, getAlertRules, createAlertRule, deleteAlertRule, getCostOptimizationSuggestions, getPromptCacheSuggestions, getSavedFilters, updateSavedFilters, bulkInsertRequests } from '@llm-observer/database';
 
 export const requestEventEmitter = new EventEmitter();
 
@@ -424,6 +424,31 @@ dashboardApi.get('/stats/export', (req, res) => {
         res.status(400).json({ error: 'Unsupported format' });
     } catch (err) {
         console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/teams/:id/sync - Sync endpoint aggregating remote payloads
+dashboardApi.post('/teams/:id/sync', express.json({ limit: '10mb' }), (req, res) => {
+    try {
+        const teamId = req.params.id; // Usually mapped with an API key validator
+        const requests = req.body.requests;
+
+        if (!Array.isArray(requests)) {
+            return res.status(400).json({ error: 'Payload must contain a "requests" array' });
+        }
+
+        // Standardize imported records aligning remote node tracking identities
+        const normalizedRequests = requests.map(r => ({
+            ...r,
+            project_id: teamId // Override remote project context to the centralized team scope
+        }));
+
+        bulkInsertRequests(normalizedRequests);
+
+        res.json({ message: 'Synchronized successfully', count: normalizedRequests.length });
+    } catch (err) {
+        console.error('Sync Error:', err);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
