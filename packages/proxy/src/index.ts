@@ -40,6 +40,16 @@ app.all('/v1/google/*', (req, res) => {
 });
 
 const PORT = process.env.PROXY_PORT || 4000;
+const DASHBOARD_PORT = process.env.DASHBOARD_PORT || 4001;
+
+import { dashboardApi } from './dashboardApi';
+
+// Create a separate app for the dashboard API
+const dashboardApp = express();
+dashboardApp.use(cors());
+dashboardApp.use(express.json());
+// Mount the dashboard API router
+dashboardApp.use('/api', dashboardApi);
 
 app.listen(PORT, () => {
     console.log(`🚀 LLM Observer Proxy running on http://localhost:${PORT}`);
@@ -59,4 +69,8 @@ app.listen(PORT, () => {
     } catch (err) {
         console.error('Database Init Error:', err);
     }
+});
+
+dashboardApp.listen(DASHBOARD_PORT, () => {
+    console.log(`📊 Dashboard API running on http://localhost:${DASHBOARD_PORT}`);
 });
