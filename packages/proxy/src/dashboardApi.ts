@@ -91,3 +91,109 @@ dashboardApi.get('/stats/models', (req, res) => {
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
+
+// /api/requests - Paginated list of requests
+dashboardApi.get('/requests', (req, res) => {
+    try {
+        const db = getDb();
+        const projectId = 'default';
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const offset = (page - 1) * limit;
+
+        const stmt = db.prepare(`
+            SELECT id, provider, model, endpoint, prompt_tokens, completion_tokens, total_tokens, 
+                   cost_usd, latency_ms, status_code, status, is_streaming, created_at
+            FROM requests
+            WHERE project_id = ?
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        `);
+        const data = stmt.all(projectId, limit, offset);
+
+        const countStmt = db.prepare('SELECT count(*) as count FROM requests WHERE project_id = ?');
+        const count = (countStmt.get(projectId) as any).count;
+
+        res.json({
+            data,
+            meta: {
+                total: count,
+                page,
+                limit,
+                totalPages: Math.ceil(count / limit)
+            }
+        });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/requests/:id - Detail view for a request (includes body JSONs)
+dashboardApi.get('/requests/:id', (req, res) => {
+    try {
+        const db = getDb();
+        const stmt = db.prepare('SELECT * FROM requests WHERE id = ?');
+        const data = stmt.get(req.params.id);
+
+        if (!data) {
+            return res.status(404).json({ error: 'Request not found' });
+        }
+        res.json({ data });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/requests/stream - SSE connection for live updates
+dashboardApi.get('/requests/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Send an initial ping to establish connection
+    res.write('data: {"type":"connected"}\n\n');
+
+    let keepAliveTimer: NodeJS.Timeout;
+    let pollTimer: NodeJS.Timeout;
+
+    // Better-sqlite3 does not easily support notify/listen hooks natively without recompiling / native addons,
+    // so we'll use a fast poll approach (every 1s) to see if new requests arrived since last check
+    let lastCheckedTime = new Date().toISOString();
+
+    const checkNewRequests = () => {
+        try {
+            const db = getDb();
+            const stmt = db.prepare(`
+                SELECT id, provider, model, endpoint, prompt_tokens, completion_tokens, total_tokens, 
+                       cost_usd, latency_ms, status_code, status, is_streaming, created_at
+                FROM requests
+                WHERE project_id = 'default' AND created_at > ?
+                ORDER BY created_at ASC
+            `);
+            const newData = stmt.all(lastCheckedTime) as any[];
+
+            if (newData.length > 0) {
+                lastCheckedTime = newData[newData.length - 1].created_at;
+
+                // Exclude the bodies to keep payloads small
+                res.write(`data: ${JSON.stringify({ type: 'new_requests', data: newData })}\n\n`);
+            }
+        } catch (err) {
+            console.error('SSE Poll Error:', err);
+        }
+    };
+
+    pollTimer = setInterval(checkNewRequests, 1000);
+
+    // Keep connection alive with periodic pings (every 30s)
+    keepAliveTimer = setInterval(() => {
+        res.write(':\n\n'); // Comment style keep-alive
+    }, 30000);
+
+    req.on('close', () => {
+        clearInterval(pollTimer);
+        clearInterval(keepAliveTimer);
+    });
+});
