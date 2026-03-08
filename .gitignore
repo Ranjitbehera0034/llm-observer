@@ -10,8 +10,14 @@ build/
 out/
 .next/
 
-# Tauri builds
-src-tauri/target/
+# Vercel
+.vercel
+
+# Tauri
+apps/tauri/src-tauri/target/
+
+# Claude Desktop App
+.claude/
 *.app
 *.dmg
 *.msi
