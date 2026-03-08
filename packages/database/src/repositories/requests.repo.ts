@@ -21,6 +21,7 @@ export interface RequestRecord {
   response_body?: string;
   pricing_unknown?: boolean;
   tags?: string;
+  prompt_hash?: string;
   created_at?: string;
 }
 
@@ -32,9 +33,9 @@ export const insertRequest = (req: Omit<RequestRecord, 'id'>): string => {
       id, project_id, provider, model, endpoint, prompt_tokens, 
       completion_tokens, total_tokens, cost_usd, latency_ms, status_code, 
       status, is_streaming, has_tools, error_message, request_body, 
-      response_body, pricing_unknown, tags
+      response_body, pricing_unknown, tags, prompt_hash
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     )
   `);
 
@@ -44,7 +45,7 @@ export const insertRequest = (req: Omit<RequestRecord, 'id'>): string => {
     req.cost_usd, req.latency_ms || null, req.status_code || null,
     req.status || 'success', req.is_streaming ? 1 : 0, req.has_tools ? 1 : 0,
     req.error_message || null, req.request_body || null, req.response_body || null,
-    req.pricing_unknown ? 1 : 0, req.tags || null
+    req.pricing_unknown ? 1 : 0, req.tags || null, req.prompt_hash || null
   );
 
   return id;

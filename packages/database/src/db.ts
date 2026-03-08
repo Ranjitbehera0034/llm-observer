@@ -61,6 +61,19 @@ export const initDb = (dbPath?: string): Database.Database => {
             db.exec('ALTER TABLE projects ADD COLUMN organization_id TEXT REFERENCES organizations(id);');
             console.log('Migrated projects table: added organization_id column');
         }
+
+        // Migration 4: Add prompt_hash to requests
+        const requestsColumnsPostAdd = db.prepare("PRAGMA table_info(requests)").all() as any[];
+        if (!requestsColumnsPostAdd.some(col => col.name === 'prompt_hash')) {
+            db.exec('ALTER TABLE requests ADD COLUMN prompt_hash TEXT;');
+            console.log('Migrated requests table: added prompt_hash column');
+        }
+
+        // Migration 5: Add saved_filters to projects
+        if (!projectColumns.some(col => col.name === 'saved_filters')) {
+            db.exec('ALTER TABLE projects ADD COLUMN saved_filters TEXT DEFAULT "[]";');
+            console.log('Migrated projects table: added saved_filters column');
+        }
     } catch (err) {
         console.error('Migration checks failed:', err);
     }

@@ -68,3 +68,20 @@ export const deleteProject = (id: string) => {
     const stmt = db.prepare('DELETE FROM projects WHERE id = ?');
     stmt.run(id);
 };
+
+export const getSavedFilters = (id: string): any[] => {
+    const db = getDb();
+    const result = db.prepare('SELECT saved_filters FROM projects WHERE id = ?').get(id) as any;
+    if (!result || !result.saved_filters) return [];
+    try {
+        return JSON.parse(result.saved_filters);
+    } catch {
+        return [];
+    }
+};
+
+export const updateSavedFilters = (id: string, filters: any[]) => {
+    const db = getDb();
+    const stmt = db.prepare('UPDATE projects SET saved_filters = ? WHERE id = ?');
+    stmt.run(JSON.stringify(filters), id);
+};

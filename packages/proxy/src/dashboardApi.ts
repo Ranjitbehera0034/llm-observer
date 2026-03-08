@@ -1,6 +1,6 @@
 import express, { Router } from 'express';
 import { EventEmitter } from 'events';
-import { getDb, createProject, updateBudget, deleteProject, getAlerts, acknowledgeAlert, getStatsByProvider, createApiKey, getAlertRules, createAlertRule, deleteAlertRule } from '@llm-observer/database';
+import { getDb, createProject, updateBudget, deleteProject, getAlerts, acknowledgeAlert, getStatsByProvider, createApiKey, getAlertRules, createAlertRule, deleteAlertRule, getCostOptimizationSuggestions, getPromptCacheSuggestions, getSavedFilters, updateSavedFilters } from '@llm-observer/database';
 
 export const requestEventEmitter = new EventEmitter();
 
@@ -240,6 +240,28 @@ dashboardApi.put('/projects/:id', (req, res) => {
     }
 });
 
+// /api/projects/:id/filters - Get saved filters
+dashboardApi.get('/projects/:id/filters', (req, res) => {
+    try {
+        const filters = getSavedFilters(req.params.id);
+        res.json({ data: filters });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/projects/:id/filters - Update saved filters
+dashboardApi.put('/projects/:id/filters', express.json(), (req, res) => {
+    try {
+        updateSavedFilters(req.params.id, req.body.filters || []);
+        res.json({ message: 'Filters updated' });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
 // /api/projects/:id - Delete project
 dashboardApi.delete('/projects/:id', (req, res) => {
     try {
@@ -335,6 +357,71 @@ dashboardApi.delete('/auth/keys/:id', (req, res) => {
         const db = getDb();
         db.prepare('DELETE FROM api_keys WHERE id = ?').run(req.params.id);
         res.json({ success: true });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/stats/optimizer
+dashboardApi.get('/stats/optimizer', (req, res) => {
+    try {
+        const costOptimizations = getCostOptimizationSuggestions('default');
+        const promptOptimizations = getPromptCacheSuggestions('default');
+        res.json({ data: [...costOptimizations, ...promptOptimizations] });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/stats/export
+dashboardApi.get('/stats/export', (req, res) => {
+    try {
+        const db = getDb();
+        const projectId = 'default';
+        const format = (req.query.format as string) || 'csv';
+        const limit = parseInt(req.query.limit as string) || 10000;
+        const days = parseInt(req.query.days as string) || 30;
+
+        const stmt = db.prepare(`
+            SELECT id, provider, model, prompt_tokens, completion_tokens, total_tokens, 
+                   cost_usd, latency_ms, status_code, status, pricing_unknown, created_at
+            FROM requests
+            WHERE project_id = ? AND created_at >= date('now', '-' || ? || ' days')
+            ORDER BY created_at DESC
+            LIMIT ?
+        `);
+        const data = stmt.all(projectId, days, limit) as any[];
+
+        if (format === 'json') {
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Content-Disposition', 'attachment; filename="llm-observer-export.json"');
+            return res.send(JSON.stringify(data, null, 2));
+        }
+
+        if (format === 'csv') {
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', 'attachment; filename="llm-observer-export.csv"');
+
+            if (data.length === 0) return res.send('no_data\\n');
+
+            const headers = Object.keys(data[0]).join(',');
+            const rows = data.map(row => {
+                return Object.values(row).map(val => {
+                    if (val === null || val === undefined) return '';
+                    const str = String(val);
+                    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                        return `"${str.replace(/"/g, '""')}"`;
+                    }
+                    return str;
+                }).join(',');
+            });
+
+            return res.send([headers, ...rows].join('\\n'));
+        }
+
+        res.status(400).json({ error: 'Unsupported format' });
     } catch (err) {
         console.error('API Error:', err);
         res.status(500).json({ error: 'Internal Server Error' });

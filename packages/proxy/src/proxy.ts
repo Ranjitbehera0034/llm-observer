@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { incrementSpendCache } from './budgetGuard';
 import { requestEventEmitter } from './dashboardApi';
 import { requestLogsQueue } from './queue';
+import crypto from 'crypto';
 
 // Simple in-memory tracker for requests (project_id -> timestamps[])
 const requestWindow: Record<string, number[]> = {};
@@ -153,6 +154,16 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 } catch (e) { }
             }
 
+            let promptHash = null;
+            if (req.body && (req.body.messages || req.body.prompt)) {
+                const hashPayload = {
+                    model: req.body.model,
+                    messages: req.body.messages,
+                    prompt: req.body.prompt
+                };
+                promptHash = crypto.createHash('sha256').update(JSON.stringify(hashPayload)).digest('hex');
+            }
+
             const reqRecord = {
                 project_id: projectId,
                 provider: providerName,
@@ -171,6 +182,7 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 tags: req.headers['x-tags'] as string || null,
                 request_body: requestBodyStr,
                 response_body: dbResponseBody,
+                prompt_hash: promptHash,
                 created_at: new Date().toISOString()
             };
 
