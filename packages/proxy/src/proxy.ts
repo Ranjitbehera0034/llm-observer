@@ -4,10 +4,10 @@ import { Readable } from 'stream';
 import { IProvider } from './providers/base';
 import { OpenAIProvider } from './providers/openai';
 import { AnthropicProvider } from './providers/anthropic';
-import { insertRequest } from '@llm-observer/database';
 import chalk from 'chalk';
 import { incrementSpendCache } from './budgetGuard';
 import { requestEventEmitter } from './dashboardApi';
+import { requestLogsQueue } from './queue';
 
 // Simple in-memory tracker for requests (project_id -> timestamps[])
 const requestWindow: Record<string, number[]> = {};
@@ -153,27 +153,7 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 } catch (e) { }
             }
 
-            const insertedId = insertRequest({
-                project_id: projectId,
-                provider: providerName,
-                model: requestInfo.model,
-                endpoint: req.path,
-                prompt_tokens: usage?.promptTokens || 0,
-                completion_tokens: usage?.completionTokens || 0,
-                total_tokens: usage?.totalTokens || 0,
-                cost_usd: usage?.costUsd || 0,
-                latency_ms: latency,
-                status_code: statusCode,
-                status: statusCode >= 400 ? 'error' : 'success',
-                is_streaming: requestInfo.isStreaming,
-                has_tools: requestInfo.hasTools,
-                pricing_unknown: usage?.pricing_unknown || false,
-                request_body: requestBodyStr,
-                response_body: dbResponseBody
-            });
-
-            requestEventEmitter.emit('new_request', {
-                id: insertedId,
+            const reqRecord = {
                 project_id: projectId,
                 provider: providerName,
                 model: requestInfo.model,
@@ -186,13 +166,23 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 status_code: statusCode,
                 status: statusCode >= 400 ? 'error' : 'success',
                 is_streaming: requestInfo.isStreaming ? 1 : 0,
+                has_tools: requestInfo.hasTools ? 1 : 0,
                 pricing_unknown: usage?.pricing_unknown ? 1 : 0,
+                tags: req.headers['x-tags'] as string || null,
+                request_body: requestBodyStr,
+                response_body: dbResponseBody,
                 created_at: new Date().toISOString()
-            });
+            };
 
-            if (usage?.costUsd) {
-                incrementSpendCache(cacheKey, usage.costUsd);
-            }
+            // ✅ Emit SSE Event (real-time dashboard)
+            requestEventEmitter.emit('new_request', reqRecord);
+
+            // ✅ Fire-and-forget background SQLite log via Redis BullMQ
+            requestLogsQueue.add('log', { requestData: reqRecord })
+                .catch(err => console.error('Failed to enqueue request log:', err));
+
+            // Log output securely
+            console.log(chalk.green(`✓ [${providerName}] ${requestInfo.model} | ${usage?.totalTokens || 0} tokens | ${latency}ms | $${(usage?.costUsd || 0).toFixed(6)}`));
 
             const now = Date.now();
             const windowStart = now - 60000;
