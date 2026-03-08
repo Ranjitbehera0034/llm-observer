@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { handleProxyRequest } from './proxy';
-import { initDb, seedPricing, getProject, createProject } from '@llm-observer/database';
+import { initDb, seedPricing, getDb, seedDefaultApiKey } from '@llm-observer/database';
 import { initPricingCache } from './utils/pricing';
 import { GoogleProvider } from './providers/google';
 import { budgetGuard } from './budgetGuard';
@@ -75,10 +75,11 @@ async function bootstrap() {
         const db = initDb();
         console.log('Database schema intialized successfully.');
 
-        // 2. Refresh bundled default pricing & Remote Registry
+        // 2. Refresh bundled default pricing, Remote Registry & Auth
         seedPricing();
         initPricingCache();
-        console.log('Pricing engine ready.');
+        seedDefaultApiKey();
+        console.log('Pricing engine and Auth ready.');
 
         // 3. Ensure a default project exists for MVP usability
         const row = db.prepare('SELECT count(*) as count FROM projects WHERE id = ?').get('default') as any;

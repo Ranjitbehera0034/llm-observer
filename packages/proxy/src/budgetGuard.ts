@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { getDb } from '@llm-observer/database';
+import { getDb, validateApiKey } from '@llm-observer/database';
 import { randomUUID } from 'crypto';
 
 interface ProjectCache {
@@ -38,15 +38,19 @@ export const budgetGuard = (req: Request, res: Response, next: NextFunction) => 
   // Populate cache if missing or if last sync was > 60 seconds ago
   if (!project || now - project.last_sync > 60000) {
     let dbProject;
+
     if (cacheKey === 'default') {
       dbProject = db.prepare('SELECT * FROM projects WHERE id = ?').get('default') as any;
+      if (!dbProject) return next();
     } else {
-      dbProject = db.prepare('SELECT * FROM projects WHERE api_key = ?').get(apiKey) as any;
-    }
-
-    if (!dbProject) {
-      if (cacheKey === 'default') return next();
-      return res.status(401).json({ error: 'Invalid API Key or Project not found' });
+      const authRecord = validateApiKey(apiKey);
+      if (!authRecord) {
+        return res.status(401).json({ error: 'Invalid API Key' });
+      }
+      dbProject = db.prepare('SELECT * FROM projects WHERE id = ?').get(authRecord.project_id) as any;
+      if (!dbProject) {
+        return res.status(401).json({ error: 'Project associated with this API Key not found' });
+      }
     }
 
     const spent = getSpendFromDb(dbProject.id);

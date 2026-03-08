@@ -1,6 +1,6 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { EventEmitter } from 'events';
-import { getDb, createProject, updateBudget, deleteProject, getAlerts, acknowledgeAlert, getStatsByProvider } from '@llm-observer/database';
+import { getDb, createProject, updateBudget, deleteProject, getAlerts, acknowledgeAlert, getStatsByProvider, createApiKey } from '@llm-observer/database';
 
 export const requestEventEmitter = new EventEmitter();
 
@@ -293,6 +293,48 @@ dashboardApi.get('/stats/unknown-pricing', (req, res) => {
         const countStmt = db.prepare(`SELECT count(*) as count FROM requests WHERE project_id = ? AND pricing_unknown = 1`);
         const result = countStmt.get(projectId) as any;
         res.json({ count: result.count || 0 });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// --- API Keys Management ---
+
+dashboardApi.get('/auth/keys', (req, res) => {
+    try {
+        const db = getDb();
+        const stmt = db.prepare(`
+            SELECT id, key_hint, name, project_id, organization_id, created_at, expires_at, last_used_at
+            FROM api_keys
+            ORDER BY created_at DESC
+        `);
+        const keys = stmt.all();
+        res.json({ data: keys });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+dashboardApi.post('/auth/keys', express.json(), (req, res) => {
+    try {
+        const { name, projectId = 'default', organizationId = 'default' } = req.body;
+        if (!name) return res.status(400).json({ error: 'Key name is required' });
+
+        const result = createApiKey(name, projectId, organizationId);
+        res.json({ data: result });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+dashboardApi.delete('/auth/keys/:id', (req, res) => {
+    try {
+        const db = getDb();
+        db.prepare('DELETE FROM api_keys WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
     } catch (err) {
         console.error('API Error:', err);
         res.status(500).json({ error: 'Internal Server Error' });

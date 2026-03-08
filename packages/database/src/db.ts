@@ -30,6 +30,14 @@ export const initDb = (dbPath?: string): Database.Database => {
         console.warn(`Migration file not found at ${migrationPath}`);
     }
 
+    const authMigrationPath = path.join(__dirname, '002_auth.sql');
+    if (fs.existsSync(authMigrationPath)) {
+        const migration = fs.readFileSync(authMigrationPath, 'utf8');
+        db.exec(migration);
+    } else {
+        console.warn(`Migration file not found at ${authMigrationPath}`);
+    }
+
     // Database upgrade migrations (dynamic ALTER)
     try {
         // Migration 1: Add pricing_unknown to requests
@@ -44,6 +52,13 @@ export const initDb = (dbPath?: string): Database.Database => {
         if (!pricingColumns.some(col => col.name === 'is_custom')) {
             db.exec('ALTER TABLE model_pricing ADD COLUMN is_custom BOOLEAN DEFAULT 0;');
             console.log('Migrated model_pricing table: added is_custom column');
+        }
+
+        // Migration 3: Add organization_id to projects
+        const projectColumns = db.prepare("PRAGMA table_info(projects)").all() as any[];
+        if (!projectColumns.some(col => col.name === 'organization_id')) {
+            db.exec('ALTER TABLE projects ADD COLUMN organization_id TEXT REFERENCES organizations(id);');
+            console.log('Migrated projects table: added organization_id column');
         }
     } catch (err) {
         console.error('Migration checks failed:', err);
