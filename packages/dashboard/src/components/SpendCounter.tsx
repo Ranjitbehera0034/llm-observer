@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DollarSign, Activity, Database, TrendingUp } from 'lucide-react';
+import { API_BASE_URL } from '../config';
 
 interface OverviewStats {
     todaySpendUsd: number;
@@ -13,16 +14,23 @@ export function SpendCounter() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://localhost:4001/api/stats/overview')
-            .then(res => res.json())
-            .then(data => {
-                setStats(data);
-                setLoading(false);
-            })
-            .catch(err => {
-                console.error('Failed to fetch stats:', err);
-                setLoading(false);
-            });
+        const fetchStats = () => {
+            fetch(`${API_BASE_URL}/api/stats/overview`)
+                .then(res => res.json())
+                .then(data => {
+                    setStats(data);
+                    setLoading(false);
+                })
+                .catch(err => {
+                    console.error('Failed to fetch stats:', err);
+                    setLoading(false);
+                });
+        };
+
+        fetchStats();
+        const intervalId = setInterval(fetchStats, 10000); // Poll every 10s
+
+        return () => clearInterval(intervalId);
     }, []);
 
     if (loading) {

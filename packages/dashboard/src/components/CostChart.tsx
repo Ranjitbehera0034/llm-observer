@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { API_BASE_URL } from '../config';
 
 interface ChartDataPoint {
     date: string;
@@ -12,21 +13,29 @@ export function CostChart() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://localhost:4001/api/stats/chart')
-            .then(res => res.json())
-            .then(resData => {
-                // Format the date to be more readable
-                const formatted = resData.data.map((item: any) => ({
-                    ...item,
-                    displayDate: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                }));
-                setData(formatted);
-                setLoading(false);
-            })
-            .catch(err => {
-                console.error('Failed to fetch chart:', err);
-                setLoading(false);
-            });
+        const fetchChart = () => {
+            fetch(`${API_BASE_URL}/api/stats/chart`)
+                .then(res => res.json())
+                .then(resData => {
+                    if (resData.data) {
+                        const formatted = resData.data.map((item: any) => ({
+                            ...item,
+                            displayDate: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                        }));
+                        setData(formatted);
+                    }
+                    setLoading(false);
+                })
+                .catch(err => {
+                    console.error('Failed to fetch chart:', err);
+                    setLoading(false);
+                });
+        };
+
+        fetchChart();
+        const intervalId = setInterval(fetchChart, 10000);
+
+        return () => clearInterval(intervalId);
     }, []);
 
     if (loading) {

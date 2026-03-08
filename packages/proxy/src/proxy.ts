@@ -1,10 +1,13 @@
 import { Request, Response } from 'express';
 import httpProxy from 'http-proxy';
+import { Readable } from 'stream';
 import { IProvider } from './providers/base';
 import { OpenAIProvider } from './providers/openai';
 import { AnthropicProvider } from './providers/anthropic';
 import { insertRequest } from '@llm-observer/database';
 import chalk from 'chalk';
+import { incrementSpendCache } from './budgetGuard';
+import { requestEventEmitter } from './dashboardApi';
 
 // Simple in-memory tracker for requests (project_id -> timestamps[])
 const requestWindow: Record<string, number[]> = {};
@@ -32,51 +35,126 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
     const targetUrl = provider.getBaseUrl();
     const authHeaders = provider.getAuthHeader(req);
 
+    const projectId = (req as any).projectId || 'default';
+    const cacheKey = (req as any).cacheKey || 'default';
+
+    // Inject stream_options for OpenAI to get usage metrics
+    if (providerName === 'openai' && req.body?.stream) {
+        req.body.stream_options = { include_usage: true };
+    }
+
     // Parse request to get model details
     const requestInfo = provider.parseRequest(req, req.body);
     const requestStartTime = Date.now();
 
-    // We need to capture the response body
     const _write = res.write;
     const _end = res.end;
-    let responseData = '';
 
-    // Store original request body to log later
-    const requestBodyStr = JSON.stringify(req.body);
+    // DB Logging payload (Strictly truncated to 50KB)
+    let dbResponseBody = '';
+    let dbResponseTruncated = false;
+    const MAX_DB_SIZE = 50 * 1024;
+
+    let requestBodyStr = JSON.stringify(req.body);
+    if (requestBodyStr.length > MAX_DB_SIZE) {
+        requestBodyStr = requestBodyStr.substring(0, MAX_DB_SIZE) + '... [TRUNCATED]';
+    }
+
+    // State for extracting usage without accumulating memory
+    let streamBuffer = '';
+    let extractedUsage: any = null;
+    let fullBufferForJson = ''; // Only used if non-streaming
+
+    const processChunk = (chunkStr: string) => {
+        // 1. Accumulate for DB (with limits)
+        if (!dbResponseTruncated) {
+            if (dbResponseBody.length + chunkStr.length > MAX_DB_SIZE) {
+                dbResponseBody += chunkStr.substring(0, MAX_DB_SIZE - dbResponseBody.length) + '\n... [TRUNCATED]';
+                dbResponseTruncated = true;
+            } else {
+                dbResponseBody += chunkStr;
+            }
+        }
+
+        // 2. Extract usage
+        if (requestInfo.isStreaming) {
+            streamBuffer += chunkStr;
+            const lines = streamBuffer.split('\n');
+            streamBuffer = lines.pop() || ''; // keep incomplete line
+
+            for (const line of lines) {
+                if (providerName === 'openai' && line.startsWith('data: ') && !line.includes('[DONE]')) {
+                    try {
+                        const parsed = JSON.parse(line.substring(6));
+                        if (parsed.usage) extractedUsage = parsed.usage;
+                    } catch (e) { }
+                } else if (providerName === 'anthropic' && line.startsWith('data: ')) {
+                    try {
+                        const parsed = JSON.parse(line.substring(6));
+                        if (!extractedUsage) extractedUsage = { prompt_tokens: 0, completion_tokens: 0 };
+                        if (parsed.type === 'message_start' && parsed.message?.usage) {
+                            extractedUsage.prompt_tokens += parsed.message.usage.input_tokens || 0;
+                            extractedUsage.completion_tokens += parsed.message.usage.output_tokens || 0;
+                        } else if (parsed.type === 'message_delta' && parsed.usage) {
+                            extractedUsage.completion_tokens += parsed.usage.output_tokens || 0;
+                        }
+                    } catch (e) { }
+                } else if (providerName === 'google' && line.startsWith('data: ')) {
+                    try {
+                        const parsed = JSON.parse(line.substring(6));
+                        if (parsed.usageMetadata) {
+                            extractedUsage = {
+                                prompt_tokens: parsed.usageMetadata.promptTokenCount,
+                                completion_tokens: parsed.usageMetadata.candidatesTokenCount,
+                                total_tokens: parsed.usageMetadata.totalTokenCount
+                            };
+                        }
+                    } catch (e) { }
+                }
+            }
+        } else {
+            // Non-streaming: accumulate safely up to 5MB, enough for massive contexts
+            if (fullBufferForJson.length < 5 * 1024 * 1024) {
+                fullBufferForJson += chunkStr;
+            }
+        }
+    };
 
     res.write = function (this: any, chunk: any, encoding?: any, cb?: any) {
-        if (chunk) {
-            responseData += chunk.toString();
-        }
+        if (chunk) processChunk(chunk.toString());
         return _write.call(this, chunk, encoding, cb);
     } as any;
 
     res.end = function (this: any, chunk: any, encoding?: any, cb?: any) {
-        if (chunk) {
-            responseData += chunk.toString();
-        }
+        if (chunk) processChunk(chunk.toString());
 
         const latency = Date.now() - requestStartTime;
         const statusCode = res.statusCode;
 
-        // After response is done, calculate cost and log
         try {
             let usage = null;
 
-            if (requestInfo.isStreaming && responseData) {
-                usage = provider.parseStreamResponse(responseData, requestInfo);
-            } else if (!requestInfo.isStreaming && responseData) {
+            if (requestInfo.isStreaming && extractedUsage) {
+                let p = extractedUsage.prompt_tokens || 0;
+                let c = extractedUsage.completion_tokens || 0;
+                // Use generic provider interface for calculating costs locally
+                const costResult = provider.calculateCost(requestInfo.model, p, c);
+                usage = {
+                    promptTokens: p,
+                    completionTokens: c,
+                    totalTokens: p + c,
+                    costUsd: costResult.costUsd,
+                    pricing_unknown: costResult.unknown
+                };
+            } else if (!requestInfo.isStreaming && fullBufferForJson) {
                 try {
-                    const parsedResponse = JSON.parse(responseData);
+                    const parsedResponse = JSON.parse(fullBufferForJson);
                     usage = provider.parseResponse(parsedResponse, requestInfo);
-                } catch (e) {
-                    // not JSON
-                }
+                } catch (e) { }
             }
 
-            // Log to database asynchronously
-            insertRequest({
-                project_id: 'default', // TODO: Get from auth/headers
+            const insertedId = insertRequest({
+                project_id: projectId,
                 provider: providerName,
                 model: requestInfo.model,
                 endpoint: req.path,
@@ -89,22 +167,40 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 status: statusCode >= 400 ? 'error' : 'success',
                 is_streaming: requestInfo.isStreaming,
                 has_tools: requestInfo.hasTools,
+                pricing_unknown: usage?.pricing_unknown || false,
                 request_body: requestBodyStr,
-                response_body: responseData
+                response_body: dbResponseBody
             });
 
-            // Anomaly Detection Engine
-            const projectId = 'default';
+            requestEventEmitter.emit('new_request', {
+                id: insertedId,
+                project_id: projectId,
+                provider: providerName,
+                model: requestInfo.model,
+                endpoint: req.path,
+                prompt_tokens: usage?.promptTokens || 0,
+                completion_tokens: usage?.completionTokens || 0,
+                total_tokens: usage?.totalTokens || 0,
+                cost_usd: usage?.costUsd || 0,
+                latency_ms: latency,
+                status_code: statusCode,
+                status: statusCode >= 400 ? 'error' : 'success',
+                is_streaming: requestInfo.isStreaming ? 1 : 0,
+                pricing_unknown: usage?.pricing_unknown ? 1 : 0,
+                created_at: new Date().toISOString()
+            });
+
+            if (usage?.costUsd) {
+                incrementSpendCache(cacheKey, usage.costUsd);
+            }
+
             const now = Date.now();
-            const windowStart = now - 60000; // 60 seconds
+            const windowStart = now - 60000;
 
             if (!requestWindow[projectId]) requestWindow[projectId] = [];
-            // Clean up old requests
             requestWindow[projectId] = requestWindow[projectId].filter(t => t > windowStart);
-            // Add current request
             requestWindow[projectId].push(now);
 
-            // Log if > 10 requests / minute
             if (requestWindow[projectId].length > 10) {
                 console.log(chalk.yellow(`\n[ANOMALY DETECTED] High volume of requests (${requestWindow[projectId].length}/min) for project '${projectId}'!`));
             }
@@ -116,18 +212,12 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
         return _end.call(this, chunk, encoding, cb);
     } as any;
 
-    // We must re-stream the JSON body since body-parser already read it
-    // http-proxy gets confused if body is already consumed
     proxy.web(req, res, {
         target: targetUrl,
-        headers: {
-            ...authHeaders
-        },
-        buffer: require('stream').Readable.from([JSON.stringify(req.body)])
+        headers: { ...authHeaders },
+        buffer: Readable.from([JSON.stringify(req.body)])
     }, (err) => {
         console.error('Proxy Error:', err);
-        if (!res.headersSent) {
-            res.status(502).json({ error: 'Bad Gateway', details: err.message });
-        }
+        if (!res.headersSent) res.status(502).json({ error: 'Bad Gateway', details: err.message });
     });
 };

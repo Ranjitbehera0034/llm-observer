@@ -1,15 +1,18 @@
 {
-  "name": "cli",
+  "name": "llm-observer",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "CLI interface for LLM Observer platform",
+  "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
   "bin": {
-    "llm-observe": "./dist/index.js"
+    "llm-observer": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -17,7 +20,7 @@
   "dependencies": {
     "chalk": "^4.1.2",
     "cli-table3": "^0.6.5",
-    "commander": "^4.1.1",
+    "commander": "^14.0.3",
     "node-fetch": "^2.7.0"
   },
   "devDependencies": {

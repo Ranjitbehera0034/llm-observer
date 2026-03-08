@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { API_BASE_URL } from '../config';
 
 interface ModelStat {
     model: string;
@@ -15,16 +16,23 @@ export function ModelBreakdown() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://localhost:4001/api/stats/models')
-            .then(res => res.json())
-            .then(resData => {
-                setData(resData.data);
-                setLoading(false);
-            })
-            .catch(err => {
-                console.error('Failed to fetch models stat:', err);
-                setLoading(false);
-            });
+        const fetchModels = () => {
+            fetch(`${API_BASE_URL}/api/stats/models`)
+                .then(res => res.json())
+                .then(resData => {
+                    setData(resData.data);
+                    setLoading(false);
+                })
+                .catch(err => {
+                    console.error('Failed to fetch models stat:', err);
+                    setLoading(false);
+                });
+        };
+
+        fetchModels();
+        const intervalId = setInterval(fetchModels, 10000);
+
+        return () => clearInterval(intervalId);
     }, []);
 
     if (loading) {

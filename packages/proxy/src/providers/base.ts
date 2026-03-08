@@ -8,6 +8,7 @@ export interface ProviderResponse {
     completionTokens: number;
     totalTokens: number;
     costUsd: number;
+    pricing_unknown: boolean;
     hasTools: boolean;
 }
 
@@ -29,5 +30,5 @@ export interface IProvider {
 
 
     /** Specifically calculate cost for a given token usage and model */
-    calculateCost(model: string, promptTokens: number, completionTokens: number): number;
+    calculateCost(model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean };
 }

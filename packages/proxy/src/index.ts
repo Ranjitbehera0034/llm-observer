@@ -1,13 +1,21 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { handleProxyRequest } from './proxy';
 import { initDb, seedPricing, getProject, createProject } from '@llm-observer/database';
+import { initPricingCache } from './utils/pricing';
 import { GoogleProvider } from './providers/google';
 import { budgetGuard } from './budgetGuard';
 
 const app = express();
 
-app.use(cors());
+const corsOptions = {
+    origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4001', process.env.DASHBOARD_URL].filter(Boolean) as string[],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
+};
+
+app.use(cors(corsOptions));
 
 // Health check
 app.get('/health', (req, res) => {
@@ -46,30 +54,50 @@ import { dashboardApi } from './dashboardApi';
 
 // Create a separate app for the dashboard API
 const dashboardApp = express();
-dashboardApp.use(cors());
+dashboardApp.use(cors(corsOptions));
 dashboardApp.use(express.json());
 // Mount the dashboard API router
 dashboardApp.use('/api', dashboardApi);
 
-app.listen(PORT, () => {
-    console.log(`🚀 LLM Observer Proxy running on http://localhost:${PORT}`);
+// Fallback to static Dashboard build if not hitting API
+const dashboardDist = path.join(__dirname, '../../dashboard/dist');
+dashboardApp.use(express.static(dashboardDist));
 
-    // Init DB and ensure default project exists
+dashboardApp.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(dashboardDist, 'index.html'));
+});
+
+// --- Boot Sequence ---
+async function bootstrap() {
     try {
+        // 1. Initialize DB and run migrations FIRST
         const db = initDb();
-        seedPricing();
+        console.log('Database schema intialized successfully.');
 
-        // Ensure default project exists
+        // 2. Refresh bundled default pricing & Remote Registry
+        seedPricing();
+        initPricingCache();
+        console.log('Pricing engine ready.');
+
+        // 3. Ensure a default project exists for MVP usability
         const row = db.prepare('SELECT count(*) as count FROM projects WHERE id = ?').get('default') as any;
         if (row.count === 0) {
             db.prepare(`INSERT INTO projects (id, name, daily_budget) VALUES (?, ?, ?)`).run('default', 'My Local Project', 5.0);
         }
 
-        console.log('Database initialized successfully.');
+        // 4. Start accepting Proxy Traffic
+        app.listen(PORT, () => {
+            console.log(`🚀 LLM Observer Proxy running on http://localhost:${PORT}`);
+        });
+
     } catch (err) {
-        console.error('Database Init Error:', err);
+        console.error('Fatal Initialization Error:', err);
+        process.exit(1);
     }
-});
+}
+
+bootstrap();
 
 dashboardApp.listen(DASHBOARD_PORT, () => {
     console.log(`📊 Dashboard API running on http://localhost:${DASHBOARD_PORT}`);

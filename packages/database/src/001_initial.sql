@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS requests (
   error_message TEXT,
   request_body TEXT,
   response_body TEXT,
+  pricing_unknown BOOLEAN DEFAULT 0,
   tags TEXT,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (project_id) REFERENCES projects (id)
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS model_pricing (
   input_cost_per_1m REAL NOT NULL,
   output_cost_per_1m REAL NOT NULL,
   cached_input_cost_per_1m REAL,
+  is_custom BOOLEAN DEFAULT 0,
   effective_date DATE DEFAULT (date('now')),
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

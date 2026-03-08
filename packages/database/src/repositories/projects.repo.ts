@@ -62,3 +62,9 @@ export const updateBudget = (
   `);
     stmt.run(budget.daily || null, budget.weekly || null, budget.monthly || null, id);
 };
+
+export const deleteProject = (id: string) => {
+    const db = getDb();
+    const stmt = db.prepare('DELETE FROM projects WHERE id = ?');
+    stmt.run(id);
+};

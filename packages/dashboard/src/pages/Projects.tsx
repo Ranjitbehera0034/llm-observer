@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FolderOpen, Settings, MoreVertical } from 'lucide-react';
 import { BudgetMeter } from '../components/BudgetMeter';
+import { API_BASE_URL } from '../config';
 
 interface ProjectData {
     id: string;
@@ -15,7 +16,7 @@ export default function Projects() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('http://localhost:4001/api/projects')
+        fetch(`${API_BASE_URL}/api/projects`)
             .then(res => res.json())
             .then(resData => {
                 setProjects(resData.data);

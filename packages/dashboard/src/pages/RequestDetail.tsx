@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Box, CheckCircle } from 'lucide-react';
 import { StatusBadge, formatTimeAgo } from '../components/StatusBadge';
+import { API_BASE_URL } from '../config';
 
 interface RequestDetailProps {
     requestId: string;
@@ -12,7 +13,7 @@ export function RequestDetail({ requestId, onBack }: RequestDetailProps) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch(`http://localhost:4001/api/requests/${requestId}`)
+        fetch(`${API_BASE_URL}/api/requests/${requestId}`)
             .then(res => res.json())
             .then(resData => {
                 setDetail(resData.data);

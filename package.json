@@ -7,9 +7,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:all": "concurrently \"npm run dev --workspace=packages/proxy\" \"npm run dev --workspace=packages/dashboard\""
-  },
-  "scripts": {
+    "dev:all": "concurrently \"npm run dev --workspace=@llm-observer/proxy\" \"npm run dev --workspace=@llm-observer/dashboard\"",
+    "start:all": "concurrently \"npm run start --workspace=@llm-observer/proxy\" \"npm run start --workspace=@llm-observer/dashboard\"",
     "dev": "npm run dev --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "lint": "eslint . --ext .ts,.tsx",

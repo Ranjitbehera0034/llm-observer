@@ -30,6 +30,25 @@ export const initDb = (dbPath?: string): Database.Database => {
         console.warn(`Migration file not found at ${migrationPath}`);
     }
 
+    // Database upgrade migrations (dynamic ALTER)
+    try {
+        // Migration 1: Add pricing_unknown to requests
+        const requestsColumns = db.prepare("PRAGMA table_info(requests)").all() as any[];
+        if (!requestsColumns.some(col => col.name === 'pricing_unknown')) {
+            db.exec('ALTER TABLE requests ADD COLUMN pricing_unknown BOOLEAN DEFAULT 0;');
+            console.log('Migrated requests table: added pricing_unknown column');
+        }
+
+        // Migration 2: Add is_custom to model_pricing
+        const pricingColumns = db.prepare("PRAGMA table_info(model_pricing)").all() as any[];
+        if (!pricingColumns.some(col => col.name === 'is_custom')) {
+            db.exec('ALTER TABLE model_pricing ADD COLUMN is_custom BOOLEAN DEFAULT 0;');
+            console.log('Migrated model_pricing table: added is_custom column');
+        }
+    } catch (err) {
+        console.error('Migration checks failed:', err);
+    }
+
     return db;
 };
 

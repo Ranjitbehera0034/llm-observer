@@ -1,5 +1,8 @@
 import { Router } from 'express';
-import { getDb } from '@llm-observer/database';
+import { EventEmitter } from 'events';
+import { getDb, createProject, updateBudget, deleteProject, getAlerts, acknowledgeAlert, getStatsByProvider } from '@llm-observer/database';
+
+export const requestEventEmitter = new EventEmitter();
 
 export const dashboardApi = Router();
 
@@ -123,8 +126,13 @@ dashboardApi.get('/requests', (req, res) => {
     try {
         const db = getDb();
         const projectId = 'default';
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = parseInt(req.query.limit as string) || 50;
+        let page = parseInt(req.query.page as string) || 1;
+        let limit = parseInt(req.query.limit as string) || 50;
+
+        if (page < 1) page = 1;
+        if (limit < 1) limit = 1;
+        if (limit > 100) limit = 100;
+
         const offset = (page - 1) * limit;
 
         const stmt = db.prepare(`
@@ -179,47 +187,114 @@ dashboardApi.get('/requests/stream', (req, res) => {
     res.setHeader('Connection', 'keep-alive');
 
     // Send an initial ping to establish connection
-    res.write('data: {"type":"connected"}\n\n');
+    res.write('data: {"type":"connected"}\\n\\n');
 
-    let keepAliveTimer: NodeJS.Timeout;
-    let pollTimer: NodeJS.Timeout;
-
-    // Better-sqlite3 does not easily support notify/listen hooks natively without recompiling / native addons,
-    // so we'll use a fast poll approach (every 1s) to see if new requests arrived since last check
-    let lastCheckedTime = new Date().toISOString();
-
-    const checkNewRequests = () => {
-        try {
-            const db = getDb();
-            const stmt = db.prepare(`
-                SELECT id, provider, model, endpoint, prompt_tokens, completion_tokens, total_tokens, 
-                       cost_usd, latency_ms, status_code, status, is_streaming, created_at
-                FROM requests
-                WHERE project_id = 'default' AND created_at > ?
-                ORDER BY created_at ASC
-            `);
-            const newData = stmt.all(lastCheckedTime) as any[];
-
-            if (newData.length > 0) {
-                lastCheckedTime = newData[newData.length - 1].created_at;
-
-                // Exclude the bodies to keep payloads small
-                res.write(`data: ${JSON.stringify({ type: 'new_requests', data: newData })}\n\n`);
-            }
-        } catch (err) {
-            console.error('SSE Poll Error:', err);
-        }
+    const onNewRequest = (requestData: any) => {
+        // Send pushing immediate new events securely payloading small
+        res.write(`data: ${JSON.stringify({ type: 'new_requests', data: [requestData] })}\\n\\n`);
     };
 
-    pollTimer = setInterval(checkNewRequests, 1000);
+    requestEventEmitter.on('new_request', onNewRequest);
 
     // Keep connection alive with periodic pings (every 30s)
-    keepAliveTimer = setInterval(() => {
-        res.write(':\n\n'); // Comment style keep-alive
+    const keepAliveTimer = setInterval(() => {
+        res.write(':\\n\\n'); // Comment style keep-alive
     }, 30000);
 
     req.on('close', () => {
-        clearInterval(pollTimer);
         clearInterval(keepAliveTimer);
+        requestEventEmitter.off('new_request', onNewRequest);
     });
+});
+
+// /api/stats/by-provider
+dashboardApi.get('/stats/by-provider', (req, res) => {
+    try {
+        const data = getStatsByProvider('default');
+        res.json({ data });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/projects - Create project
+dashboardApi.post('/projects', (req, res) => {
+    try {
+        const id = createProject(req.body);
+        res.json({ id, message: 'Project created' });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/projects/:id - Update budget
+dashboardApi.put('/projects/:id', (req, res) => {
+    try {
+        updateBudget(req.params.id, req.body);
+        res.json({ message: 'Budget updated' });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/projects/:id - Delete project
+dashboardApi.delete('/projects/:id', (req, res) => {
+    try {
+        deleteProject(req.params.id);
+        res.json({ message: 'Project deleted' });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/alerts
+dashboardApi.get('/alerts', (req, res) => {
+    try {
+        const data = getAlerts('default');
+        res.json({ data });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/alerts/:id/ack
+dashboardApi.put('/alerts/:id/ack', (req, res) => {
+    try {
+        acknowledgeAlert(req.params.id);
+        res.json({ message: 'Alert acknowledged' });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/pricing
+dashboardApi.get('/pricing', (req, res) => {
+    try {
+        const db = getDb();
+        const data = db.prepare('SELECT * FROM model_pricing').all();
+        res.json({ data });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/stats/unknown-pricing
+dashboardApi.get('/stats/unknown-pricing', (req, res) => {
+    try {
+        const db = getDb();
+        const projectId = 'default';
+        const countStmt = db.prepare(`SELECT count(*) as count FROM requests WHERE project_id = ? AND pricing_unknown = 1`);
+        const result = countStmt.get(projectId) as any;
+        res.json({ count: result.count || 0 });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
 });

@@ -6,6 +6,26 @@ import { setupStatusCommands } from './commands/status';
 import { setupProjectsCommands } from './commands/projects';
 import { setupLogsCommands } from './commands/logs';
 import { setupStartCommands } from './commands/start';
+import { setupStatsCommands } from './commands/stats';
+import { setupBudgetCommands } from './commands/budget';
+import { setupConfigCommands } from './commands/config';
+import { setupExportCommands } from './commands/export';
+import { setupStopCommands } from './commands/stop';
+import { setupPricingCommands } from './commands/pricing';
+import { initDb } from '@llm-observer/database';
+
+initDb();
+
+const banner = `
+${chalk.bold.blue('  _      _      __  __    ____  _                              ')}
+${chalk.bold.blue(' | |    | |    |  \\/  |  / __ \\| |                             ')}
+${chalk.bold.blue(' | |    | |    | \\  / | | |  | | |__  ___  ___ _ ____   ___ __ ')}
+${chalk.bold.blue(' | |    | |    | |\\/| | | |  | | \'_ \\/ __|/ _ \\ \'__\\ \\ / / \'__|')}
+${chalk.bold.blue(' | |____| |____| |  | | | |__| | |_) \\__ \\  __/ |   \\ V /| |   ')}
+${chalk.bold.blue(' |______|______|_|  |_|  \\____/|_.__/|___/\\___|_|    \\_/ |_|   ')}
+`;
+
+console.log(banner);
 
 const program = new Command();
 
@@ -19,6 +39,12 @@ setupStatusCommands(program);
 setupProjectsCommands(program);
 setupLogsCommands(program);
 setupStartCommands(program);
+setupStatsCommands(program);
+setupBudgetCommands(program);
+setupConfigCommands(program);
+setupExportCommands(program);
+setupStopCommands(program);
+setupPricingCommands(program);
 
 // Handle unknown commands
 program.on('command:*', function (operands) {

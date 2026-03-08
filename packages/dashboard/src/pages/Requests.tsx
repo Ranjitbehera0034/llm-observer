@@ -3,29 +3,37 @@ import { RequestTable } from '../components/RequestTable';
 import type { RequestRow } from '../components/RequestTable';
 import { Activity } from 'lucide-react';
 import { RequestDetail } from './RequestDetail';
+import { API_BASE_URL } from '../config';
 
 export default function Requests() {
     const [requests, setRequests] = useState<RequestRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedRequest, setSelectedRequest] = useState<RequestRow | null>(null);
+    const [page, setPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
 
-    // Initial load
-    useEffect(() => {
-        fetch('http://localhost:4001/api/requests?page=1&limit=50')
+    const loadRequests = (targetPage: number) => {
+        setLoading(true);
+        fetch(`${API_BASE_URL}/api/requests?page=${targetPage}&limit=50`)
             .then(res => res.json())
             .then(resData => {
                 setRequests(resData.data);
+                setTotalPages(resData.meta?.totalPages || 1);
                 setLoading(false);
             })
             .catch(err => {
                 console.error('Failed to fetch requests:', err);
                 setLoading(false);
             });
-    }, []);
+    };
+
+    useEffect(() => {
+        loadRequests(page);
+    }, [page]);
 
     // SSE Real-time listener
     useEffect(() => {
-        const eventSource = new EventSource('http://localhost:4001/api/requests/stream');
+        const eventSource = new EventSource(`${API_BASE_URL}/api/requests/stream`);
 
         eventSource.onmessage = (event) => {
             try {
@@ -91,6 +99,27 @@ export default function Requests() {
                 requests={requests}
                 onRowClick={(req) => setSelectedRequest(req)}
             />
+
+            {/* Pagination Controls */}
+            <div className="flex justify-between items-center mt-6">
+                <button
+                    disabled={page === 1}
+                    onClick={() => setPage(page - 1)}
+                    className="px-4 py-2 bg-surfaceHighlight hover:bg-border text-white rounded-lg font-medium transition-colors border border-border disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    Previous
+                </button>
+                <span className="text-textMuted text-sm">
+                    Page {page} of {totalPages}
+                </span>
+                <button
+                    disabled={page >= totalPages}
+                    onClick={() => setPage(page + 1)}
+                    className="px-4 py-2 bg-surfaceHighlight hover:bg-border text-white rounded-lg font-medium transition-colors border border-border disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    Next
+                </button>
+            </div>
         </div>
     );
 }

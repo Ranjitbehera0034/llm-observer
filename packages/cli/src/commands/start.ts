@@ -1,6 +1,8 @@
 import { Command } from 'commander';
 import { spawn } from 'child_process';
 import chalk from 'chalk';
+import fs from 'fs';
+import path from 'path';
 
 export function setupStartCommands(program: Command) {
     program
@@ -9,11 +11,26 @@ export function setupStartCommands(program: Command) {
         .action(() => {
             console.log(chalk.blue('Starting LLM Observer Services...\\n'));
 
-            // Spawn the root dev:all script which uses concurrently
-            const child = spawn('npm', ['run', 'dev:all'], {
+            let proxyPath: string;
+            try {
+                // Look for the built proxy script
+                proxyPath = require.resolve('@llm-observer/proxy');
+            } catch (e: any) {
+                console.error(chalk.red('Could not find @llm-observer/proxy. Have you built it?'));
+                return;
+            }
+
+            // Spawn the compiled node proxy directly
+            const child = spawn('node', [proxyPath], {
                 stdio: 'inherit',
-                shell: true
+                shell: true,
+                env: process.env
             });
+
+            const pidPath = path.join(process.cwd(), '.llm-observer.pid');
+            if (child.pid) {
+                fs.writeFileSync(pidPath, child.pid.toString());
+            }
 
             child.on('error', (err) => {
                 console.error(chalk.red(`Failed to start processes: ${err.message}`));
@@ -28,8 +45,13 @@ export function setupStartCommands(program: Command) {
             // Handle graceful shutdown of child processes on Ctrl+C
             process.on('SIGINT', () => {
                 console.log(chalk.yellow('\\nShutting down LLM Observer processes...'));
+                if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
                 child.kill('SIGINT');
                 process.exit(0);
+            });
+
+            process.on('exit', () => {
+                if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
             });
         });
 }

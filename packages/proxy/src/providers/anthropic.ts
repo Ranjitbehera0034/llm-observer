@@ -1,6 +1,6 @@
 import { Request } from 'express';
 import { IProvider, ProviderResponse } from './base';
-import { getDb } from '@llm-observer/database';
+import { calculateSharedCost } from '../utils/pricing';
 
 export class AnthropicProvider implements IProvider {
     getBaseUrl() {
@@ -45,7 +45,7 @@ export class AnthropicProvider implements IProvider {
             totalTokens = promptTokens + completionTokens;
         }
 
-        const costUsd = this.calculateCost(requestData.model, promptTokens, completionTokens);
+        const costResult = this.calculateCost(requestData.model, promptTokens, completionTokens);
 
         return {
             provider: 'anthropic',
@@ -54,7 +54,8 @@ export class AnthropicProvider implements IProvider {
             promptTokens,
             completionTokens,
             totalTokens,
-            costUsd,
+            costUsd: costResult.costUsd,
+            pricing_unknown: costResult.unknown,
             hasTools: requestData.hasTools,
         };
     }
@@ -82,7 +83,7 @@ export class AnthropicProvider implements IProvider {
         }
 
         const totalTokens = promptTokens + completionTokens;
-        const costUsd = this.calculateCost(requestData.model, promptTokens, completionTokens);
+        const costResult = this.calculateCost(requestData.model, promptTokens, completionTokens);
 
         return {
             provider: 'anthropic',
@@ -91,22 +92,14 @@ export class AnthropicProvider implements IProvider {
             promptTokens,
             completionTokens,
             totalTokens,
-            costUsd,
+            costUsd: costResult.costUsd,
+            pricing_unknown: costResult.unknown,
             hasTools: requestData.hasTools,
         };
     }
 
 
-    calculateCost(model: string, promptTokens: number, completionTokens: number): number {
-        const db = getDb();
-        const stmt = db.prepare('SELECT input_cost_per_1m, output_cost_per_1m FROM model_pricing WHERE provider = ? AND model = ? ORDER BY id DESC LIMIT 1');
-        const pricing = stmt.get('anthropic', model) as any;
-
-        if (!pricing) return 0;
-
-        const inputCost = (promptTokens / 1_000_000) * pricing.input_cost_per_1m;
-        const outputCost = (completionTokens / 1_000_000) * pricing.output_cost_per_1m;
-
-        return inputCost + outputCost;
+    calculateCost(model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean } {
+        return calculateSharedCost('anthropic', model, promptTokens, completionTokens);
     }
 }
