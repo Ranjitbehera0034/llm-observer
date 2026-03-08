@@ -10,9 +10,12 @@ export const proxy = httpProxy.createProxyServer({
     // We will handle errors ourselves
 });
 
+import { GoogleProvider } from './providers/google';
+
 const providers: Record<string, IProvider> = {
     openai: new OpenAIProvider(),
     anthropic: new AnthropicProvider(),
+    google: new GoogleProvider()
     // others can be added here
 };
 
