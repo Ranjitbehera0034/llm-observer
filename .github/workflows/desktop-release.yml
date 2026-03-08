@@ -1,0 +1,67 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build JS Workspace Frontends
+        run: npm run build
+
+      - name: Bundle Proxy Sidecar Binary
+        run: |
+          npm install -g pkg
+          # MacOS Aarch64
+          if [ "${{ matrix.platform }}" == "macos-latest" ]; then
+            npx --yes pkg packages/cli/package.json --targets node18-macos-arm64 --output apps/tauri/src-tauri/llm-observer-sidecar-aarch64-apple-darwin
+          # Ubuntu X64
+          elif [ "${{ matrix.platform }}" == "ubuntu-22.04" ]; then
+            npx --yes pkg packages/cli/package.json --targets node18-linux-x64 --output apps/tauri/src-tauri/llm-observer-sidecar-x86_64-unknown-linux-gnu
+          # Windows X64
+          elif [ "${{ matrix.platform }}" == "windows-latest" ]; then
+            npx --yes pkg packages/cli/package.json --targets node18-win-x64 --output apps/tauri/src-tauri/llm-observer-sidecar-x86_64-pc-windows-msvc.exe
+          fi
+        shell: bash
+
+      - name: Build Tauri App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: "apps/tauri"
+          tagName: ${{ github.ref_name }}
+          releaseName: "LLM Observer Desktop ${{ github.ref_name }}"
+          releaseBody: "See the assets to download this version and install."
+          releaseDraft: true
+          prerelease: false
