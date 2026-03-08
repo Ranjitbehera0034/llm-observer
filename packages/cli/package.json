@@ -4,7 +4,7 @@
   "description": "CLI interface for LLM Observer platform",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -b",
     "prepublishOnly": "npm run build"
   },
   "bin": {
