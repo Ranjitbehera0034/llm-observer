@@ -1,0 +1,23 @@
+{
+    "name": "@llm-observer/proxy",
+    "version": "1.0.0",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "tsc",
+        "dev": "ts-node src/index.ts",
+        "clean": "rm -rf dist"
+    },
+    "dependencies": {
+        "@llm-observer/database": "*",
+        "express": "^4.21.1",
+        "cors": "^2.8.5",
+        "http-proxy": "^1.18.1"
+    },
+    "devDependencies": {
+        "@types/express": "^4.17.21",
+        "@types/cors": "^2.8.17",
+        "@types/http-proxy": "^1.17.15",
+        "typescript": "^5.5.0",
+        "ts-node": "^10.9.2"
+    }
+}
