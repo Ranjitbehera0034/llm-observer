@@ -30,13 +30,14 @@ export const initDb = (dbPath?: string): Database.Database => {
         console.warn(`Migration file not found at ${migrationPath}`);
     }
 
-    const authMigrationPath = path.join(__dirname, '002_auth.sql');
-    if (fs.existsSync(authMigrationPath)) {
-        const migration = fs.readFileSync(authMigrationPath, 'utf8');
-        db.exec(migration);
-    } else {
-        console.warn(`Migration file not found at ${authMigrationPath}`);
-    }
+    const authSchemaPath = path.join(__dirname, '002_auth.sql');
+    const authSchemaSql = fs.readFileSync(authSchemaPath, 'utf-8');
+    db.exec(authSchemaSql);
+
+    // Apply Alerts Rules schema
+    const alertsSchemaPath = path.join(__dirname, '003_alerts.sql');
+    const alertsSchemaSql = fs.readFileSync(alertsSchemaPath, 'utf-8');
+    db.exec(alertsSchemaSql);
 
     // Database upgrade migrations (dynamic ALTER)
     try {

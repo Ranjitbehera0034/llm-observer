@@ -1,5 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { insertRequest, initDb } from '@llm-observer/database';
+import { evaluateAlertRules } from './evaluator';
 import Redis from 'ioredis';
 
 const redisConnection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
@@ -16,6 +17,10 @@ export const startWorker = () => {
             try {
                 insertRequest(requestData);
                 console.log(`✅ [Worker] Processed and persisted job: ${job.id}`);
+
+                // Async background rule evaluation
+                evaluateAlertRules(requestData).catch(err => console.error(err));
+
             } catch (error) {
                 console.error(`❌ [Worker] Failed to process job: ${job.id}`, error);
                 throw error;

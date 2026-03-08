@@ -5,4 +5,5 @@ export * from './repositories/stats.repo';
 export * from './repositories/alerts.repo';
 export * from './repositories/pricing.repo';
 export * from './repositories/auth.repo';
+export * from './repositories/alertRules.repo';
 export * from './seed';

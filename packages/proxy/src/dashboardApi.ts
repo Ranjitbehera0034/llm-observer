@@ -1,6 +1,6 @@
 import express, { Router } from 'express';
 import { EventEmitter } from 'events';
-import { getDb, createProject, updateBudget, deleteProject, getAlerts, acknowledgeAlert, getStatsByProvider, createApiKey } from '@llm-observer/database';
+import { getDb, createProject, updateBudget, deleteProject, getAlerts, acknowledgeAlert, getStatsByProvider, createApiKey, getAlertRules, createAlertRule, deleteAlertRule } from '@llm-observer/database';
 
 export const requestEventEmitter = new EventEmitter();
 
