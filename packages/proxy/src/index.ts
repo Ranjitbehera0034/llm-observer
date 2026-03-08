@@ -6,6 +6,8 @@ import { initDb, seedPricing, getDb, seedDefaultApiKey } from '@llm-observer/dat
 import { initPricingCache } from './utils/pricing';
 import { GoogleProvider } from './providers/google';
 import { budgetGuard } from './budgetGuard';
+import { rateLimitGuard } from './rateLimitGuard';
+import { requestLogsQueue } from './queue';
 
 const app = express();
 
@@ -27,6 +29,8 @@ app.use(express.json({ limit: '50mb' }));
 
 // Apply budget guard globally before proxying
 app.use(budgetGuard);
+// Apply rate limit guard globally before proxying
+app.use(rateLimitGuard);
 
 // Route handlers based on provider path
 app.all('/v1/openai/*', (req, res) => {
