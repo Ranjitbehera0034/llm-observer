@@ -12,6 +12,9 @@ import { setupConfigCommands } from './commands/config';
 import { setupExportCommands } from './commands/export';
 import { setupStopCommands } from './commands/stop';
 import { setupPricingCommands } from './commands/pricing';
+import { setupAuditCommands } from './commands/audit';
+import { setupBillingCommands } from './commands/billing';
+import { setupStressCommands } from './commands/stress';
 import { initDb } from '@llm-observer/database';
 
 initDb();
@@ -45,6 +48,9 @@ setupConfigCommands(program);
 setupExportCommands(program);
 setupStopCommands(program);
 setupPricingCommands(program);
+setupAuditCommands(program);
+setupBillingCommands(program);
+setupStressCommands(program);
 
 // Handle unknown commands
 program.on('command:*', function (operands) {

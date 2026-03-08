@@ -452,3 +452,36 @@ dashboardApi.post('/teams/:id/sync', express.json({ limit: '10mb' }), (req, res)
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
+
+// --- Enterprise Scaffolding ---
+
+// /api/auth/sso/saml - SSO login entry
+dashboardApi.post('/auth/sso/saml', express.json(), (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email required for SAML SSO' });
+
+        // Mock SAML asserting identity verification
+        res.json({ message: 'SSO Handshake initiated', mfaRequired: false, token: `mock_sso_${Date.now()}` });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// /api/billing/stripe/session - Create Stripe checkout session
+dashboardApi.get('/billing/stripe/session', (req, res) => {
+    try {
+        const plan = (req.query.plan as string) || 'pro';
+
+        // Mock Stripe configuration
+        res.json({
+            sessionId: `cs_test_${Date.now()}`,
+            url: `https://checkout.stripe.com/pay/cs_test_${Date.now()}`,
+            plan
+        });
+    } catch (err) {
+        console.error('API Error:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
