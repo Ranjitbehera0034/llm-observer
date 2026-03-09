@@ -4,7 +4,7 @@
   "description": "CLI interface for LLM Observer platform",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsup",
     "prepublishOnly": "npm run build"
   },
   "bin": {
@@ -27,6 +27,7 @@
   "devDependencies": {
     "@types/node": "^25.3.5",
     "@types/node-fetch": "^2.6.13",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   }
 }
