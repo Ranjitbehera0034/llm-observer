@@ -29,10 +29,10 @@ export const getCostOptimizationSuggestions = (projectId: string = 'default') =>
             AVG(total_tokens) as avg_tokens
         FROM requests 
         WHERE project_id = ? 
-            AND model IN ('gpt-4o', 'claude-3-5-sonnet-20241022', 'claude-3-opus-20240229') 
-            AND total_tokens < 1000
+            AND model IN ('gpt-4o', 'claude-3-5-sonnet-20241022', 'claude-3-5-sonnet-latest', 'claude-3-opus-20240229') 
+            AND total_tokens < 1500
         GROUP BY model
-        HAVING request_count > 10
+        HAVING request_count > 5
     `);
 
     const smallPayloads = smallPayloadsStmt.all(projectId) as any[];
@@ -41,25 +41,51 @@ export const getCostOptimizationSuggestions = (projectId: string = 'default') =>
         let alternative = '';
         let estimatedSavingsPercent = 0;
 
-        if (row.model === 'gpt-4o') {
+        if (row.model.includes('gpt-4o') && !row.model.includes('mini')) {
             alternative = 'gpt-4o-mini';
-            estimatedSavingsPercent = 0.85; // Mini is significantly cheaper
-        } else if (row.model.startsWith('claude')) {
+            estimatedSavingsPercent = 0.85;
+        } else if (row.model.includes('sonnet') || row.model.includes('opus')) {
             alternative = 'claude-3-5-haiku-20241022';
-            estimatedSavingsPercent = 0.70;
+            estimatedSavingsPercent = 0.75;
         }
 
         if (alternative) {
             const potentialSavings = row.total_spend * estimatedSavingsPercent;
             suggestions.push({
                 type: 'model_downgrade',
-                title: 'Consider a lighter model for small tasks',
-                description: `You routed ${row.request_count} requests to ${row.model} averaging only ${Math.round(row.avg_tokens)} tokens. Switching to ${alternative} could save roughly $${potentialSavings.toFixed(2)} based on your recent volume.`,
+                title: 'High-Performance Model Overkill',
+                description: `You've sent ${row.request_count} requests to ${row.model} with a tiny token average (${Math.round(row.avg_tokens)}). Switching these to ${alternative} would have saved you $${potentialSavings.toFixed(2)} based on your recent activity.`,
                 savings_usd: potentialSavings,
                 model_impacted: row.model,
                 suggested_model: alternative
             });
         }
+    }
+
+    // Rule 2: Long, Repetitive Prompts (Ideal for Anthropic/OpenAI Caching)
+    const complexPromptsStmt = db.prepare(`
+        SELECT 
+            model,
+            COUNT(*) as occurrences,
+            SUM(cost_usd) as total_spend,
+            AVG(prompt_tokens) as avg_prompt_tokens
+        FROM requests
+        WHERE project_id = ? AND prompt_tokens > 2000
+        GROUP BY prompt_hash, model
+        HAVING occurrences > 3
+        ORDER BY total_spend DESC
+        LIMIT 3
+    `);
+
+    const repetitiveComplex = complexPromptsStmt.all(projectId) as any[];
+    for (const row of repetitiveComplex) {
+        const potentialSavings = row.total_spend * 0.4; // 40-50% savings with caching
+        suggestions.push({
+            type: 'prompt_caching',
+            title: 'Prompt Caching Opportunity',
+            description: `We've detected heavy reuse of long prompts (> ${Math.round(row.avg_prompt_tokens)} tokens) on ${row.model}. Implementing Prompt Caching (Beta) could reduce your bill by ~$${potentialSavings.toFixed(2)} for this pattern.`,
+            savings_usd: potentialSavings
+        });
     }
 
     return suggestions.sort((a, b) => b.savings_usd - a.savings_usd);

@@ -2,11 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "LLM Observer",
   "version": "1.0.0",
-  "identifier": "com.llm-observer.app",
+  "identifier": "com.llm-observer.desktop",
   "build": {
     "frontendDist": "../../dashboard/dist",
     "beforeDevCommand": "",
-    "beforeBuildCommand": "cd ../../dashboard && npm run build"
+    "beforeBuildCommand": ""
   },
   "app": {
     "withGlobalTauri": true,
