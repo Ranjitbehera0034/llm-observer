@@ -10,6 +10,7 @@ import { budgetGuard } from './budgetGuard';
 import { rateLimitGuard } from './rateLimitGuard';
 import { startAnomalyDetection } from './anomalyDetector';
 import { startRetentionCleanup } from './retentionManager';
+import { startCostOptimizer } from './costOptimizer';
 
 const app = express();
 
@@ -110,6 +111,7 @@ async function bootstrap() {
         // 5. Start background tasks
         startAnomalyDetection();
         startRetentionCleanup();
+        startCostOptimizer();
 
     } catch (err) {
         console.error('Fatal Initialization Error:', err);
