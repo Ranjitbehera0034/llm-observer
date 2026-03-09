@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Key, Save, Server, Shield, Plus, Trash2, Copy } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Key, Save, Plus, Trash2, Copy, ShieldCheck, Globe, AlertTriangle, Settings as SettingsIcon, CreditCard, CheckCircle2, Zap, History, Layers, KeyRound, AlertCircle } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
-interface ApiKey {
+interface ApiKeyData {
     id: string;
     name: string;
     key_hint: string;
@@ -11,28 +11,101 @@ interface ApiKey {
 }
 
 export default function Settings() {
-    const [activeTab, setActiveTab] = useState('provider');
+    const [activeTab, setActiveTab] = useState<'providers' | 'api_keys' | 'security' | 'license'>('providers');
 
     // Provider Tab State
     const [openAiKey, setOpenAiKey] = useState('');
     const [anthropicKey, setAnthropicKey] = useState('');
+    const [googleKey, setGoogleKey] = useState('');
     const [saved, setSaved] = useState(false);
 
     // API Keys Tab State
-    const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+    const [apiKeys, setApiKeys] = useState<ApiKeyData[]>([]);
     const [newKeyName, setNewKeyName] = useState('');
     const [generatedKey, setGeneratedKey] = useState<string | null>(null);
 
+    // License Tab State
+    const [licenseInfo, setLicenseInfo] = useState<any>(null);
+    const [activationKey, setActivationKey] = useState('');
+    const [activating, setActivating] = useState(false);
+    const [activationError, setActivationError] = useState<string | null>(null);
+    const [activationSuccess, setActivationSuccess] = useState<string | null>(null);
+
+    // Projects Info (for limits display)
+    const [projectsCount, setProjectsCount] = useState(0);
+
     useEffect(() => {
-        setOpenAiKey(localStorage.getItem('openAiKey') || 'sk-...');
-        setAnthropicKey(localStorage.getItem('anthropicKey') || 'sk-ant-...');
+        const fetchSettings = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/settings`);
+                const data = await res.json();
+                if (data.data) {
+                    setOpenAiKey(data.data.openai_api_key || '');
+                    setAnthropicKey(data.data.anthropic_api_key || '');
+                    setGoogleKey(data.data.google_api_key || '');
+                }
+            } catch (err) {
+                console.error('Failed to fetch settings:', err);
+            }
+        };
+        fetchSettings();
     }, []);
 
     useEffect(() => {
         if (activeTab === 'api_keys') {
             fetchApiKeys();
         }
+        if (activeTab === 'license') {
+            fetchLicenseStatus();
+            fetchProjectsCount();
+        }
     }, [activeTab]);
+
+    const fetchLicenseStatus = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/license/status`);
+            const data = await res.json();
+            setLicenseInfo(data.data);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const fetchProjectsCount = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/projects`);
+            const data = await res.json();
+            setProjectsCount(data.data?.length || 0);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleActivate = async () => {
+        if (!activationKey.trim()) return;
+        setActivating(true);
+        setActivationError(null);
+        setActivationSuccess(null);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/license/activate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: activationKey })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setActivationSuccess(data.message);
+                setActivationKey('');
+                fetchLicenseStatus();
+            } else {
+                setActivationError(data.error || 'Activation failed');
+            }
+        } catch (err) {
+            setActivationError('Connection error. Please try again.');
+        } finally {
+            setActivating(false);
+        }
+    };
 
     const fetchApiKeys = async () => {
         try {
@@ -73,68 +146,120 @@ export default function Settings() {
         }
     };
 
-    const handleSave = () => {
-        localStorage.setItem('openAiKey', openAiKey);
-        localStorage.setItem('anthropicKey', anthropicKey);
-        setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
+    const handleSave = async () => {
+        try {
+            await fetch(`${API_BASE_URL}/api/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    openai_api_key: openAiKey,
+                    anthropic_api_key: anthropicKey,
+                    google_api_key: googleKey
+                })
+            });
+            setSaved(true);
+            setTimeout(() => setSaved(false), 3000);
+        } catch (err) {
+            console.error('Failed to save settings:', err);
+        }
     };
 
     return (
-        <div className="max-w-7xl mx-auto p-8 animate-fade-in">
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold text-white flex items-center gap-2">
-                    <SettingsIcon className="w-8 h-8 text-primary" />
-                    Global Settings
-                </h1>
-                <p className="text-textMuted mt-2">Manage API keys, proxy configurations, and data retention policies.</p>
+        <div className="max-w-5xl mx-auto p-8 animate-fade-in">
+            <div className="flex items-center gap-3 mb-8">
+                <SettingsIcon className="w-8 h-8 text-primary" />
+                <div>
+                    <h1 className="text-3xl font-bold text-white">Settings</h1>
+                    <p className="text-textMuted mt-1">Configure your proxy upstreams and access keys.</p>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 text-left">
-                <div className="lg:col-span-1 space-y-2">
+            <div className="flex gap-8">
+                {/* Sidebar */}
+                <div className="w-64 space-y-2">
                     <button
-                        onClick={() => setActiveTab('provider')}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${activeTab === 'provider' ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-surface hover:bg-surfaceHighlight text-textMuted hover:text-white'}`}>
-                        <Server className="w-5 h-5" /> Provider Upstreams
+                        onClick={() => setActiveTab('providers')}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all ${activeTab === 'providers' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-textMuted hover:text-white hover:bg-surfaceHighlight'}`}>
+                        <Globe className="w-5 h-5" /> Upstream Providers
                     </button>
                     <button
                         onClick={() => setActiveTab('api_keys')}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-colors ${activeTab === 'api_keys' ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-surface hover:bg-surfaceHighlight text-textMuted hover:text-white'}`}>
-                        <Key className="w-5 h-5" /> Observer API Keys
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all ${activeTab === 'api_keys' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-textMuted hover:text-white hover:bg-surfaceHighlight'}`}>
+                        <Key className="w-5 h-5" /> Observer Keys
                     </button>
-                    <button className="w-full flex items-center gap-3 px-4 py-3 bg-surface hover:bg-surfaceHighlight text-textMuted hover:text-white rounded-lg font-medium transition-colors">
-                        <Shield className="w-5 h-5" /> Data Retention
+                    <button
+                        onClick={() => setActiveTab('security')}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all ${activeTab === 'security' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-textMuted hover:text-white hover:bg-surfaceHighlight'}`}>
+                        <ShieldCheck className="w-5 h-5" /> Security & Privacy
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('license')}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all ${activeTab === 'license' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-textMuted hover:text-white hover:bg-surfaceHighlight'}`}>
+                        <CreditCard className="w-5 h-5" /> License & Billing
                     </button>
                 </div>
 
-                <div className="lg:col-span-3">
-                    {activeTab === 'provider' && (
-                        <div className="card">
-                            <h2 className="text-xl font-bold text-white mb-6 border-b border-border pb-4">Provider Equivalencies</h2>
-                            <div className="space-y-6">
-                                <div>
-                                    <label className="block text-sm font-medium text-textMuted mb-2">OpenAI API Key</label>
-                                    <input
-                                        type="password"
-                                        className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                        value={openAiKey}
-                                        onChange={e => setOpenAiKey(e.target.value)}
-                                    />
+                {/* Content Area */}
+                <div className="flex-1 min-w-0">
+                    {activeTab === 'providers' && (
+                        <div className="space-y-6">
+                            <div className="card">
+                                <h2 className="text-xl font-bold text-white mb-6">Global Upstream Keys</h2>
+                                <p className="text-sm text-textMuted mb-8">
+                                    These keys are used by the proxy when a request doesn't provide its own `Authorization` header.
+                                </p>
+
+                                <div className="space-y-6">
+                                    <div>
+                                        <label className="block text-sm font-medium text-textMuted mb-2">OpenAI API Key</label>
+                                        <input
+                                            type="password"
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
+                                            placeholder="sk-..."
+                                            value={openAiKey}
+                                            onChange={e => setOpenAiKey(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-textMuted mb-2">Anthropic API Key</label>
+                                        <input
+                                            type="password"
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
+                                            placeholder="sk-ant-..."
+                                            value={anthropicKey}
+                                            onChange={e => setAnthropicKey(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-textMuted mb-2">Google API Key</label>
+                                        <input
+                                            type="password"
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
+                                            placeholder="AIza..."
+                                            value={googleKey}
+                                            onChange={e => setGoogleKey(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div className="pt-6 mt-6 border-t border-border flex items-center justify-end gap-4">
+                                        {saved && <span className="text-success text-sm font-medium animate-fade-in">Saved Successfully</span>}
+                                        <button onClick={handleSave} className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-colors">
+                                            <Save className="w-4 h-4" /> Save Configuration
+                                        </button>
+                                    </div>
                                 </div>
+                            </div>
+
+                            <div className="p-6 bg-surfaceHighlight/30 rounded-xl border border-border border-dashed flex items-start gap-4">
+                                <AlertTriangle className="w-6 h-6 text-warning shrink-0" />
                                 <div>
-                                    <label className="block text-sm font-medium text-textMuted mb-2">Anthropic API Key</label>
-                                    <input
-                                        type="password"
-                                        className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                        value={anthropicKey}
-                                        onChange={e => setAnthropicKey(e.target.value)}
-                                    />
-                                </div>
-                                <div className="pt-6 mt-6 border-t border-border flex items-center justify-end gap-4">
-                                    {saved && <span className="text-success text-sm font-medium animate-fade-in">Saved Successfully</span>}
-                                    <button onClick={handleSave} className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg font-medium transition-colors">
-                                        <Save className="w-4 h-4" /> Save Configuration
-                                    </button>
+                                    <h4 className="text-white font-semibold">Security Note</h4>
+                                    <p className="text-sm text-textMuted mt-1">
+                                        These keys are stored in the local database of your LLM Observer instance.
+                                        Ensure your server environment is secure.
+                                    </p>
                                 </div>
                             </div>
                         </div>
@@ -214,6 +339,180 @@ export default function Settings() {
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'security' && (
+                        <div className="card text-center py-20">
+                            <ShieldCheck className="w-16 h-16 text-textMuted mx-auto mb-4 opacity-20" />
+                            <h2 className="text-xl font-bold text-white mb-2">Security Settings</h2>
+                            <p className="text-textMuted max-w-sm mx-auto">Enterprise security features including SSO, IP Whitelisting, and Data Masking are coming soon.</p>
+                        </div>
+                    )}
+
+                    {activeTab === 'license' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* Left Column: Plan Status */}
+                            <div className="space-y-6">
+                                <div className="card overflow-hidden relative">
+                                    {!licenseInfo?.isPro && (
+                                        <div className="absolute top-0 right-0 px-3 py-1 bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider rounded-bl-xl border-l border-b border-primary/20">
+                                            Free Tier
+                                        </div>
+                                    )}
+                                    {licenseInfo?.isPro && (
+                                        <div className="absolute top-0 right-0 px-3 py-1 bg-amber-500 text-slate-900 text-xs font-black uppercase tracking-wider rounded-bl-xl shadow-[0_0_15px_rgba(245,158,11,0.5)]">
+                                            Pro Plan
+                                        </div>
+                                    )}
+
+                                    <h3 className="text-lg font-bold mb-2 flex items-center gap-2 text-white">
+                                        {licenseInfo?.isPro ? <Zap className="w-5 h-5 text-amber-500 fill-amber-500" /> : <ShieldCheck className="w-5 h-5 text-primary" />}
+                                        {licenseInfo?.isPro ? 'Pro Performance' : 'Hobbyist Plan'}
+                                    </h3>
+                                    <p className="text-textMuted text-sm mb-6">
+                                        {licenseInfo?.isPro
+                                            ? 'You have full access to all LLM Observer features. Thank you for supporting privacy-first development!'
+                                            : 'Perfect for individual developers tracking local experiments.'}
+                                    </p>
+
+                                    <div className="space-y-4">
+                                        <div>
+                                            <div className="flex justify-between text-xs mb-1.5 px-0.5">
+                                                <span className="text-textMuted font-medium">Project Capacity</span>
+                                                <span className="text-white font-mono italic">
+                                                    {projectsCount} / {licenseInfo?.limits.maxProjects === 100 ? '∞' : licenseInfo?.limits.maxProjects}
+                                                </span>
+                                            </div>
+                                            <div className="h-2 bg-background rounded-full overflow-hidden border border-border">
+                                                <div
+                                                    className={`h-full transition-all duration-700 ease-out ${licenseInfo?.isPro ? 'bg-gradient-to-r from-amber-600 to-amber-400' : 'bg-gradient-to-r from-primary to-blue-400'}`}
+                                                    style={{ width: `${Math.min((projectsCount / (licenseInfo?.limits.maxProjects || 1)) * 100, 100)}%` }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <div className="flex justify-between text-xs mb-1.5 px-0.5">
+                                                <span className="text-textMuted font-medium">Log Retention</span>
+                                                <span className="text-white font-mono italic tracking-tight">{licenseInfo?.limits.logRetentionDays || 7} Days</span>
+                                            </div>
+                                            <div className="h-2 bg-background rounded-full overflow-hidden border border-border">
+                                                <div
+                                                    className={`h-full transition-all duration-700 ease-out ${licenseInfo?.isPro ? 'bg-gradient-to-r from-amber-600 to-amber-400 w-full' : 'bg-gradient-to-r from-primary to-blue-400 w-[7.7%]'}`}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {!licenseInfo?.isPro && (
+                                        <div className="mt-8 pt-6 border-t border-border">
+                                            <h4 className="text-xs font-bold text-textMuted uppercase tracking-widest mb-4">Why Upgrade?</h4>
+                                            <ul className="space-y-3">
+                                                {[
+                                                    { text: 'Unlimited Projects & Organizations', icon: Layers },
+                                                    { text: 'Extended 90-Day History', icon: History },
+                                                    { text: 'Priority Feature Support', icon: Zap }
+                                                ].map((feature, i) => (
+                                                    <li key={i} className="flex items-center gap-3 text-sm text-textMuted">
+                                                        <div className="p-1 bg-amber-500/10 rounded-lg">
+                                                            <feature.icon className="w-3.5 h-3.5 text-amber-500" />
+                                                        </div>
+                                                        {feature.text}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Right Column: Activation */}
+                            <div className="space-y-6">
+                                <div className="card">
+                                    <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                                        <CreditCard className="w-5 h-5 text-textMuted" />
+                                        {licenseInfo?.isPro ? 'License Management' : 'Activate Pro'}
+                                    </h2>
+                                    <p className="text-textMuted text-sm mb-6">
+                                        {licenseInfo?.isPro
+                                            ? 'Enter a new key to transfer or update your subscription.'
+                                            : 'Already purchased a license? Enter your key below to unlock all features instantly.'}
+                                    </p>
+
+                                    {activationError && (
+                                        <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-lg flex items-center gap-3">
+                                            <AlertTriangle className="w-5 h-5 text-danger" />
+                                            <p className="text-danger text-sm font-medium">{activationError}</p>
+                                        </div>
+                                    )}
+
+                                    {activationSuccess && (
+                                        <div className="mb-6 p-4 bg-success/10 border border-success/30 rounded-lg flex items-center gap-3">
+                                            <CheckCircle2 className="w-5 h-5 text-success" />
+                                            <p className="text-success text-sm font-medium">{activationSuccess}</p>
+                                        </div>
+                                    )}
+
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-textMuted uppercase tracking-widest mb-2 block">
+                                                License Key
+                                            </label>
+                                            <div className="relative group">
+                                                <input
+                                                    type="password"
+                                                    value={activationKey}
+                                                    onChange={(e) => setActivationKey(e.target.value)}
+                                                    placeholder="sk_live_..."
+                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary group-hover:border-slate-500 transition-all font-mono text-sm"
+                                                />
+                                                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <KeyRound className="w-4 h-4 text-textMuted" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            onClick={handleActivate}
+                                            disabled={activating || !activationKey}
+                                            className={`w-full py-2.5 rounded-lg font-bold text-sm transition-all shadow-lg active:scale-[0.98] ${activating
+                                                ? 'bg-surfaceHighlight text-textMuted cursor-not-allowed'
+                                                : licenseInfo?.isPro
+                                                    ? 'bg-surfaceHighlight hover:bg-surfaceHighlight/80 text-white border border-border'
+                                                    : 'bg-primary hover:bg-primary/90 text-white'
+                                                }`}
+                                        >
+                                            {activating ? 'Validating Key...' : licenseInfo?.isPro ? 'Update License' : 'Activate Pro Features'}
+                                        </button>
+
+                                        {!licenseInfo?.isPro && (
+                                            <a
+                                                href="https://llmobserver.com/pricing"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="block text-center text-xs text-textMuted hover:text-primary transition-colors py-1 font-medium"
+                                            >
+                                                Don't have a license key? Get one here &rarr;
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {licenseInfo?.isPro && (
+                                    <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-xl flex items-start gap-3">
+                                        <div className="p-2 bg-amber-500/10 rounded-lg shrink-0">
+                                            <AlertCircle className="w-4 h-4 text-amber-500" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-amber-200/80 leading-relaxed">
+                                                <strong className="text-amber-400 font-bold block mb-1">Billing Note</strong>
+                                                Subscriptions are managed externaly. To cancel or modify your payment method, please visit the portal linked in your activation email.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

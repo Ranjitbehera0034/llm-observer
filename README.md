@@ -1,192 +1,76 @@
-<div align="center">
+# LLM Observer 🚀
 
-# ⬡ LLM Observer
+**The open-source Observability, Budgeting, and Rate-Limiting Proxy for LLM developers.**
 
-**Stop burning money on AI APIs. Track every token, every dollar, every millisecond.**
+Run everything locally. Keep your API keys private. Never overspend again.
 
-Privacy-first LLM cost tracking that runs entirely on your machine.
-Your API keys and prompts never leave localhost.
+![LLM Observer Banner](https://raw.githubusercontent.com/llm-observer/llm-observer/main/assets/banner.png)
 
-[![npm version](https://img.shields.io/npm/v/llm-observer?color=3dffa0&style=flat-square)](https://www.npmjs.com/package/llm-observer)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/Ranjitbehera0034/llm-observer?color=ffda4a&style=flat-square)](https://github.com/Ranjitbehera0034/llm-observer/stargazers)
-
-<!-- ![LLM Observer Demo](https://raw.githubusercontent.com/Ranjitbehera0034/llm-observer/main/docs/assets/demo.gif) -->
-
-[Quick Start](#-quick-start) · [Features](#-features) · [Dashboard](#-dashboard) · [Why Local?](#-why-local) · [Docs](https://llm-observer.dev/docs) · [Roadmap](#-roadmap)
-
-</div>
-
----
-
-## The Problem
-
-You're building with OpenAI, Claude, and Gemini. Maybe all three. But you have **zero visibility** into what you're actually spending.
-
-- A junior dev pushes a bug with an infinite loop → **$3,000 bill overnight**
-- You're not sure if GPT-4o or Claude Sonnet is cheaper for your use case → **guessing, not knowing**
-- Your AI feature works but you can't tell finance how much it costs per user → **no unit economics**
-- You want to try a cheaper model but can't compare quality vs cost → **stuck on the expensive one**
-
-## The Solution
-
-LLM Observer sits between your app and your LLM providers as a lightweight local proxy. One line change. Full visibility. Zero data leaves your machine.
-
-## ⚡ Quick Start
+## Quick Start (No Install Required)
 
 ```bash
-# Install globally
-npm install -g llm-observer
-
-# Start the proxy + dashboard
-llm-observer start
+npx llm-observer start
 ```
 
-Then change **one line** in your code:
+This command:
+1. Spawns your local **Proxy Server** (Port 4000)
+2. Launches your **Dashboard UI** (Port 4001)
+3. Initializes your local SQLite database
 
+## Key Features
+
+### 🛡️ Budget Guards
+Set daily, weekly, or monthly spend limits at the project or provider level. The proxy automatically blocks requests once your limit is hit, preventing "wake-up-to-a-$1000-bill" surprises.
+
+### ⚡ Performance & Cost Tracking
+Real-time dashboards showing your token usage, latency, and cost across OpenAI, Anthropic, and Google Gemini.
+
+### 🕵️ Anomaly Detection
+Background checks that monitor your spend velocity. If we detect a spike >5x your rolling average, you'll get an immediate alert.
+
+### 📦 Privacy First
+LLM Observer runs entirely on your machine. Your requests, API logs, and project settings never leave your local environment.
+
+## CLI Usage
+
+| `start` | Boot up the Proxy and Dashboard |
+| `status` | Check service health and today's spend |
+| `logs` | View or tail (`-f`) recent LLM requests |
+| `pricing` | View current token rates for all models |
+
+## 🔌 SDK Integration
+
+Just change your `baseURL` to point to `localhost:4000`.
+
+### OpenAI (Node.js)
 ```javascript
-// Before
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// After — just add baseURL
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: "http://localhost:4000/v1/openai",  // ← only change
+  apiKey: 'YOUR_API_KEY',
+  baseURL: 'http://localhost:4000/v1/openai'
 });
 ```
 
-Open **http://localhost:4001** → see your costs in real-time. That's it.
-
-Works the same way for **Anthropic, Google Gemini, Mistral, Groq**, and any OpenAI-compatible API.
-
-## ✨ Features
-
-### 💰 Real-Time Cost Tracking
-See exactly what you're spending across all LLM providers. Per model, per project, per hour.
-
-### 🛑 Budget Kill Switch
-Set a daily limit. When reached, all requests are blocked automatically. Never wake up to a surprise $5,000 bill again.
-
-### 📊 Beautiful Dashboard
-Real-time charts, request logs, model comparisons, latency tracking — all running locally at localhost:4001.
-
-### 🔍 Request Inspector
-Click any request to see the full prompt, response, token count, cost breakdown, and latency. Invaluable for debugging.
-
-### 🚨 Smart Alerts
-Budget warnings, spending anomalies, error spikes — via native OS notifications and Slack/Discord webhooks.
-
-### 💡 Cost Optimizer *(Pro)*
-"You sent 340 requests to GPT-4o under 100 tokens. Switching to GPT-4o-mini saves $47/month."
-
-### 👥 Team Dashboard *(Team)*
-See what your whole team is spending. Per-developer breakdown. Company-wide budget controls. Data syncs encrypted.
-
-## 🔒 Why Local?
-
-Unlike cloud-based alternatives, LLM Observer runs **100% on your machine**:
-
-| | LLM Observer | Cloud Competitors |
-|---|---|---|
-| API keys | Stay on your machine | Stored on their servers |
-| Prompts & data | Never leave localhost | Pass through their cloud |
-| Added latency | <5ms (localhost) | 50-200ms (network hop) |
-| Works offline | ✅ Yes | ❌ No |
-| Setup | ✅ Zero-config (SQLite) | ❌ Complex (Cloud/Redis) |
-| Security approval | Easy — no data leaves | Hard fight with security teams |
-| Privacy compliance | Trivial | Complicated |
-
-## 🖥️ Dashboard
-
-<!-- TODO: Add actual screenshots -->
-<!-- ![Dashboard Overview](./docs/assets/dashboard-overview.png) -->
-
-The dashboard runs at `localhost:4001` and shows:
-- **Live spend counter** — watch your costs tick up in real-time
-- **Cost timeline** — hourly/daily/weekly/monthly trends
-- **Model breakdown** — which models cost the most
-- **Request log** — searchable, filterable, with full detail view
-- **Budget meter** — visual gauge with color-coded status
-- **Alert history** — every warning and anomaly
-
-## 🔌 Supported Providers
-
-| Provider | Status | Base URL |
-|---|---|---|
-| OpenAI | ✅ Supported | `localhost:4000/v1/openai` |
-| Anthropic (Claude) | ✅ Supported | `localhost:4000/v1/anthropic` |
-| Google (Gemini) | ✅ Supported | `localhost:4000/v1/google` |
-| Mistral | ✅ Supported | `localhost:4000/v1/mistral` |
-| Groq | ✅ Supported | `localhost:4000/v1/groq` |
-| Ollama / vLLM / Custom | ✅ Supported | `localhost:4000/v1/custom/:baseUrl` |
-
-## 🛠️ CLI Commands
-
-```bash
-llm-observer start                    # Start proxy + dashboard
-llm-observer status                   # Show running status + today's spend
-llm-observer stats                    # Terminal stats display
-llm-observer stats --model gpt-4o     # Filter by model
-llm-observer logs                     # Live tail of requests
-llm-observer budget set 50 --daily    # Set daily budget to $50
-llm-observer projects list            # List projects
-llm-observer projects create          # Create new project
-llm-observer export --format csv      # Export data
-llm-observer team join <key>          # Join a team
+### Anthropic (Node.js)
+```javascript
+const anthropic = new Anthropic({
+  apiKey: 'YOUR_API_KEY',
+  baseURL: 'http://localhost:4000/v1/anthropic'
+});
 ```
 
-## 💎 Pricing
-
-| | Free | Pro | Team |
-|---|---|---|---|
-| **Price** | $0 forever | $19/month | $49/seat/month |
-| **Projects** | 1 | Unlimited | Unlimited |
-| **Log retention** | 7 days | 90 days | 1 year |
-| **Budget alerts** | Basic | Full + webhooks | Full + team alerts |
-| **Cost optimizer** | — | ✅ | ✅ |
-| **Team dashboard** | — | — | ✅ |
-| **Export** | — | ✅ | ✅ |
-
-## 🗺️ Roadmap
-
-- [x] Project scaffolding & monorepo setup
-- [ ] Core proxy engine (OpenAI, Claude, Gemini)
-- [ ] Token counting & cost calculation
-- [ ] Budget kill switch
-- [ ] React dashboard
-- [ ] CLI interface
-- [ ] npm publish
-- [ ] Tauri desktop app (5MB, native)
-- [ ] Cost optimizer suggestions
-- [ ] Team sync & team dashboard
-- [ ] Enterprise features (SSO, audit logs)
-
-## 🤝 Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-```bash
-# Clone the repo
-git clone https://github.com/Ranjitbehera0034/llm-observer.git
-cd llm-observer
-
-# Install dependencies
-npm install
-
-# Start development
-npm run dev
+### Google Gemini (Node.js)
+```javascript
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const genAI = new GoogleGenerativeAI("YOUR_API_KEY");
+// Custom baseURL is currently managed in the provider config
 ```
 
-## 📄 License
+## License
 
-MIT — see [LICENSE](LICENSE) for details.
+- **Free Tier**: 1 Project, 7-day log retention.
+- **Pro Tier**: Unlimited projects, 90-day retention, Priority support.
+
+To activate Pro, add your license key in the Dashboard Settings.
 
 ---
-
-<div align="center">
-
-**Built with ❤️ by [Ranjit Behera](https://github.com/Ranjitbehera0034)**
-
-If LLM Observer saved you money, consider giving it a ⭐
-
-</div>
+Built with ❤️ by the LLM Observer Team.

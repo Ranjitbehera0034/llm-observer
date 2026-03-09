@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import { IProvider, ProviderResponse } from './base';
 import { calculateSharedCost } from '../utils/pricing';
+import { getSetting } from '@llm-observer/database';
 
 export class GoogleProvider implements IProvider {
     getBaseUrl() {
@@ -8,8 +9,13 @@ export class GoogleProvider implements IProvider {
     }
 
     getAuthHeader(req: Request): Record<string, string> {
-        const apiKeyList = [req.headers['x-goog-api-key']].flat().filter(Boolean) as string[];
-        const apiKey = apiKeyList[0];
+        let apiKey = [req.headers['x-goog-api-key'], req.query.key].flat().filter(Boolean)[0] as string | undefined;
+
+        // Fallback to global setting
+        if (!apiKey) {
+            apiKey = getSetting('google_api_key') || undefined;
+        }
+
         const headers: Record<string, string> = {};
         if (apiKey) headers['x-goog-api-key'] = apiKey;
         return headers;

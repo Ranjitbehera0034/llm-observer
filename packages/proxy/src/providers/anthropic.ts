@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import { IProvider, ProviderResponse } from './base';
 import { calculateSharedCost } from '../utils/pricing';
+import { getSetting } from '@llm-observer/database';
 
 export class AnthropicProvider implements IProvider {
     getBaseUrl() {
@@ -8,14 +9,19 @@ export class AnthropicProvider implements IProvider {
     }
 
     getAuthHeader(req: Request) {
-        const apiKeyList = [req.headers['x-api-key']].flat().filter(Boolean) as string[];
-        const apiKey = apiKeyList[0];
+        let apiKey = [req.headers['x-api-key']].flat().filter(Boolean)[0] as string | undefined;
+
+        // Fallback to global setting
+        if (!apiKey) {
+            apiKey = getSetting('anthropic_api_key') || undefined;
+        }
+
         const headers: Record<string, string> = {};
         if (apiKey) headers['x-api-key'] = apiKey;
 
         const versionList = [req.headers['anthropic-version']].flat().filter(Boolean) as string[];
-        const version = versionList[0];
-        if (version) headers['anthropic-version'] = version;
+        const version = versionList[0] || '2023-06-01'; // Default version if missing
+        headers['anthropic-version'] = version;
 
         return headers;
     }

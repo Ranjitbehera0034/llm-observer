@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Box, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Box, CheckCircle, Copy, Code, MessageSquare, Terminal } from 'lucide-react';
 import { StatusBadge, formatTimeAgo } from '../components/StatusBadge';
 import { API_BASE_URL } from '../config';
 
@@ -11,6 +11,7 @@ interface RequestDetailProps {
 export function RequestDetail({ requestId, onBack }: RequestDetailProps) {
     const [detail, setDetail] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [copied, setCopied] = useState<string | null>(null);
 
     useEffect(() => {
         fetch(`${API_BASE_URL}/api/requests/${requestId}`)
@@ -25,19 +26,30 @@ export function RequestDetail({ requestId, onBack }: RequestDetailProps) {
             });
     }, [requestId]);
 
+    const handleCopy = (text: string, type: string) => {
+        navigator.clipboard.writeText(text);
+        setCopied(type);
+        setTimeout(() => setCopied(null), 2000);
+    };
+
     if (loading) {
         return (
             <div className="p-8 max-w-7xl mx-auto">
                 <div className="animate-pulse h-8 w-24 bg-surfaceHighlight rounded mb-8"></div>
-                <div className="animate-pulse h-[400px] w-full bg-surfaceHighlight rounded-xl"></div>
+                <div className="animate-pulse h-[500px] w-full bg-surfaceHighlight rounded-3xl"></div>
             </div>
         );
     }
 
     if (!detail) {
         return (
-            <div className="p-8 max-w-7xl mx-auto text-center text-textMuted mt-20">
-                Request not found.
+            <div className="p-8 max-w-7xl mx-auto text-center mt-20">
+                <div className="inline-flex p-6 rounded-full bg-danger/5 border border-danger/10 mb-4">
+                    <Box className="w-12 h-12 text-danger opacity-20" />
+                </div>
+                <h2 className="text-xl font-bold text-white">Trace Not Found</h2>
+                <p className="text-textMuted mt-2">The request ID might be invalid or has been purged from the logs.</p>
+                <button onClick={onBack} className="mt-8 text-primary font-bold hover:underline">Return to Logs</button>
             </div>
         );
     }
@@ -46,94 +58,124 @@ export function RequestDetail({ requestId, onBack }: RequestDetailProps) {
         if (!str) return null;
         try {
             return JSON.parse(str);
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (_) {
-            return null;
+            return str;
         }
     };
 
-    const reqBodyData = tryParseJSON(detail.request_body) || detail.request_body;
-    const resBodyData = tryParseJSON(detail.response_body) || detail.response_body;
+    const reqBodyData = typeof detail.request_body === 'string' ? tryParseJSON(detail.request_body) : detail.request_body;
+    const resBodyData = typeof detail.response_body === 'string' ? tryParseJSON(detail.response_body) : detail.response_body;
 
     return (
-        <div className="max-w-7xl mx-auto p-8 animate-fade-in">
+        <div className="max-w-7xl mx-auto p-8 animate-fade-in pb-20">
             <button
                 onClick={onBack}
-                className="flex items-center gap-2 text-textMuted hover:text-white transition-colors mb-6 text-sm font-medium"
+                className="group flex items-center gap-2 text-textMuted hover:text-white transition-all mb-10 text-xs font-black uppercase tracking-widest pl-1"
             >
-                <ArrowLeft className="w-4 h-4" /> Back to Requests
+                <div className="p-2 rounded-lg bg-surfaceHighlight group-hover:bg-border transition-colors">
+                    <ArrowLeft className="w-4 h-4" />
+                </div>
+                Back to Request Logs
             </button>
 
-            <div className="flex justify-between items-start mb-8">
-                <div>
-                    <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-                        <Box className="w-6 h-6 text-primary" />
-                        {detail.id}
-                    </h1>
-                    <div className="flex items-center gap-4 mt-3 text-sm text-textMuted">
-                        <span>{new Date(detail.created_at).toLocaleString()}</span>
-                        <span>({formatTimeAgo(detail.created_at)})</span>
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-12">
+                <div className="flex items-center gap-5">
+                    <div className="p-4 rounded-2xl bg-primary/10 border border-primary/20 shadow-2xl">
+                        <Terminal className="w-8 h-8 text-primary" />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <h1 className="text-3xl font-black text-white tracking-tighter">Trace Details</h1>
+                            <StatusBadge statusCode={detail.status_code} status={detail.status} />
+                        </div>
+                        <p className="text-sm font-bold text-textMuted mt-1 font-mono">{detail.id}</p>
                     </div>
                 </div>
-                <StatusBadge statusCode={detail.status_code} status={detail.status} />
+
+                <div className="flex items-center gap-4 bg-surfaceHighlight/50 p-2 rounded-2xl border border-white/5">
+                    <div className="px-4 py-2 text-right border-r border-white/5">
+                        <p className="text-[10px] font-black text-textMuted uppercase tracking-widest leading-none mb-1">Captured At</p>
+                        <p className="text-xs font-bold text-white">{new Date(detail.created_at).toLocaleString()}</p>
+                    </div>
+                    <div className="px-4 py-2">
+                        <p className="text-[10px] font-black text-textMuted uppercase tracking-widest leading-none mb-1">Time Ago</p>
+                        <p className="text-xs font-bold text-white">{formatTimeAgo(detail.created_at)}</p>
+                    </div>
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                <div className="card p-5">
-                    <p className="text-sm text-textMuted mb-1">Provider & Model</p>
-                    <p className="font-medium text-white">{detail.provider}</p>
-                    <p className="text-sm text-primary">{detail.model}</p>
-                </div>
-                <div className="card p-5">
-                    <p className="text-sm text-textMuted mb-1">Tokens Used</p>
-                    <p className="font-medium text-white">{detail.total_tokens.toLocaleString()}</p>
-                    <p className="text-sm text-textMuted text-xs mt-1">
-                        P: {detail.prompt_tokens} / C: {detail.completion_tokens}
-                    </p>
-                </div>
-                <div className="card p-5">
-                    <p className="text-sm text-textMuted mb-1">Total Cost</p>
-                    <p className="font-medium text-danger">\${detail.cost_usd.toFixed(6)}</p>
-                </div>
-                <div className="card p-5">
-                    <p className="text-sm text-textMuted mb-1">Metrics</p>
-                    <p className="font-medium text-white">{detail.latency_ms}ms</p>
-                    {detail.is_streaming === 1 && (
-                        <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide text-primary mt-1 border border-primary/20 bg-primary/10 px-1.5 py-0.5 rounded">
-                            <CheckCircle className="w-3 h-3" /> Streamed
-                        </span>
-                    )}
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+                {[
+                    { label: 'Provider & Model', value: detail.provider, sub: detail.model, color: 'text-primary' },
+                    { label: 'Latency', value: `${detail.latency_ms}ms`, sub: detail.is_streaming ? 'Streaming' : 'REST (Blocking)', color: 'text-white' },
+                    { label: 'Token Usage', value: detail.total_tokens.toLocaleString(), sub: `P: ${detail.prompt_tokens} / C: ${detail.completion_tokens}`, color: 'text-white' },
+                    { label: 'Cost Est.', value: `$${detail.cost_usd.toFixed(6)}`, sub: 'USD (Computed)', color: 'text-danger' },
+                ].map((stat, i) => (
+                    <div key={i} className="glass-panel p-6 border-white/5 shadow-xl relative overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <p className="text-[10px] font-black text-textMuted uppercase tracking-widest mb-3">{stat.label}</p>
+                        <p className={`text-2xl font-black tracking-tight ${stat.color}`}>{stat.value}</p>
+                        <p className="text-xs font-bold text-textMuted mt-1">{stat.sub}</p>
+                    </div>
+                ))}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="card p-0 overflow-hidden flex flex-col">
-                    <div className="bg-surfaceHighlight/50 border-b border-border p-4">
-                        <h3 className="font-semibold text-white">Request Payload</h3>
-                        <p className="text-xs text-textMuted">{detail.endpoint}</p>
+                {/* Request */}
+                <div className="flex flex-col h-full">
+                    <div className="flex justify-between items-center mb-4 px-2">
+                        <div className="flex items-center gap-2">
+                            <Code className="w-4 h-4 text-primary" />
+                            <h3 className="font-black text-xs uppercase tracking-widest text-white">Request Context</h3>
+                        </div>
+                        <button
+                            onClick={() => handleCopy(JSON.stringify(reqBodyData, null, 2), 'request')}
+                            className="p-2 rounded-lg bg-surfaceHighlight hover:bg-white/10 transition-colors text-textMuted hover:text-white"
+                        >
+                            {copied === 'request' ? <CheckCircle className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                        </button>
                     </div>
-                    <div className="p-4 bg-[#0D1117] overflow-y-auto max-h-[600px]">
-                        <pre className="text-sm text-green-400 font-mono whitespace-pre-wrap">
-                            {typeof reqBodyData === 'object'
-                                ? JSON.stringify(reqBodyData, null, 2)
-                                : reqBodyData}
-                        </pre>
+                    <div className="glass-panel flex-1 min-h-[500px] border-white/5 shadow-2xl overflow-hidden flex flex-col">
+                        <div className="bg-white/5 px-6 py-3 border-b border-white/5 flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-primary">{detail.endpoint}</span>
+                            <span className="text-[10px] font-black uppercase text-textMuted tracking-tighter">JSON Payload</span>
+                        </div>
+                        <div className="p-6 overflow-auto bg-[#050505] flex-1 font-mono text-[13px] leading-relaxed">
+                            <pre className="text-green-400">
+                                {JSON.stringify(reqBodyData, null, 2)}
+                            </pre>
+                        </div>
                     </div>
                 </div>
 
-                <div className="card p-0 overflow-hidden flex flex-col">
-                    <div className="bg-surfaceHighlight/50 border-b border-border p-4">
-                        <h3 className="font-semibold text-white">Response Payload</h3>
+                {/* Response */}
+                <div className="flex flex-col h-full">
+                    <div className="flex justify-between items-center mb-4 px-2">
+                        <div className="flex items-center gap-2">
+                            <MessageSquare className="w-4 h-4 text-accent" />
+                            <h3 className="font-black text-xs uppercase tracking-widest text-white">LLM Response</h3>
+                        </div>
+                        <button
+                            onClick={() => handleCopy(JSON.stringify(resBodyData, null, 2), 'response')}
+                            className="p-2 rounded-lg bg-surfaceHighlight hover:bg-white/10 transition-colors text-textMuted hover:text-white"
+                        >
+                            {copied === 'response' ? <CheckCircle className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                        </button>
                     </div>
-                    <div className="p-4 bg-[#0D1117] overflow-y-auto max-h-[600px]">
-                        <pre className="text-sm text-blue-400 font-mono whitespace-pre-wrap">
-                            {typeof resBodyData === 'object'
-                                ? JSON.stringify(resBodyData, null, 2)
-                                : resBodyData}
-                        </pre>
+                    <div className="glass-panel flex-1 min-h-[500px] border-white/5 shadow-2xl overflow-hidden flex flex-col">
+                        <div className="bg-white/5 px-6 py-3 border-b border-white/5 flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-accent">Completion</span>
+                            <span className="text-[10px] font-black uppercase text-textMuted tracking-tighter">JSON Payload</span>
+                        </div>
+                        <div className="p-6 overflow-auto bg-[#050505] flex-1 font-mono text-[13px] leading-relaxed">
+                            <pre className="text-blue-400">
+                                {JSON.stringify(resBodyData, null, 2)}
+                            </pre>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     );
 }
+

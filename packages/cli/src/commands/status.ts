@@ -10,37 +10,37 @@ export function setupStatusCommands(program: Command) {
         .command('status')
         .description('Check if the proxy and dashboard server are online')
         .action(async () => {
-            console.log(chalk.blue('Checking services...\\n'));
+            console.log(chalk.bold.blue('LLM Observer Status\n'));
 
             try {
                 // Check Proxy
                 const proxyRes = await fetch(`${PROXY_URL}/health`);
                 if (proxyRes.ok) {
-                    console.log(chalk.green('✓ Proxy Server:     Online') + chalk.gray(` (${PROXY_URL})`));
+                    console.log(`${chalk.green('✓')} Proxy Server:    ${chalk.bold('Online')}  on port 4000`);
                 } else {
-                    console.log(chalk.red('✗ Proxy Server:     Degraded'));
+                    console.log(`${chalk.yellow('⚠')} Proxy Server:    ${chalk.bold('Degraded')} on port 4000`);
                 }
             } catch (err) {
-                console.log(chalk.red('✗ Proxy Server:     Offline'));
+                console.log(`${chalk.red('✗')} Proxy Server:    ${chalk.bold('Offline')}  (expected port 4000)`);
             }
 
             try {
                 // Check Dashboard API
                 const dashRes = await fetch(`${DASHBOARD_API_URL}/api/stats/overview`);
                 if (dashRes.ok) {
-                    console.log(chalk.green('✓ Dashboard API:    Online') + chalk.gray(` (${DASHBOARD_API_URL})`));
+                    console.log(`${chalk.green('✓')} Dashboard UI:   ${chalk.bold('Online')}  on port 4001`);
 
                     const stats = await dashRes.json() as any;
-                    console.log(chalk.cyan('\n--- Today\'s Stats ---'));
-                    console.log(`Total Spend:   ${chalk.bold('$' + stats.todaySpendUsd.toFixed(4))}`);
-                    console.log(`Total Tokens:  ${stats.totalTokensToday.toLocaleString()}`);
+                    console.log(chalk.cyan('\n--- Today\'s Performance ---'));
+                    console.log(`Spend:         ${chalk.bold.green('$' + stats.todaySpendUsd.toFixed(4))}`);
                     console.log(`Requests:      ${stats.totalRequestsToday.toLocaleString()}`);
+                    console.log(`Tokens:        ${stats.totalTokensToday.toLocaleString()}`);
 
                 } else {
-                    console.log(chalk.red('✗ Dashboard API:    Degraded'));
+                    console.log(`${chalk.yellow('⚠')} Dashboard UI:   ${chalk.bold('Degraded')} on port 4001`);
                 }
             } catch (err) {
-                console.log(chalk.red('✗ Dashboard API:    Offline'));
+                console.log(`${chalk.red('✗')} Dashboard UI:   ${chalk.bold('Offline')}  (expected port 4001)`);
             }
         });
 }

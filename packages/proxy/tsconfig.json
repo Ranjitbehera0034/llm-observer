@@ -2,12 +2,7 @@
     "extends": "../../tsconfig.base.json",
     "compilerOptions": {
         "outDir": "./dist",
-        "rootDir": "./src",
-        "paths": {
-            "@llm-observer/database": [
-                "../database/src"
-            ]
-        }
+        "rootDir": "./src"
     },
     "include": [
         "src/**/*"

@@ -3,13 +3,15 @@ import { spawn } from 'child_process';
 import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
+import { banner } from '../index';
 
 export function setupStartCommands(program: Command) {
     program
-        .command('start-all')
+        .command('start')
         .description('Boot up the Proxy Server and Dashboard UI concurrently')
         .action(() => {
-            console.log(chalk.blue('Starting LLM Observer Services...\\n'));
+            console.log(banner);
+            console.log(chalk.blue('Starting LLM Observer Services...\n'));
 
             let proxyPath: string;
             try {

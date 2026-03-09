@@ -7,3 +7,4 @@ export * from './repositories/pricing.repo';
 export * from './repositories/auth.repo';
 export * from './repositories/alertRules.repo';
 export * from './seed';
+export * from './repositories/settings.repo';

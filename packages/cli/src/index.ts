@@ -19,7 +19,7 @@ import { initDb } from '@llm-observer/database';
 
 initDb();
 
-const banner = `
+export const banner = `
 ${chalk.bold.blue('  _      _      __  __    ____  _                              ')}
 ${chalk.bold.blue(' | |    | |    |  \\/  |  / __ \\| |                             ')}
 ${chalk.bold.blue(' | |    | |    | \\  / | | |  | | |__  ___  ___ _ ____   ___ __ ')}
@@ -28,7 +28,7 @@ ${chalk.bold.blue(' | |____| |____| |  | | | |__| | |_) \\__ \\  __/ |   \\ V /|
 ${chalk.bold.blue(' |______|______|_|  |_|  \\____/|_.__/|___/\\___|_|    \\_/ |_|   ')}
 `;
 
-console.log(banner);
+// console.log(banner); // Moved to individual commands or help conditionally
 
 const program = new Command();
 
@@ -65,5 +65,6 @@ program.parse(process.argv);
 
 // If no args, output help
 if (!process.argv.slice(2).length) {
+  console.log(banner);
   program.outputHelp();
 }

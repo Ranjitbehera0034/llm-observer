@@ -7,6 +7,8 @@ import { initPricingCache } from './utils/pricing';
 import { GoogleProvider } from './providers/google';
 import { budgetGuard } from './budgetGuard';
 import { rateLimitGuard } from './rateLimitGuard';
+import { startAnomalyDetection } from './anomalyDetector';
+import { startRetentionCleanup } from './retentionManager';
 
 const app = express();
 
@@ -94,6 +96,10 @@ async function bootstrap() {
         app.listen(PORT, () => {
             console.log(`🚀 LLM Observer Proxy running on http://localhost:${PORT}`);
         });
+
+        // 5. Start background tasks
+        startAnomalyDetection();
+        startRetentionCleanup();
 
     } catch (err) {
         console.error('Fatal Initialization Error:', err);

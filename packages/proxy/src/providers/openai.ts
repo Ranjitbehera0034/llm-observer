@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import { IProvider, ProviderResponse } from './base';
 import { calculateSharedCost } from '../utils/pricing';
+import { getSetting } from '@llm-observer/database';
 
 export class OpenAIProvider implements IProvider {
     getBaseUrl() {
@@ -8,8 +9,16 @@ export class OpenAIProvider implements IProvider {
     }
 
     getAuthHeader(req: Request): Record<string, string> {
-        const authList = [req.headers['authorization']].flat().filter(Boolean) as string[];
-        const auth = authList[0];
+        let auth = [req.headers['authorization']].flat().filter(Boolean)[0] as string | undefined;
+
+        // Fallback to global setting if no header provided
+        if (!auth) {
+            const globalKey = getSetting('openai_api_key');
+            if (globalKey) {
+                auth = `Bearer ${globalKey}`;
+            }
+        }
+
         const headers: Record<string, string> = {};
         if (auth) headers['Authorization'] = auth;
         return headers;

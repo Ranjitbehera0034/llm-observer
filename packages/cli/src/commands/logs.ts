@@ -1,61 +1,59 @@
 import { Command } from 'commander';
-import fetch from 'node-fetch';
 import chalk from 'chalk';
 import Table from 'cli-table3';
-
-const DASHBOARD_API_URL = process.env.DASHBOARD_API_URL || 'http://localhost:4001';
+import { getRequests } from '@llm-observer/database';
 
 export function setupLogsCommands(program: Command) {
     program
         .command('logs')
         .description('Fetch or tail recent proxy request logs')
-        .option('--tail', 'Stream log output as it occurs via SSE')
+        .option('--tail', 'Stream log output as it occurs from the database')
         .option('--limit <number>', 'Number of past requests to show', '20')
         .action(async (options) => {
             if (options.tail) {
-                console.log(chalk.cyan('Tailing live requests... Press Ctrl+C to stop.'));
-                // Note: fetch in node doesn't natively support easy text/event-stream parsing like EventSource in browser.
-                // For a robust CLI tail, we would typically stream the res.body chunks manually or use a library like 'eventsource'.
-                // For simplicity in Day 4, we will mock the tail by polling the regular REST endpoint if tail is enabled.
+                console.log(chalk.cyan('Tailing live requests from database... Press Ctrl+C to stop.'));
 
-                let lastSeenId = '';
+                let lastSeenTimestamp = new Date().toISOString();
+                const seenIds = new Set<string>();
 
                 const poll = async () => {
                     try {
-                        const res = await fetch(`${DASHBOARD_API_URL}/api/requests?limit=10`);
-                        if (res.ok) {
-                            const data = await res.json() as any;
-                            const reqs = data.data;
+                        // Poll for anything newer than what we've seen
+                        const reqs = await getRequests({ limit: 50 }) as any[];
 
-                            // Iterate backwards to print oldest first
-                            for (let i = reqs.length - 1; i >= 0; i--) {
-                                const r = reqs[i];
-                                if (r.id > lastSeenId) {
-                                    // Render line
-                                    const costStr = chalk.green(`$${r.cost_usd.toFixed(4)}`);
-                                    const timeStr = chalk.gray(new Date(r.created_at).toLocaleTimeString());
-                                    const statusStr = r.status_code >= 400 ? chalk.red(`[${r.status_code}]`) : chalk.blue(`[${r.status_code}]`);
-                                    console.log(`${timeStr} ${statusStr} [${r.provider} ${r.model}] ${r.total_tokens} tokens | ${costStr}`);
+                        // Sort by created_at ascending to print in order
+                        const sorted = [...reqs].sort((a, b) => a.created_at.localeCompare(b.created_at));
 
-                                    lastSeenId = r.id;
-                                }
+                        for (const r of sorted) {
+                            if (seenIds.has(r.id)) continue;
+                            if (r.created_at < lastSeenTimestamp && seenIds.size > 0) continue;
+
+                            // Render line
+                            const costStr = chalk.green(`$${r.cost_usd.toFixed(4)}`);
+                            const timeStr = chalk.gray(new Date(r.created_at).toLocaleTimeString());
+                            const statusStr = r.status_code >= 400 ? chalk.red(`[${r.status_code}]`) : chalk.blue(`[${r.status_code}]`);
+                            console.log(`${timeStr} ${statusStr} [${r.provider} ${r.model}] ${r.total_tokens} tokens | ${costStr}`);
+
+                            seenIds.add(r.id);
+                            lastSeenTimestamp = r.created_at;
+
+                            // Keep set size manageable
+                            if (seenIds.size > 100) {
+                                const firstKey = seenIds.values().next().value;
+                                if (firstKey) seenIds.delete(firstKey);
                             }
                         }
-                    } catch (e) { /* ignore network blips while polling */ }
+                    } catch (e) { /* ignore db blips */ }
                 };
 
-                // Seed it immediately, then poll
+                // Initialize with some history or just wait for new
                 await poll();
-                setInterval(poll, 1500);
+                setInterval(poll, 1000);
 
             } else {
                 // Fetch recent batch and format in table
                 try {
-                    const res = await fetch(`${DASHBOARD_API_URL}/api/requests?limit=${options.limit}`);
-                    if (!res.ok) throw new Error(`Status ${res.status}`);
-
-                    const data = await res.json() as any;
-                    const reqs = data.data;
+                    const reqs = await getRequests({ limit: parseInt(options.limit) }) as any[];
 
                     const table = new Table({
                         head: [
@@ -77,7 +75,7 @@ export function setupLogsCommands(program: Command) {
                             r.model,
                             r.total_tokens,
                             `$${r.cost_usd.toFixed(4)}`,
-                            statusColor(r.status_code)
+                            statusColor(r.status_code || '???')
                         ]);
                     });
 

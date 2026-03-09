@@ -5,12 +5,14 @@ export interface ProjectRecord {
     id: string;
     name: string;
     api_key?: string;
+    organization_id?: string;
     daily_budget?: number;
     weekly_budget?: number;
     monthly_budget?: number;
     alert_threshold?: number;
     kill_switch?: boolean;
     webhook_url?: string;
+    saved_filters?: string;
     created_at?: string;
 }
 
@@ -21,15 +23,16 @@ export const createProject = (project: Omit<ProjectRecord, 'id'>): string => {
 
     const stmt = db.prepare(`
     INSERT INTO projects(
-        id, name, api_key, daily_budget, weekly_budget, monthly_budget,
+        id, name, api_key, organization_id, daily_budget, weekly_budget, monthly_budget,
         alert_threshold, kill_switch, webhook_url
     ) VALUES(
-      ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     )
   `);
 
     stmt.run(
-        id, project.name, apiKey, project.daily_budget || null,
+        id, project.name, apiKey, project.organization_id || 'default',
+        project.daily_budget || null,
         project.weekly_budget || null, project.monthly_budget || null,
         project.alert_threshold ?? 0.8, project.kill_switch === false ? 0 : 1,
         project.webhook_url || null
@@ -61,6 +64,31 @@ export const updateBudget = (
     WHERE id = ?
   `);
     stmt.run(budget.daily || null, budget.weekly || null, budget.monthly || null, id);
+};
+
+export const updateProject = (id: string, updates: Partial<ProjectRecord>) => {
+    const db = getDb();
+    const project = getProject(id);
+    if (!project) throw new Error('Project not found');
+
+    const stmt = db.prepare(`
+        UPDATE projects SET
+            name = COALESCE(?, name),
+            daily_budget = COALESCE(?, daily_budget),
+            weekly_budget = COALESCE(?, weekly_budget),
+            monthly_budget = COALESCE(?, monthly_budget),
+            webhook_url = COALESCE(?, webhook_url)
+        WHERE id = ?
+    `);
+
+    stmt.run(
+        updates.name || null,
+        updates.daily_budget ?? null,
+        updates.weekly_budget ?? null,
+        updates.monthly_budget ?? null,
+        updates.webhook_url || null,
+        id
+    );
 };
 
 export const deleteProject = (id: string) => {
