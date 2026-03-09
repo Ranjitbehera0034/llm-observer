@@ -1,6 +1,51 @@
-import { getAlertRules, createAlert } from '@llm-observer/database';
+import { RequestRecord, bulkInsertRequests, getAlertRules, createAlert } from '@llm-observer/database';
 
-export const evaluateAlertRules = async (requestData: any) => {
+const BATCH_SIZE = 10;
+const BATCH_TIMEOUT = 5000; // 5 seconds
+
+let queue: Omit<RequestRecord, 'id'>[] = [];
+let timeout: NodeJS.Timeout | null = null;
+
+/**
+ * Internal logger that batches requests and inserts them into SQLite.
+ * This replaces the Redis/BullMQ dependency for a zero-config local experience.
+ */
+export const internalLogger = {
+    add: async (requestData: Omit<RequestRecord, 'id'>) => {
+        queue.push(requestData);
+
+        // Instant alert evaluation (non-blocking)
+        evaluateAlertRules(requestData).catch(err => console.error('Alert evaluation failed:', err));
+
+        if (queue.length >= BATCH_SIZE) {
+            await internalLogger.flush();
+        } else if (!timeout) {
+            timeout = setTimeout(() => {
+                internalLogger.flush();
+            }, BATCH_TIMEOUT);
+        }
+    },
+
+    flush: async () => {
+        if (timeout) {
+            clearTimeout(timeout);
+            timeout = null;
+        }
+
+        if (queue.length === 0) return;
+
+        const batch = [...queue];
+        queue = [];
+
+        try {
+            bulkInsertRequests(batch);
+        } catch (err) {
+            console.error('Failed to flush request logs to SQLite:', err);
+        }
+    }
+};
+
+async function evaluateAlertRules(requestData: any) {
     try {
         const rules = getAlertRules(requestData.project_id || 'default');
 
@@ -10,12 +55,11 @@ export const evaluateAlertRules = async (requestData: any) => {
             let isTriggered = false;
             let message = '';
 
-            // Simplified Evaluation Logic for MVP
             switch (rule.condition_type) {
                 case 'error_rate':
                     if (requestData.status_code >= 400 && rule.threshold > 0) {
-                        isTriggered = true; // In full version, this would check average over time_window
-                        message = `Error rate anomaly detected: Request failed with status ${requestData.status_code} on ${requestData.provider}`;
+                        isTriggered = true;
+                        message = `Error detected: Request failed with status ${requestData.status_code} on ${requestData.provider}`;
                     }
                     break;
                 case 'latency_spike':
@@ -25,7 +69,6 @@ export const evaluateAlertRules = async (requestData: any) => {
                     }
                     break;
                 case 'budget_threshold':
-                    // We assume cost logic in proxy handled this, but we can emit generic cost alerts based on single large queries for MVP
                     if (requestData.cost_usd > rule.threshold) {
                         isTriggered = true;
                         message = `Large query cost detected: $${requestData.cost_usd.toFixed(4)} exceeded single-query threshold $${rule.threshold}`;
@@ -34,25 +77,20 @@ export const evaluateAlertRules = async (requestData: any) => {
             }
 
             if (isTriggered) {
-                // 1. Record Alert in Database
-                const alertRecord = {
-                    project_id: requestData.project_id,
+                createAlert({
+                    project_id: requestData.project_id || 'default',
                     type: rule.condition_type,
                     severity: 'high',
                     message,
                     data: JSON.stringify(requestData),
                     notified_via: rule.webhook_url ? 'webhook' : 'dashboard'
-                };
+                });
 
-                createAlert(alertRecord);
-
-                // 2. Dispatch Webhook
                 if (rule.webhook_url) {
                     dispatchWebhook(rule.webhook_url, {
                         rule_name: rule.name,
                         message,
                         timestamp: new Date().toISOString(),
-                        request_id: requestData.id,
                         project_id: requestData.project_id
                     }).catch(err => console.error(`Failed to dispatch webhook for rule ${rule.name}`, err));
                 }
@@ -61,9 +99,9 @@ export const evaluateAlertRules = async (requestData: any) => {
     } catch (err) {
         console.error('Error evaluating alert rules:', err);
     }
-};
+}
 
-const dispatchWebhook = async (url: string, payload: any) => {
+async function dispatchWebhook(url: string, payload: any) {
     try {
         const res = await fetch(url, {
             method: 'POST',
@@ -74,6 +112,6 @@ const dispatchWebhook = async (url: string, payload: any) => {
             console.error(`Webhook payload rejected by ${url} with status ${res.status}`);
         }
     } catch (err) {
-        throw new Error(`Execution failed targeting ${url}: ${err}`);
+        console.error(`Webhook dispatch failed: ${err}`);
     }
-};
+}

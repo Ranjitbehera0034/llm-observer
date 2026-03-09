@@ -4,19 +4,17 @@
     "main": "dist/index.js",
     "scripts": {
         "build": "tsc",
-        "dev": "ts-node src/index.ts",
+        "dev": "ts-node -r tsconfig-paths/register src/index.ts",
         "test": "jest",
         "typecheck": "tsc --noEmit",
         "clean": "rm -rf dist"
     },
     "dependencies": {
         "@llm-observer/database": "*",
-        "bullmq": "^5.70.4",
         "chalk": "^4.1.2",
         "cors": "^2.8.5",
         "express": "^4.21.1",
-        "http-proxy": "^1.18.1",
-        "ioredis": "^5.10.0"
+        "http-proxy": "^1.18.1"
     },
     "devDependencies": {
         "@types/cors": "^2.8.17",
@@ -28,6 +26,7 @@
         "supertest": "^7.2.2",
         "ts-jest": "^29.4.6",
         "ts-node": "^10.9.2",
+        "tsconfig-paths": "^4.2.0",
         "typescript": "^5.5.0"
     }
 }

@@ -5,7 +5,6 @@ COPY package*.json ./
 COPY packages/database/package.json packages/database/
 COPY packages/proxy/package.json packages/proxy/
 COPY packages/dashboard/package.json packages/dashboard/
-COPY packages/worker/package.json packages/worker/
 
 RUN npm install
 
@@ -22,4 +21,6 @@ COPY --from=builder /app /app
 # Ensure database target volumes exist for permissions
 RUN mkdir -p /root/.llm-observer && chmod 777 /root/.llm-observer
 
-CMD ["npm", "run", "start:all"]
+EXPOSE 4000 4001
+
+CMD ["npm", "run", "dev:all"]

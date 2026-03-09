@@ -33,7 +33,7 @@ console.log(banner);
 const program = new Command();
 
 program
-  .name('llm-observe')
+  .name('llm-observer')
   .description('CLI Management Tool for LLM Observer Proxy & Dashboard')
   .version('1.0.0');
 

@@ -11,8 +11,7 @@ Your API keys and prompts never leave localhost.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/Ranjitbehera0034/llm-observer?color=ffda4a&style=flat-square)](https://github.com/Ranjitbehera0034/llm-observer/stargazers)
 
-<!-- TODO: Replace with actual demo GIF -->
-<!-- ![LLM Observer Demo](./docs/assets/demo.gif) -->
+<!-- ![LLM Observer Demo](https://raw.githubusercontent.com/Ranjitbehera0034/llm-observer/main/docs/assets/demo.gif) -->
 
 [Quick Start](#-quick-start) · [Features](#-features) · [Dashboard](#-dashboard) · [Why Local?](#-why-local) · [Docs](https://llm-observer.dev/docs) · [Roadmap](#-roadmap)
 
@@ -93,6 +92,7 @@ Unlike cloud-based alternatives, LLM Observer runs **100% on your machine**:
 | Prompts & data | Never leave localhost | Pass through their cloud |
 | Added latency | <5ms (localhost) | 50-200ms (network hop) |
 | Works offline | ✅ Yes | ❌ No |
+| Setup | ✅ Zero-config (SQLite) | ❌ Complex (Cloud/Redis) |
 | Security approval | Easy — no data leaves | Hard fight with security teams |
 | Privacy compliance | Trivial | Complicated |
 

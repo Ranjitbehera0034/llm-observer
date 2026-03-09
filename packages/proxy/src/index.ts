@@ -7,7 +7,6 @@ import { initPricingCache } from './utils/pricing';
 import { GoogleProvider } from './providers/google';
 import { budgetGuard } from './budgetGuard';
 import { rateLimitGuard } from './rateLimitGuard';
-import { requestLogsQueue } from './queue';
 
 const app = express();
 

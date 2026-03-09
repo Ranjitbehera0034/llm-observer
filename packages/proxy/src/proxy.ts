@@ -7,7 +7,7 @@ import { AnthropicProvider } from './providers/anthropic';
 import chalk from 'chalk';
 import { incrementSpendCache } from './budgetGuard';
 import { requestEventEmitter } from './dashboardApi';
-import { requestLogsQueue } from './queue';
+import { internalLogger } from './internalLogger';
 import crypto from 'crypto';
 
 // Simple in-memory tracker for requests (project_id -> timestamps[])
@@ -179,19 +179,26 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 is_streaming: requestInfo.isStreaming ? 1 : 0,
                 has_tools: requestInfo.hasTools ? 1 : 0,
                 pricing_unknown: usage?.pricing_unknown ? 1 : 0,
-                tags: req.headers['x-tags'] as string || null,
+                tags: req.headers['x-tags'] as string || undefined,
                 request_body: requestBodyStr,
                 response_body: dbResponseBody,
-                prompt_hash: promptHash,
+                prompt_hash: promptHash || undefined,
                 created_at: new Date().toISOString()
             };
 
             // ✅ Emit SSE Event (real-time dashboard)
             requestEventEmitter.emit('new_request', reqRecord);
 
-            // ✅ Fire-and-forget background SQLite log via Redis BullMQ
-            requestLogsQueue.add('log', { requestData: reqRecord })
-                .catch(err => console.error('Failed to enqueue request log:', err));
+            // ✅ Fire-and-forget background SQLite log via internal batch logger
+            internalLogger.add({
+                ...reqRecord,
+                is_streaming: !!reqRecord.is_streaming,
+                has_tools: !!reqRecord.has_tools,
+                pricing_unknown: !!reqRecord.pricing_unknown,
+                tags: reqRecord.tags || undefined,
+                prompt_hash: reqRecord.prompt_hash || undefined
+            })
+                .catch((err: any) => console.error('Failed to enqueue request log:', err));
 
             // Log output securely
             console.log(chalk.green(`✓ [${providerName}] ${requestInfo.model} | ${usage?.totalTokens || 0} tokens | ${latency}ms | $${(usage?.costUsd || 0).toFixed(6)}`));
@@ -220,6 +227,24 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
         buffer: Readable.from([JSON.stringify(req.body)])
     }, (err) => {
         console.error('Proxy Error:', err);
+        const errorRecord = {
+            project_id: projectId,
+            provider: providerName,
+            model: requestInfo.model || 'unknown',
+            endpoint: req.path,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+            cost_usd: 0,
+            latency_ms: Date.now() - requestStartTime,
+            status_code: 502,
+            status: 'error',
+            error_message: err.message,
+            request_body: requestBodyStr,
+            created_at: new Date().toISOString()
+        };
+        internalLogger.add(errorRecord).catch(e => console.error('Failed to log proxy error:', e));
+
         if (!res.headersSent) res.status(502).json({ error: 'Bad Gateway', details: err.message });
     });
 };
