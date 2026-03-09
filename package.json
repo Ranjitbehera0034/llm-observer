@@ -12,6 +12,7 @@
     "start:all": "concurrently \"npm run start --workspace=@llm-observer/proxy\" \"npm run start --workspace=@llm-observer/dashboard\"",
     "dev": "npm run dev --workspaces --if-present",
     "build": "npm run build --workspace=@llm-observer/database && npm run build --workspace=@llm-observer/dashboard && npm run build --workspace=@llm-observer/proxy && npm run build --workspace=llm-observer && npm run tauri build --workspace=desktop && npm run build --workspace=llm-observer-landing",
+    "build:ci": "npm run build --workspace=@llm-observer/database && npm run build --workspace=@llm-observer/dashboard && npm run build --workspace=@llm-observer/proxy && npm run build --workspace=llm-observer && npm run build --workspace=llm-observer-landing",
     "lint": "eslint . --ext .ts,.tsx",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
