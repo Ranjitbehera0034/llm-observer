@@ -10,7 +10,7 @@
     "dev:all": "concurrently \"npm run dev --workspace=@llm-observer/proxy\" \"npm run dev --workspace=@llm-observer/dashboard\"",
     "start:all": "concurrently \"npm run start --workspace=@llm-observer/proxy\" \"npm run start --workspace=@llm-observer/dashboard\"",
     "dev": "npm run dev --workspaces --if-present",
-    "build": "npm run build --workspace=@llm-observer/database && npm run build --workspace=@llm-observer/proxy && npm run build --workspace=@llm-observer/dashboard && npm run build --workspace=llm-observer",
+    "build": "npm run build --workspace=@llm-observer/database && npm run build --workspace=@llm-observer/dashboard && npm run build --workspace=@llm-observer/proxy && npm run build --workspace=llm-observer",
     "lint": "eslint . --ext .ts,.tsx",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",

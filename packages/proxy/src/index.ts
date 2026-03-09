@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { handleProxyRequest } from './proxy';
 import { initDb, seedPricing, getDb, seedDefaultApiKey } from '@llm-observer/database';
 import { initPricingCache } from './utils/pricing';
@@ -65,12 +66,21 @@ dashboardApp.use(express.json());
 dashboardApp.use('/api', dashboardApi);
 
 // Fallback to static Dashboard build if not hitting API
-const dashboardDist = path.join(__dirname, '../../dashboard/dist');
+// In development: ../../dashboard/dist
+// In bundled package: ./dashboard
+const devDashboardDist = path.join(__dirname, '../../dashboard/dist');
+const bundledDashboardDist = path.join(__dirname, 'dashboard');
+const dashboardDist = fs.existsSync(bundledDashboardDist) ? bundledDashboardDist : devDashboardDist;
+
 dashboardApp.use(express.static(dashboardDist));
 
 dashboardApp.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
-    res.sendFile(path.join(dashboardDist, 'index.html'));
+    if (fs.existsSync(path.join(dashboardDist, 'index.html'))) {
+        res.sendFile(path.join(dashboardDist, 'index.html'));
+    } else {
+        res.status(404).send('Dashboard assets not found. Run npm build in dashboard package.');
+    }
 });
 
 // --- Boot Sequence ---

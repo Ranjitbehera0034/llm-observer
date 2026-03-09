@@ -1,51 +1,34 @@
-# LLM Observer 🚀
+# LLM Observer 🛡️
 
-**The open-source Observability, Budgeting, and Rate-Limiting Proxy for LLM developers.**
+**Privacy-First, Local-Only LLM Cost Intelligence.**
 
-Run everything locally. Keep your API keys private. Never overspend again.
+Stop sending your prompt data to SaaS observability tools. LLM Observer is a developer-centric proxy and dashboard that lives entirely on your machine. Track spend, audit logs, and set budget guards without your data ever leaving your perimeter.
 
-![LLM Observer Banner](https://raw.githubusercontent.com/llm-observer/llm-observer/main/assets/banner.png)
+![LLM Observer Hero](https://raw.githubusercontent.com/llm-observer/llm-observer/main/assets/hero.gif)
 
-## Quick Start (No Install Required)
+## 🚀 Zero-Friction Setup
+
+Launch the full stack (Proxy + Dashboard + DB) with a single command:
 
 ```bash
 npx llm-observer start
 ```
 
-This command:
-1. Spawns your local **Proxy Server** (Port 4000)
-2. Launches your **Dashboard UI** (Port 4001)
-3. Initializes your local SQLite database
+## 💎 Why LLM Observer?
 
-## Key Features
+- **🔒 100% Private**: Your prompts, completions, and API keys are stored in a local SQLite database. No telemetry. No middle-man.
+- **🛡️ Budget Guards**: Automatically block requests if a project hits its budget. Stop "wake-up-to-a-$1000-bill" surprises.
+- **⚡ Unified Proxy**: One endpoint to rule them all. Switch between OpenAI, Anthropic, and Gemini with simple config.
+- **🕵️ Anomaly Alerts**: Real-time webhook notifications if we detect a 5x spike in spend velocity.
 
-### 🛡️ Budget Guards
-Set daily, weekly, or monthly spend limits at the project or provider level. The proxy automatically blocks requests once your limit is hit, preventing "wake-up-to-a-$1000-bill" surprises.
+## 🔌 One-Line Integration
 
-### ⚡ Performance & Cost Tracking
-Real-time dashboards showing your token usage, latency, and cost across OpenAI, Anthropic, and Google Gemini.
-
-### 🕵️ Anomaly Detection
-Background checks that monitor your spend velocity. If we detect a spike >5x your rolling average, you'll get an immediate alert.
-
-### 📦 Privacy First
-LLM Observer runs entirely on your machine. Your requests, API logs, and project settings never leave your local environment.
-
-## CLI Usage
-
-| `start` | Boot up the Proxy and Dashboard |
-| `status` | Check service health and today's spend |
-| `logs` | View or tail (`-f`) recent LLM requests |
-| `pricing` | View current token rates for all models |
-
-## 🔌 SDK Integration
-
-Just change your `baseURL` to point to `localhost:4000`.
+Just point your `baseURL` to the local proxy.
 
 ### OpenAI (Node.js)
 ```javascript
 const openai = new OpenAI({
-  apiKey: 'YOUR_API_KEY',
+  apiKey: 'sk-proj-locally-unused-but-needed', // Keys are configured in Dashboard
   baseURL: 'http://localhost:4000/v1/openai'
 });
 ```
@@ -53,24 +36,35 @@ const openai = new OpenAI({
 ### Anthropic (Node.js)
 ```javascript
 const anthropic = new Anthropic({
-  apiKey: 'YOUR_API_KEY',
+  apiKey: 'unused-local-key',
   baseURL: 'http://localhost:4000/v1/anthropic'
 });
 ```
 
-### Google Gemini (Node.js)
-```javascript
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const genAI = new GoogleGenerativeAI("YOUR_API_KEY");
-// Custom baseURL is currently managed in the provider config
+## 📊 Comparison: Hobbyist vs Pro
+
+| Feature | Hobbyist (Free) | Pro ($19/mo) |
+| :--- | :--- | :--- |
+| **Projects** | 1 Project | **Unlimited** |
+| **Log Retention** | 7 Days | **90 Days** |
+| **Budget Guards** | ✅ Yes | ✅ Yes |
+| **Anomaly Alerts** | ✅ Yes | ✅ Yes |
+| **Data Residency** | Local | Local |
+
+[Get a Pro License Key](https://llmobserver.com/pricing)
+
+## 🛠️ Development
+
+LLM Observer is a monorepo built with React, Express, and Vite.
+
+```bash
+# Clone and install
+git clone https://github.com/Ranjitbehera0034/llm-observer
+npm install
+
+# Start development flow
+npm run dev:all
 ```
 
-## License
-
-- **Free Tier**: 1 Project, 7-day log retention.
-- **Pro Tier**: Unlimited projects, 90-day retention, Priority support.
-
-To activate Pro, add your license key in the Dashboard Settings.
-
 ---
-Built with ❤️ by the LLM Observer Team.
+Built with ❤️ for AI developers who care about privacy.
