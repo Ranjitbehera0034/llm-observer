@@ -17,6 +17,8 @@ export default function Settings() {
     const [openAiKey, setOpenAiKey] = useState('');
     const [anthropicKey, setAnthropicKey] = useState('');
     const [googleKey, setGoogleKey] = useState('');
+    const [mistralKey, setMistralKey] = useState('');
+    const [groqKey, setGroqKey] = useState('');
     const [saved, setSaved] = useState(false);
 
     // API Keys Tab State
@@ -43,6 +45,8 @@ export default function Settings() {
                     setOpenAiKey(data.data.openai_api_key || '');
                     setAnthropicKey(data.data.anthropic_api_key || '');
                     setGoogleKey(data.data.google_api_key || '');
+                    setMistralKey(data.data.mistral_api_key || '');
+                    setGroqKey(data.data.groq_api_key || '');
                 }
             } catch (err) {
                 console.error('Failed to fetch settings:', err);
@@ -154,7 +158,9 @@ export default function Settings() {
                 body: JSON.stringify({
                     openai_api_key: openAiKey,
                     anthropic_api_key: anthropicKey,
-                    google_api_key: googleKey
+                    google_api_key: googleKey,
+                    mistral_api_key: mistralKey,
+                    groq_api_key: groqKey,
                 })
             });
             setSaved(true);
@@ -240,6 +246,28 @@ export default function Settings() {
                                             placeholder="AIza..."
                                             value={googleKey}
                                             onChange={e => setGoogleKey(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-textMuted mb-2">Mistral API Key</label>
+                                        <input
+                                            type="password"
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
+                                            placeholder="..."
+                                            value={mistralKey}
+                                            onChange={e => setMistralKey(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-textMuted mb-2">Groq API Key</label>
+                                        <input
+                                            type="password"
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
+                                            placeholder="gsk_..."
+                                            value={groqKey}
+                                            onChange={e => setGroqKey(e.target.value)}
                                         />
                                     </div>
 
