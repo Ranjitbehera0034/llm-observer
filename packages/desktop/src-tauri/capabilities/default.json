@@ -8,11 +8,15 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "notification:default",
+    "autostart:default",
+    "updater:default",
     {
       "identifier": "shell:allow-execute",
       "allow": [
         {
           "name": "node",
+          "cmd": "node",
           "args": true
         }
       ]

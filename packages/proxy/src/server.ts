@@ -11,6 +11,7 @@ import { rateLimitGuard } from './rateLimitGuard';
 import { startAnomalyDetection } from './anomalyDetector';
 import { startRetentionCleanup } from './retentionManager';
 import { startCostOptimizer } from './costOptimizer';
+import { startStatsAggregation } from './utils/statsAggregator';
 
 const app = express();
 
@@ -64,6 +65,25 @@ app.all('/v1/groq/*', (req, res) => {
     // The provider base URL already includes /openai, so we map /v1/groq → /v1
     req.url = req.url.replace('/v1/groq', '/v1');
     handleProxyRequest(req, res, 'groq');
+});
+
+// Custom/Local provider route
+// Example: http://localhost:4000/v1/custom/http%3A%2F%2Flocalhost%3A11434/v1/chat/completions
+app.all('/v1/custom/:targetBaseUrl/*', (req, res) => {
+    const encodedUrl = req.params.targetBaseUrl;
+    try {
+        const decodedUrl = decodeURIComponent(encodedUrl);
+        // The rest of the path is in req.url after the parameter
+        // Original req.url like: /v1/custom/http%3A%2F%2Flocalhost%3A11434/v1/chat/completions
+        // We want to rewrite req.url to just the suffix
+        req.url = req.url.replace(`/v1/custom/${encodedUrl}`, '');
+
+        // Pass the target URL through req object
+        (req as any).customTargetUrl = decodedUrl;
+        handleProxyRequest(req, res, 'custom');
+    } catch (e) {
+        res.status(400).json({ error: 'Invalid targetBaseUrl encoding' });
+    }
 });
 
 const PORT = process.env.PROXY_PORT || 4000;
@@ -124,6 +144,7 @@ async function bootstrap() {
         startAnomalyDetection();
         startRetentionCleanup();
         startCostOptimizer();
+        startStatsAggregation();
 
     } catch (err) {
         console.error('Fatal Initialization Error:', err);
