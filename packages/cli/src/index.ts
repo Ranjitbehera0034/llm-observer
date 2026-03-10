@@ -16,6 +16,7 @@ import { setupAuditCommands } from './commands/audit';
 import { setupBillingCommands } from './commands/billing';
 import { setupStressCommands } from './commands/stress';
 import { setupActivateCommands } from './commands/activate';
+import { setupUpgradeCommands } from './commands/upgrade';
 import { initDb } from '@llm-observer/database';
 
 initDb();
@@ -53,6 +54,7 @@ setupAuditCommands(program);
 setupBillingCommands(program);
 setupStressCommands(program);
 setupActivateCommands(program);
+setupUpgradeCommands(program);
 
 // Handle unknown commands
 program.on('command:*', function (operands) {

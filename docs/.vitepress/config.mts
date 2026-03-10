@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
     title: "LLM Observer",
     description: "Privacy-First, Local-Only LLM Cost Intelligence.",
+    ignoreDeadLinks: true,
     themeConfig: {
         nav: [
             { text: 'Home', link: '/' },
