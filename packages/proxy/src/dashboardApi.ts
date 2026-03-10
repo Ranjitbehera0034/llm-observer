@@ -21,7 +21,8 @@ import {
     getAllSettings,
     updateSettings
 } from '@llm-observer/database';
-import { checkProjectLimit, getLicenseInfo, activateLicense } from './licenseManager';
+import { checkProjectLimit, getLicenseInfo, activateLicense, activateLicenseFromPayment } from './licenseManager';
+import crypto from 'crypto';
 
 export const requestEventEmitter = new EventEmitter();
 
@@ -541,4 +542,118 @@ dashboardApi.get('/pricing', (req, res) => {
     }
 });
 
+// --- Payment Webhooks ---
 
+/**
+ * POST /api/webhooks/lemonsqueezy
+ * Handles subscription_created and subscription_payment_success events.
+ * Validates the Lemon Squeezy HMAC-SHA256 signature header.
+ */
+dashboardApi.post('/webhooks/lemonsqueezy', express.json({
+    verify: (req: any, _res, buf) => { req.rawBody = buf; }
+}), async (req, res) => {
+    try {
+        const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
+        if (!secret) {
+            console.warn('[WEBHOOK] LEMONSQUEEZY_WEBHOOK_SECRET is not set — skipping signature check in dev mode.');
+        } else {
+            const sig = req.headers['x-signature'] as string;
+            if (!sig) return res.status(401).json({ error: 'Missing signature header' });
+
+            const hmac = crypto.createHmac('sha256', secret);
+            hmac.update((req as any).rawBody);
+            const expected = hmac.digest('hex');
+
+            if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+                return res.status(401).json({ error: 'Invalid signature' });
+            }
+        }
+
+        const event = req.headers['x-event-name'] as string;
+        const body = req.body;
+
+        // Only act on new subscriptions or successful payments
+        const activatableEvents = ['subscription_created', 'subscription_payment_success', 'order_created'];
+        if (!activatableEvents.includes(event)) {
+            return res.json({ received: true, action: 'ignored' });
+        }
+
+        const attrs = body?.data?.attributes;
+        const subscriptionId = String(body?.data?.id || 'unknown');
+        const customerId = String(attrs?.customer_id || attrs?.user_email || 'unknown');
+        const amountCents = attrs?.total || attrs?.first_subscription_item?.price || 0;
+        const currency = attrs?.currency || 'USD';
+
+        const result = activateLicenseFromPayment({
+            provider: 'lemonsqueezy',
+            subscriptionId,
+            customerId,
+            amountCents,
+            currency,
+            event
+        });
+
+        res.json({ received: true, activated: result.success });
+    } catch (err) {
+        console.error('[WEBHOOK] Lemon Squeezy error:', err);
+        res.status(500).json({ error: 'Webhook processing failed' });
+    }
+});
+
+/**
+ * POST /api/webhooks/razorpay
+ * Handles subscription.activated and payment.captured events from Razorpay.
+ * Validates the X-Razorpay-Signature header.
+ */
+dashboardApi.post('/webhooks/razorpay', express.json({
+    verify: (req: any, _res, buf) => { req.rawBody = buf; }
+}), async (req, res) => {
+    try {
+        const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+        if (!secret) {
+            console.warn('[WEBHOOK] RAZORPAY_WEBHOOK_SECRET is not set — skipping signature check in dev mode.');
+        } else {
+            const sig = req.headers['x-razorpay-signature'] as string;
+            if (!sig) return res.status(401).json({ error: 'Missing signature header' });
+
+            const hmac = crypto.createHmac('sha256', secret);
+            hmac.update((req as any).rawBody);
+            const expected = hmac.digest('hex');
+
+            if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+                return res.status(401).json({ error: 'Invalid signature' });
+            }
+        }
+
+        const event = req.body?.event as string;
+        const payload = req.body?.payload;
+
+        // Act on subscription activation or successful payment capture
+        const activatableEvents = ['subscription.activated', 'subscription.charged', 'payment.captured'];
+        if (!activatableEvents.includes(event)) {
+            return res.json({ received: true, action: 'ignored' });
+        }
+
+        const subscription = payload?.subscription?.entity || {};
+        const payment = payload?.payment?.entity || {};
+
+        const subscriptionId = subscription.id || payment.order_id || 'unknown';
+        const customerId = subscription.customer_id || payment.email || 'unknown';
+        const amountCents = subscription.amount || payment.amount || 0;
+        const currency = subscription.currency || payment.currency || 'INR';
+
+        const result = activateLicenseFromPayment({
+            provider: 'razorpay',
+            subscriptionId,
+            customerId,
+            amountCents,
+            currency,
+            event
+        });
+
+        res.json({ received: true, activated: result.success });
+    } catch (err) {
+        console.error('[WEBHOOK] Razorpay error:', err);
+        res.status(500).json({ error: 'Webhook processing failed' });
+    }
+});

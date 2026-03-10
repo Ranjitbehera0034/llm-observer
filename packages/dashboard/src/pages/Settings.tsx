@@ -12,6 +12,7 @@ interface ApiKeyData {
 
 export default function Settings() {
     const [activeTab, setActiveTab] = useState<'providers' | 'api_keys' | 'security' | 'license'>('providers');
+    const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
     // Provider Tab State
     const [openAiKey, setOpenAiKey] = useState('');
@@ -36,6 +37,10 @@ export default function Settings() {
     // Projects Info (for limits display)
     const [projectsCount, setProjectsCount] = useState(0);
 
+    // Geolocation for Hybrid Payments
+    const [country, setCountry] = useState<string | null>(null);
+    const [detectingCountry, setDetectingCountry] = useState(true);
+
     useEffect(() => {
         const fetchSettings = async () => {
             try {
@@ -53,6 +58,21 @@ export default function Settings() {
             }
         };
         fetchSettings();
+
+        // Detect Country for Payments
+        const detectCountry = async () => {
+            try {
+                const res = await fetch('https://ipapi.co/json/');
+                const data = await res.json();
+                setCountry(data.country_code);
+            } catch (err) {
+                console.error('Failed to detect country:', err);
+                setCountry('US'); // Fallback to Global
+            } finally {
+                setDetectingCountry(false);
+            }
+        };
+        detectCountry();
     }, []);
 
     useEffect(() => {
@@ -397,12 +417,12 @@ export default function Settings() {
 
                                     <h3 className="text-lg font-bold mb-2 flex items-center gap-2 text-white">
                                         {licenseInfo?.isPro ? <Zap className="w-5 h-5 text-amber-500 fill-amber-500" /> : <ShieldCheck className="w-5 h-5 text-primary" />}
-                                        {licenseInfo?.isPro ? 'Pro Performance' : 'Hobbyist Plan'}
+                                        {licenseInfo?.isPro ? 'Pro Subscription' : 'Hobbyist (Free)'}
                                     </h3>
                                     <p className="text-textMuted text-sm mb-6">
                                         {licenseInfo?.isPro
-                                            ? 'You have full access to all LLM Observer features. Thank you for supporting privacy-first development!'
-                                            : 'Perfect for individual developers tracking local experiments.'}
+                                            ? 'Full local access to all observability features. Thank you for supporting privacy-first development!'
+                                            : 'Everything you need to track local experiments.'}
                                     </p>
 
                                     <div className="space-y-4">
@@ -436,12 +456,22 @@ export default function Settings() {
 
                                     {!licenseInfo?.isPro && (
                                         <div className="mt-8 pt-6 border-t border-border">
-                                            <h4 className="text-xs font-bold text-textMuted uppercase tracking-widest mb-4">Why Upgrade?</h4>
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h4 className="text-xs font-bold text-textMuted uppercase tracking-widest">Why Upgrade?</h4>
+                                                {detectingCountry ? (
+                                                    <span className="text-[10px] text-textMuted animate-pulse">Detecting local regional pricing...</span>
+                                                ) : (
+                                                    <span className="text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                                                        {country === 'IN' ? '🇮🇳 Local Pricing Available' : '🌍 Global Coverage'}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <ul className="space-y-3">
                                                 {[
-                                                    { text: 'Unlimited Projects & Organizations', icon: Layers },
-                                                    { text: 'Extended 90-Day History', icon: History },
-                                                    { text: 'Priority Feature Support', icon: Zap }
+                                                    { text: 'Unlimited Local Projects', icon: Layers },
+                                                    { text: 'Extended 90-Day Log Retention', icon: History },
+                                                    { text: 'Full Cost Optimizer Insights', icon: Zap },
+                                                    { text: 'Priority Feature Access', icon: ShieldCheck }
                                                 ].map((feature, i) => (
                                                     <li key={i} className="flex items-center gap-3 text-sm text-textMuted">
                                                         <div className="p-1 bg-amber-500/10 rounded-lg">
@@ -461,13 +491,28 @@ export default function Settings() {
                                 <div className="card">
                                     <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                                         <CreditCard className="w-5 h-5 text-textMuted" />
-                                        {licenseInfo?.isPro ? 'License Management' : 'Activate Pro'}
+                                        {licenseInfo?.isPro ? 'License Management' : 'Upgrade to Pro'}
                                     </h2>
-                                    <p className="text-textMuted text-sm mb-6">
+                                    <p className="text-textMuted text-sm mb-4">
                                         {licenseInfo?.isPro
                                             ? 'Enter a new key to transfer or update your subscription.'
-                                            : 'Already purchased a license? Enter your key below to unlock all features instantly.'}
+                                            : 'Unlock unlimited potential with our flat-rate pricing.'}
                                     </p>
+
+                                    {!licenseInfo?.isPro && (
+                                        <div className="flex bg-background/50 border border-border p-1 rounded-lg mb-6 w-fit">
+                                            <button
+                                                onClick={() => setBillingCycle('monthly')}
+                                                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${billingCycle === 'monthly' ? 'bg-primary text-white shadow-sm' : 'text-textMuted hover:text-white'}`}>
+                                                Monthly
+                                            </button>
+                                            <button
+                                                onClick={() => setBillingCycle('yearly')}
+                                                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${billingCycle === 'yearly' ? 'bg-amber-500 text-slate-900 shadow-sm' : 'text-textMuted hover:text-white'}`}>
+                                                Yearly <span className="opacity-70 ml-1 font-medium">(Save 15%)</span>
+                                            </button>
+                                        </div>
+                                    )}
 
                                     {activationError && (
                                         <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-lg flex items-center gap-3">
@@ -516,14 +561,57 @@ export default function Settings() {
                                         </button>
 
                                         {!licenseInfo?.isPro && (
-                                            <a
-                                                href="https://llmobserver.com/pricing"
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="block text-center text-xs text-textMuted hover:text-primary transition-colors py-1 font-medium"
-                                            >
-                                                Don't have a license key? Get one here &rarr;
-                                            </a>
+                                            <div className="pt-2">
+                                                {country === 'IN' ? (
+                                                    <a
+                                                        href={billingCycle === 'monthly' ? "https://rzp.io/l/llm-observer-monthly" : "https://rzp.io/l/llm-observer-yearly"}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="block text-center text-sm text-white hover:text-primary transition-colors py-4 font-bold bg-primary/10 hover:bg-primary/20 rounded-xl border border-primary/30 mt-4 group"
+                                                    >
+                                                        Pay <span className="text-primary group-hover:scale-110 inline-block transition-transform">{billingCycle === 'monthly' ? '₹299' : '₹2,499'}</span> with UPI &rarr;
+                                                        <span className="block text-[10px] text-textMuted font-medium mt-1 uppercase tracking-widest">Local India Region Pricing</span>
+                                                    </a>
+                                                ) : (
+                                                    <a
+                                                        href={billingCycle === 'monthly' ? "https://llmobserver.lemonsqueezy.com/checkout/buy/pro-monthly" : "https://llmobserver.lemonsqueezy.com/checkout/buy/pro-yearly"}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="block text-center text-sm text-white hover:text-primary transition-colors py-4 font-bold bg-primary/10 hover:bg-primary/20 rounded-xl border border-primary/30 mt-4 group"
+                                                    >
+                                                        Pay <span className="text-primary group-hover:scale-110 inline-block transition-transform">{billingCycle === 'monthly' ? '$9' : '$79'}</span> via Lemon Squeezy &rarr;
+                                                        <span className="block text-[10px] text-textMuted font-medium mt-1 uppercase tracking-widest">Global Flat-Rate Pricing</span>
+                                                    </a>
+                                                )}
+
+                                                <div className="mt-8 pt-6 border-t border-border">
+                                                    <p className="text-[10px] text-textMuted font-medium uppercase tracking-widest mb-3">Already have a key?</p>
+                                                    <div className="space-y-4">
+                                                        <div>
+                                                            <div className="relative group">
+                                                                <input
+                                                                    type="password"
+                                                                    value={activationKey}
+                                                                    onChange={(e) => setActivationKey(e.target.value)}
+                                                                    placeholder="sk_live_..."
+                                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary group-hover:border-slate-500 transition-all font-mono text-xs"
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        <button
+                                                            onClick={handleActivate}
+                                                            disabled={activating || !activationKey}
+                                                            className={`w-full py-2 rounded-lg font-bold text-xs transition-all active:scale-[0.98] ${activating
+                                                                ? 'bg-surfaceHighlight text-textMuted cursor-not-allowed'
+                                                                : 'bg-surfaceHighlight hover:bg-surfaceHighlight/80 text-white border border-border'
+                                                                }`}
+                                                        >
+                                                            {activating ? 'Validating...' : 'Activate License'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
