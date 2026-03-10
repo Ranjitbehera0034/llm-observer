@@ -1,8 +1,11 @@
 import { getDb, getSetting, updateSetting } from '@llm-observer/database';
+import { createHash } from 'crypto';
+import os from 'os';
 
 export interface LicenseInfo {
     isPro: boolean;
     licenseKey?: string;
+    status: 'active' | 'cancelled' | 'free';
     limits: {
         maxProjects: number;
         logRetentionDays: number;
@@ -15,7 +18,7 @@ const FREE_LIMITS = {
 };
 
 const PRO_LIMITS = {
-    maxProjects: 100, // Effectively unlimited
+    maxProjects: 100,
     logRetentionDays: 90
 };
 
@@ -24,6 +27,21 @@ let cachedLicense: LicenseInfo | null = null;
 let lastCheckTime = 0;
 const CACHE_TTL = 60 * 1000; // 1 minute
 
+/**
+ * FIX SEC-01: Generate a non-identifying machine fingerprint.
+ * Uses SHA256 of stable hardware/OS properties. Not reversible to personal data.
+ */
+export function getMachineId(): string {
+    const raw = [
+        os.hostname(),
+        os.cpus()[0]?.model || '',
+        os.platform(),
+        os.arch(),
+        os.type(),
+    ].join('|');
+    return createHash('sha256').update(raw).digest('hex').substring(0, 32);
+}
+
 export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo> {
     const now = Date.now();
     if (cachedLicense && !forceRefresh && (now - lastCheckTime < CACHE_TTL)) {
@@ -31,13 +49,24 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
     }
 
     const licenseKey = getSetting('license_key');
+    const licenseStatus = getSetting('license_status');
 
-    // Pro if key starts with 'PRO_' (mock) or 'sk_live_' (real)
-    const isPro = licenseKey?.startsWith('PRO_') || licenseKey?.startsWith('sk_live_') || false;
+    // Cancelled subscription always becomes free regardless of stored key
+    if (licenseStatus === 'cancelled') {
+        cachedLicense = { isPro: false, licenseKey: undefined, status: 'cancelled', limits: FREE_LIMITS };
+        lastCheckTime = now;
+        return cachedLicense;
+    }
+
+    const isPro = !!licenseKey && (
+        licenseKey.startsWith('PRO_') ||
+        licenseKey.startsWith('sk_live_')
+    );
 
     cachedLicense = {
         isPro,
         licenseKey: licenseKey || undefined,
+        status: isPro ? 'active' : 'free',
         limits: isPro ? PRO_LIMITS : FREE_LIMITS
     };
     lastCheckTime = now;
@@ -48,33 +77,47 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
 const VALIDATOR_URL = process.env.LICENSE_SERVER_URL || 'https://api.llmobserver.com/validate';
 
 export async function activateLicense(key: string): Promise<{ success: boolean; message: string }> {
-    // 1. Local early exit for speed/MVP
     if (!key.startsWith('PRO_') && !key.startsWith('sk_live_')) {
         return { success: false, message: 'Invalid format. Keys should start with PRO_ or sk_live_.' };
     }
 
     try {
-        console.log(`[LICENSE] Validating key ${key.substring(0, 8)}... via ${VALIDATOR_URL}`);
-
-        // Allow PRO_ prefix for local development without external call
+        // PRO_ prefix is for local dev/testing — no seat enforcement
         if (key.startsWith('PRO_')) {
             updateSetting('license_key', key);
+            updateSetting('license_status', 'active');
             cachedLicense = null;
-            return { success: true, message: 'License activated successfully! (Local Mode)' };
+            return { success: true, message: 'License activated successfully! (Dev Mode)' };
         }
+
+        // FIX SEC-01: Send machine fingerprint to license server for seat enforcement
+        const machineId = getMachineId();
+        const keyHash = createHash('sha256').update(key).digest('hex');
+
+        console.log(`[LICENSE] Validating key ${key.substring(0, 8)}... via ${VALIDATOR_URL}`);
 
         const response = await fetch(VALIDATOR_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ license_key: key })
+            body: JSON.stringify({ license_key: key, machine_id: machineId, key_hash: keyHash })
         });
 
         const data = await response.json() as any;
 
         if (response.ok && data.valid) {
             updateSetting('license_key', key);
+            updateSetting('license_status', 'active');
+            updateSetting('license_machine_id', machineId);
             cachedLicense = null;
-            return { success: true, message: 'License activated successfully! Enjoy Pro features.' };
+            const seatsMsg = data.seats_used ? ` (Seat ${data.seats_used}/${data.max_seats})` : '';
+            return { success: true, message: `License activated successfully! Enjoy Pro features.${seatsMsg}` };
+        }
+
+        if (response.status === 409) {
+            return {
+                success: false,
+                message: `Seat limit reached. This license is already active on ${data.seats_used} devices (max: ${data.max_seats}). Deactivate another device or upgrade your plan.`
+            };
         }
 
         return {
@@ -102,8 +145,6 @@ export async function checkProjectLimit(): Promise<boolean> {
 
 /**
  * Called by payment webhooks to instantly activate a Pro license locally.
- * No external validation needed — the payment provider's webhook signature is the authority.
- * Generates a deterministic PRO_ key from the subscription ID so it's replayable.
  */
 export function activateLicenseFromPayment(opts: {
     provider: 'lemonsqueezy' | 'razorpay';
@@ -111,11 +152,12 @@ export function activateLicenseFromPayment(opts: {
     customerId: string;
     amountCents: number;
     currency: string;
-    event: string; // e.g. 'subscription_created', 'payment.captured'
+    event: string;
 }): { success: boolean; key: string } {
     const key = `PRO_${opts.provider.toUpperCase()}_${opts.subscriptionId}`;
 
     updateSetting('license_key', key);
+    updateSetting('license_status', 'active');
     updateSetting('license_provider', opts.provider);
     updateSetting('license_subscription_id', opts.subscriptionId);
     updateSetting('license_customer_id', opts.customerId);
@@ -124,7 +166,7 @@ export function activateLicenseFromPayment(opts: {
     updateSetting('license_activated_at', new Date().toISOString());
     updateSetting('license_last_event', opts.event);
 
-    cachedLicense = null; // Bust the in-memory cache
+    cachedLicense = null;
 
     console.log(`[LICENSE] ✅ Activated via ${opts.provider} webhook. Key: ${key.substring(0, 20)}...`);
     return { success: true, key };

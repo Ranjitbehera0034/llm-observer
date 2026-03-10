@@ -29,7 +29,8 @@ app.get('/health', (req, res) => {
 });
 
 // We need JSON to parse the models, but we need to forward it carefully
-app.use(express.json({ limit: '50mb' }));
+// FIX SEC-06: Reduced from 50MB to prevent memory-exhaustion DoS
+app.use(express.json({ limit: '5mb' }));
 
 // Apply budget guard globally before proxying
 app.use(budgetGuard);
@@ -154,6 +155,7 @@ async function bootstrap() {
 
 bootstrap();
 
-dashboardApp.listen(DASHBOARD_PORT, () => {
-    console.log(`📊 Dashboard API running on http://localhost:${DASHBOARD_PORT}`);
+// FIX SEC-03: Bind to 127.0.0.1 only — dashboard must not be reachable from LAN
+dashboardApp.listen(Number(DASHBOARD_PORT), '127.0.0.1', () => {
+    console.log(`📊 Dashboard API running on http://127.0.0.1:${DASHBOARD_PORT}`);
 });
