@@ -9,7 +9,7 @@ on:
     branches: [ main, develop ]
 
 jobs:
-  build:
+  build-matrix:
     runs-on: ubuntu-latest
     
     strategy:
@@ -28,3 +28,10 @@ jobs:
     - run: npm run build:ci --if-present
     # Add testing here later
     # - run: npm test
+
+  build:
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build complete
+        run: echo "Build successfully completed on all Node.js versions"
