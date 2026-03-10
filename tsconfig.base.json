@@ -5,7 +5,10 @@
     "baseUrl": ".",
     "paths": {
       "@llm-observer/database": [
-        "./packages/database/dist/index.d.ts"
+        "./packages/database/src/index.ts"
+      ],
+      "@llm-observer/proxy": [
+        "./packages/proxy/src/index.ts"
       ]
     },
     "lib": [
@@ -21,8 +24,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "moduleResolution": "node",
-    "outDir": "./dist",
-    "rootDir": "./src"
+    "outDir": "./dist"
   },
   "exclude": [
     "node_modules",
