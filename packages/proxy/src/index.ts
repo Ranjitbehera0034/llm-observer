@@ -54,6 +54,18 @@ app.all('/v1/google/*', (req, res) => {
     handleProxyRequest(req, res, 'google');
 });
 
+app.all('/v1/mistral/*', (req, res) => {
+    req.url = req.url.replace('/v1/mistral', '/v1');
+    handleProxyRequest(req, res, 'mistral');
+});
+
+app.all('/v1/groq/*', (req, res) => {
+    // Groq's OpenAI-compatible API lives at api.groq.com/openai/v1/*
+    // The provider base URL already includes /openai, so we map /v1/groq → /v1
+    req.url = req.url.replace('/v1/groq', '/v1');
+    handleProxyRequest(req, res, 'groq');
+});
+
 const PORT = process.env.PROXY_PORT || 4000;
 const DASHBOARD_PORT = process.env.DASHBOARD_PORT || 4001;
 

@@ -4,6 +4,8 @@ import { Readable } from 'stream';
 import { IProvider } from './providers/base';
 import { OpenAIProvider } from './providers/openai';
 import { AnthropicProvider } from './providers/anthropic';
+import { MistralProvider } from './providers/mistral';
+import { GroqProvider } from './providers/groq';
 import chalk from 'chalk';
 import { incrementSpendCache } from './budgetGuard';
 import { requestEventEmitter } from './dashboardApi';
@@ -23,8 +25,9 @@ import { GoogleProvider } from './providers/google';
 const providers: Record<string, IProvider> = {
     openai: new OpenAIProvider(),
     anthropic: new AnthropicProvider(),
-    google: new GoogleProvider()
-    // others can be added here
+    google: new GoogleProvider(),
+    mistral: new MistralProvider(),
+    groq: new GroqProvider(),
 };
 
 export const handleProxyRequest = async (req: Request, res: Response, providerName: string) => {
@@ -39,8 +42,8 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
     const projectId = (req as any).projectId || 'default';
     const cacheKey = (req as any).cacheKey || 'default';
 
-    // Inject stream_options for OpenAI to get usage metrics
-    if (providerName === 'openai' && req.body?.stream) {
+    // Inject stream_options for OpenAI-compatible providers to get usage metrics in stream
+    if ((providerName === 'openai' || providerName === 'groq') && req.body?.stream) {
         req.body.stream_options = { include_usage: true };
     }
 
@@ -84,10 +87,19 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
             streamBuffer = lines.pop() || ''; // keep incomplete line
 
             for (const line of lines) {
-                if (providerName === 'openai' && line.startsWith('data: ') && !line.includes('[DONE]')) {
+                if ((providerName === 'openai' || providerName === 'groq' || providerName === 'mistral') && line.startsWith('data: ') && !line.includes('[DONE]')) {
                     try {
                         const parsed = JSON.parse(line.substring(6));
+                        // Standard OpenAI-compatible usage field
                         if (parsed.usage) extractedUsage = parsed.usage;
+                        // Groq may also surface usage inside x_groq metadata
+                        if (providerName === 'groq' && parsed.x_groq?.usage) {
+                            extractedUsage = {
+                                prompt_tokens: parsed.x_groq.usage.prompt_tokens || (extractedUsage?.prompt_tokens ?? 0),
+                                completion_tokens: parsed.x_groq.usage.completion_tokens || (extractedUsage?.completion_tokens ?? 0),
+                                total_tokens: parsed.x_groq.usage.total_tokens || (extractedUsage?.total_tokens ?? 0),
+                            };
+                        }
                     } catch (e) { }
                 } else if (providerName === 'anthropic' && line.startsWith('data: ')) {
                     try {
