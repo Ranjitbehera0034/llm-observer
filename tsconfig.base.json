@@ -2,6 +2,12 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
+    "baseUrl": ".",
+    "paths": {
+      "@llm-observer/database": [
+        "./packages/database/dist/index.d.ts"
+      ]
+    },
     "lib": [
       "ES2022"
     ],
