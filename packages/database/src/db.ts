@@ -74,6 +74,12 @@ export const initDb = (dbPath?: string): Database.Database => {
             db.exec('ALTER TABLE projects ADD COLUMN saved_filters TEXT DEFAULT "[]";');
             console.log('Migrated projects table: added saved_filters column');
         }
+        // Migration 6: Add synced_at to daily_stats
+        const statsColumns = db.prepare("PRAGMA table_info(daily_stats)").all() as any[];
+        if (!statsColumns.some(col => col.name === 'synced_at')) {
+            db.exec('ALTER TABLE daily_stats ADD COLUMN synced_at DATETIME;');
+            console.log('Migrated daily_stats table: added synced_at column');
+        }
     } catch (err) {
         console.error('Migration checks failed:', err);
     }
