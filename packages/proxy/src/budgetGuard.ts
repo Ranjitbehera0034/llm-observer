@@ -81,6 +81,7 @@ export const budgetGuard = (req: Request, res: Response, next: NextFunction) => 
             `);
 
       const errorMsg = `LLM Observer: Daily budget limit ($${project.daily_budget.toFixed(2)}) reached. $${project.spent_today.toFixed(2)} spent today.`;
+      console.log(`[ALERT] BUDGET_EXCEEDED: ${errorMsg}`);
       insertStmt.run(randomUUID(), project.id, 'unknown', 'unknown', req.path, errorMsg);
 
       return res.status(429).json({

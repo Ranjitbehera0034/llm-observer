@@ -32,8 +32,15 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../../proxy/dist/index.js"
+    "externalBin": [
+      "bin/llm-observer-proxy"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Ranjitbehera0034/llm-observer/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
