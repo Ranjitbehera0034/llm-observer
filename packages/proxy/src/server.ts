@@ -12,6 +12,7 @@ import { startAnomalyDetection } from './anomalyDetector';
 import { startRetentionCleanup } from './retentionManager';
 import { startCostOptimizer } from './costOptimizer';
 import { startStatsAggregation } from './utils/statsAggregator';
+import { syncManager } from './syncManager';
 
 const app = express();
 
@@ -146,6 +147,7 @@ async function bootstrap() {
         startRetentionCleanup();
         startCostOptimizer();
         startStatsAggregation();
+        syncManager.start();
 
     } catch (err) {
         console.error('Fatal Initialization Error:', err);
