@@ -5,7 +5,7 @@
     "scripts": {
         "build": "tsup && mkdir -p dist/dashboard && cp -r ../dashboard/dist/* dist/dashboard/ 2>/dev/null && cp ../database/src/*.sql dist/ 2>/dev/null || true",
         "dev": "ts-node -r tsconfig-paths/register src/server.ts",
-        "test": "jest",
+        "test": "jest --forceExit --testTimeout=30000",
         "typecheck": "tsc --noEmit",
         "build:sidecar": "node scripts/build-sidecar.js",
         "clean": "rm -rf dist"

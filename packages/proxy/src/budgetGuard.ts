@@ -12,12 +12,16 @@ interface ProjectCache {
 
 const cache = new Map<string, ProjectCache>();
 
+// FIX BUG-01: Reduced from 60s to 10s to prevent burst bypass
+const CACHE_TTL_MS = 10_000;
+
 const getSpendFromDb = (projectId: string) => {
   const db = getDb();
   const spendStmt = db.prepare(`
       SELECT sum(cost_usd) as total 
       FROM requests 
       WHERE project_id = ? AND date(created_at) = date('now')
+        AND status != 'blocked_budget'
     `);
   const row = spendStmt.get(projectId) as any;
   return row?.total || 0;
@@ -35,8 +39,8 @@ export const budgetGuard = (req: Request, res: Response, next: NextFunction) => 
   let project = cache.get(cacheKey);
   const now = Date.now();
 
-  // Populate cache if missing or if last sync was > 60 seconds ago
-  if (!project || now - project.last_sync > 60000) {
+  // Refresh cache if missing or stale
+  if (!project || now - project.last_sync > CACHE_TTL_MS) {
     let dbProject;
 
     if (cacheKey === 'default') {
@@ -93,9 +97,20 @@ export const budgetGuard = (req: Request, res: Response, next: NextFunction) => 
   next();
 };
 
+/**
+ * FIX BUG-02: Call this IMMEDIATELY after cost is known (in proxy.ts res.end)
+ * Updates the in-memory spend cache atomically so the next request sees updated spent_today.
+ */
 export const incrementSpendCache = (cacheKey: string, costUsd: number) => {
   const project = cache.get(cacheKey);
-  if (project) {
+  if (project && costUsd > 0) {
     project.spent_today += costUsd;
+    // Force re-sync from DB on next request if we're near the budget
+    if (project.daily_budget != null && project.spent_today >= project.daily_budget * 0.95) {
+      project.last_sync = 0; // Force DB refresh on next request
+    }
   }
 };
+
+/** Expose for testing */
+export const _getCacheForTest = () => cache;

@@ -74,6 +74,8 @@ dashboardApi.get('/stats/chart', (req, res) => {
     try {
         const db = getDb();
         const projectId = (req.query.projectId as string) || 'default';
+        // FIX FUNC-03: Accept ?days= param (max 90 for Pro users)
+        const days = Math.min(90, Math.max(1, parseInt(req.query.days as string) || 7));
 
         const chartStmt = db.prepare(`
             SELECT 
@@ -81,11 +83,11 @@ dashboardApi.get('/stats/chart', (req, res) => {
                 sum(cost_usd) as cost,
                 count(*) as requests
             FROM requests
-            WHERE project_id = ? AND created_at >= date('now', '-7 days')
+            WHERE project_id = ? AND created_at >= date('now', '-' || ? || ' days')
             GROUP BY date(created_at)
             ORDER BY date(created_at) ASC
         `);
-        const data = chartStmt.all(projectId);
+        const data = chartStmt.all(projectId, days);
 
         res.json({ data });
     } catch (err) {
@@ -270,7 +272,15 @@ dashboardApi.delete('/projects/:id', (req, res) => {
             return res.status(400).json({ error: 'Cannot delete the default project' });
         }
 
-        deleteProject(req.params.id);
+        // FIX BUG-06: Cascade delete all related data to prevent orphaned records
+        const db = getDb();
+        const id = req.params.id;
+        db.prepare('DELETE FROM requests WHERE project_id = ?').run(id);
+        db.prepare('DELETE FROM alerts WHERE project_id = ?').run(id);
+        db.prepare('DELETE FROM alert_rules WHERE project_id = ?').run(id);
+        db.prepare('DELETE FROM daily_stats WHERE project_id = ?').run(id);
+        deleteProject(id);
+
         res.json({ success: true });
     } catch (err) {
         console.error('API Error:', err);
@@ -361,11 +371,19 @@ dashboardApi.get('/requests/:id', (req, res) => {
     }
 });
 
-// /api/events
+// /api/events  — SSE real-time stream
+// FIX BUG-07: Set max listeners to avoid memory leak warnings when many tabs open
+requestEventEmitter.setMaxListeners(50);
+
 dashboardApi.get('/events', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    // FIX BUG-07 (SEC-06): Only allow connections from localhost
+    const origin = req.headers.origin || req.headers.host || '';
+    if (origin && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+        return res.status(403).end();
+    }
 
     res.write('data: {"type":"connected"}\n\n');
 
@@ -379,7 +397,12 @@ dashboardApi.get('/events', (req, res) => {
         res.write(':\n\n');
     }, 30000);
 
+    // FIX BUG-07: Always clean up listener on disconnect
     req.on('close', () => {
+        clearInterval(keepAliveTimer);
+        requestEventEmitter.off('new_request', onNewRequest);
+    });
+    req.on('error', () => {
         clearInterval(keepAliveTimer);
         requestEventEmitter.off('new_request', onNewRequest);
     });
@@ -454,7 +477,17 @@ dashboardApi.delete('/alert-rules/:id', (req, res) => {
 dashboardApi.get('/settings', (req, res) => {
     try {
         const settingsMap = getAllSettings();
-        res.json({ data: settingsMap });
+        // FIX SEC-04: Redact sensitive API key values — never expose raw keys over the API
+        const redacted: Record<string, string> = {};
+        for (const [key, value] of Object.entries(settingsMap)) {
+            if (key.endsWith('_api_key') && value && (value as string).length > 8) {
+                const v = value as string;
+                redacted[key] = v.substring(0, 4) + '****' + v.substring(v.length - 4);
+            } else {
+                redacted[key] = value as string;
+            }
+        }
+        res.json({ data: redacted });
     } catch (err) {
         res.status(500).json({ error: 'Failed to fetch settings' });
     }
@@ -554,26 +587,39 @@ dashboardApi.post('/webhooks/lemonsqueezy', express.json({
 }), async (req, res) => {
     try {
         const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
+        // FIX SEC-02: Always require signing secret — never skip in production
         if (!secret) {
-            console.warn('[WEBHOOK] LEMONSQUEEZY_WEBHOOK_SECRET is not set — skipping signature check in dev mode.');
-        } else {
-            const sig = req.headers['x-signature'] as string;
-            if (!sig) return res.status(401).json({ error: 'Missing signature header' });
+            console.error('[WEBHOOK] LEMONSQUEEZY_WEBHOOK_SECRET is not set. Set this env var to accept webhooks.');
+            return res.status(503).json({ error: 'Webhook endpoint not configured. Set LEMONSQUEEZY_WEBHOOK_SECRET.' });
+        }
 
-            const hmac = crypto.createHmac('sha256', secret);
-            hmac.update((req as any).rawBody);
-            const expected = hmac.digest('hex');
+        const sig = req.headers['x-signature'] as string;
+        if (!sig) return res.status(401).json({ error: 'Missing signature header' });
 
-            if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-                return res.status(401).json({ error: 'Invalid signature' });
-            }
+        const hmac = crypto.createHmac('sha256', secret);
+        hmac.update((req as any).rawBody);
+        const expected = hmac.digest('hex');
+
+        if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+            return res.status(401).json({ error: 'Invalid signature' });
         }
 
         const event = req.headers['x-event-name'] as string;
         const body = req.body;
 
-        // Only act on new subscriptions or successful payments
         const activatableEvents = ['subscription_created', 'subscription_payment_success', 'order_created'];
+        // FIX FUNC-02: Handle subscription cancellation
+        const deactivatableEvents = ['subscription_cancelled', 'subscription_expired', 'subscription_paused'];
+
+        if (deactivatableEvents.includes(event)) {
+            // Deactivate license when subscription is cancelled
+            const { updateSetting } = require('@llm-observer/database');
+            updateSetting('license_key', '');
+            updateSetting('license_status', 'cancelled');
+            console.log(`[LICENSE] Subscription cancelled via LemonSqueezy webhook (event: ${event})`);
+            return res.json({ received: true, action: 'deactivated' });
+        }
+
         if (!activatableEvents.includes(event)) {
             return res.json({ received: true, action: 'ignored' });
         }
@@ -610,26 +656,38 @@ dashboardApi.post('/webhooks/razorpay', express.json({
 }), async (req, res) => {
     try {
         const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+        // FIX SEC-02: Always require signing secret
         if (!secret) {
-            console.warn('[WEBHOOK] RAZORPAY_WEBHOOK_SECRET is not set — skipping signature check in dev mode.');
-        } else {
-            const sig = req.headers['x-razorpay-signature'] as string;
-            if (!sig) return res.status(401).json({ error: 'Missing signature header' });
+            console.error('[WEBHOOK] RAZORPAY_WEBHOOK_SECRET is not set. Set this env var to accept webhooks.');
+            return res.status(503).json({ error: 'Webhook endpoint not configured. Set RAZORPAY_WEBHOOK_SECRET.' });
+        }
 
-            const hmac = crypto.createHmac('sha256', secret);
-            hmac.update((req as any).rawBody);
-            const expected = hmac.digest('hex');
+        const sig = req.headers['x-razorpay-signature'] as string;
+        if (!sig) return res.status(401).json({ error: 'Missing signature header' });
 
-            if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
-                return res.status(401).json({ error: 'Invalid signature' });
-            }
+        const hmac = crypto.createHmac('sha256', secret);
+        hmac.update((req as any).rawBody);
+        const expected = hmac.digest('hex');
+
+        if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+            return res.status(401).json({ error: 'Invalid signature' });
         }
 
         const event = req.body?.event as string;
         const payload = req.body?.payload;
 
-        // Act on subscription activation or successful payment capture
         const activatableEvents = ['subscription.activated', 'subscription.charged', 'payment.captured'];
+        // FIX FUNC-02: Handle cancellation
+        const deactivatableEvents = ['subscription.cancelled', 'subscription.halted', 'subscription.paused'];
+
+        if (deactivatableEvents.includes(event)) {
+            const { updateSetting } = require('@llm-observer/database');
+            updateSetting('license_key', '');
+            updateSetting('license_status', 'cancelled');
+            console.log(`[LICENSE] Subscription cancelled via Razorpay webhook (event: ${event})`);
+            return res.json({ received: true, action: 'deactivated' });
+        }
+
         if (!activatableEvents.includes(event)) {
             return res.json({ received: true, action: 'ignored' });
         }

@@ -46,15 +46,20 @@ const App: React.FC = () => {
                         <div className="flex flex-col md:flex-row items-center justify-center gap-6 mb-20">
                             <div className="group relative">
                                 <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl blur opacity-25 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
-                                <button className="relative px-8 h-16 rounded-2xl bg-white text-black font-bold text-lg flex items-center gap-3 transition-all hover:scale-[1.02]">
+                                <button
+                                    onClick={() => navigator.clipboard.writeText('npx llm-observer start')}
+                                    className="relative px-8 h-16 rounded-2xl bg-white text-black font-bold text-lg flex items-center gap-3 transition-all hover:scale-[1.02]">
                                     <Terminal className="w-5 h-5" />
                                     npx llm-observer start
                                 </button>
                             </div>
-                            <button className="px-8 h-16 rounded-2xl glass font-bold text-lg flex items-center gap-3 hover:bg-white/5 border-white/10 group transition-all">
+                            <a
+                                href="https://github.com/Ranjitbehera0034/llm-observer/releases/latest"
+                                target="_blank" rel="noopener noreferrer"
+                                className="px-8 h-16 rounded-2xl glass font-bold text-lg flex items-center gap-3 hover:bg-white/5 border-white/10 group transition-all">
                                 <Download className="w-5 h-5 text-white/60 group-hover:text-white" />
-                                Download App
-                            </button>
+                                Download Desktop App
+                            </a>
                         </div>
                     </motion.div>
 
@@ -140,9 +145,13 @@ const App: React.FC = () => {
                                     </li>
                                 ))}
                             </ul>
-                            <button className="w-full h-14 rounded-2xl bg-white text-black font-bold hover:bg-white/90 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)]">
-                                Upgrade to Pro
-                            </button>
+                            <a
+                                href="https://llmobserver.lemonsqueezy.com/checkout/buy/pro-monthly"
+                                target="_blank" rel="noopener noreferrer"
+                                className="w-full h-14 rounded-2xl bg-white text-black font-bold hover:bg-white/90 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] flex items-center justify-center gap-2">
+                                <ArrowRight className="w-4 h-4" />
+                                Upgrade to Pro — $19/mo
+                            </a>
                         </div>
                     </div>
                 </div>

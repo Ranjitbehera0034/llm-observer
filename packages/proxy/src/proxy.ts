@@ -158,6 +158,11 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 created_at: new Date().toISOString()
             };
 
+            // ✅ FIX BUG-02: Immediately update in-memory spend cache so burst requests are blocked
+            if (usage?.costUsd && usage.costUsd > 0) {
+                incrementSpendCache((req as any).cacheKey || 'default', usage.costUsd);
+            }
+
             // ✅ Emit SSE Event (real-time dashboard)
             requestEventEmitter.emit('new_request', reqRecord);
 

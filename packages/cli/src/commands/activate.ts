@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { activateLicense } from '@llm-observer/proxy';
+
+const DASHBOARD_URL = process.env.DASHBOARD_URL || 'http://127.0.0.1:4001';
 
 export function setupActivateCommands(program: Command) {
     program
@@ -10,17 +11,32 @@ export function setupActivateCommands(program: Command) {
             console.log(chalk.bold.blue('LLM Observer Activation\n'));
 
             try {
-                const result = await activateLicense(key);
+                // FIX FUNC-01: Call REST API instead of importing proxy directly
+                const response = await fetch(`${DASHBOARD_URL}/api/license/activate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key })
+                });
 
-                if (result.success) {
-                    console.log(`${chalk.green('✓')} ${result.message}`);
+                const data = await response.json() as any;
+
+                if (response.ok && data.success) {
+                    console.log(`${chalk.green('✓')} ${data.message}`);
                     process.exit(0);
                 } else {
-                    console.error(`${chalk.red('✗')} ${result.message}`);
+                    const msg = data.error || data.message || 'Activation failed';
+                    console.error(`${chalk.red('✗')} ${msg}`);
+                    if (response.status === 409) {
+                        console.log(chalk.yellow('\nTo deactivate on another machine, run: llm-observer deactivate'));
+                    }
                     process.exit(1);
                 }
             } catch (err: any) {
-                console.error(`${chalk.red('✗')} An error occurred during activation:`, err.message);
+                if (err.code === 'ECONNREFUSED') {
+                    console.error(`${chalk.red('✗')} LLM Observer is not running. Start it first: ${chalk.cyan('llm-observer start')}`);
+                } else {
+                    console.error(`${chalk.red('✗')} Activation failed: ${err.message}`);
+                }
                 process.exit(1);
             }
         });
