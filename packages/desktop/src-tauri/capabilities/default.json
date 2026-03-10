@@ -12,11 +12,11 @@
     "autostart:default",
     "updater:default",
     {
-      "identifier": "shell:allow-execute",
+      "identifier": "shell:allow-spawn",
       "allow": [
         {
-          "name": "node",
-          "cmd": "node",
+          "sidecar": true,
+          "name": "bin/llm-observer-proxy",
           "args": true
         }
       ]
