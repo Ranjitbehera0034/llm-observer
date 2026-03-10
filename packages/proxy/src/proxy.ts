@@ -6,11 +6,13 @@ import { OpenAIProvider } from './providers/openai';
 import { AnthropicProvider } from './providers/anthropic';
 import { MistralProvider } from './providers/mistral';
 import { GroqProvider } from './providers/groq';
+import { CustomProvider } from './providers/custom';
 import chalk from 'chalk';
 import { incrementSpendCache } from './budgetGuard';
 import { requestEventEmitter } from './dashboardApi';
 import { internalLogger } from './internalLogger';
 import crypto from 'crypto';
+import { StreamHandler } from './utils/streamHandler';
 
 // Simple in-memory tracker for requests (project_id -> timestamps[])
 const requestWindow: Record<string, number[]> = {};
@@ -28,6 +30,7 @@ const providers: Record<string, IProvider> = {
     google: new GoogleProvider(),
     mistral: new MistralProvider(),
     groq: new GroqProvider(),
+    custom: new CustomProvider(),
 };
 
 export const handleProxyRequest = async (req: Request, res: Response, providerName: string) => {
@@ -36,7 +39,7 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
         return res.status(400).json({ error: `Unsupported provider: ${providerName}` });
     }
 
-    const targetUrl = provider.getBaseUrl();
+    const targetUrl = (req as any).customTargetUrl || provider.getBaseUrl();
     const authHeaders = provider.getAuthHeader(req);
 
     const projectId = (req as any).projectId || 'default';
@@ -64,9 +67,7 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
         requestBodyStr = requestBodyStr.substring(0, MAX_DB_SIZE) + '... [TRUNCATED]';
     }
 
-    // State for extracting usage without accumulating memory
-    let streamBuffer = '';
-    let extractedUsage: any = null;
+    const streamHandler = new StreamHandler(providerName);
     let fullBufferForJson = ''; // Only used if non-streaming
 
     const processChunk = (chunkStr: string) => {
@@ -82,51 +83,9 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
 
         // 2. Extract usage
         if (requestInfo.isStreaming) {
-            streamBuffer += chunkStr;
-            const lines = streamBuffer.split('\n');
-            streamBuffer = lines.pop() || ''; // keep incomplete line
-
-            for (const line of lines) {
-                if ((providerName === 'openai' || providerName === 'groq' || providerName === 'mistral') && line.startsWith('data: ') && !line.includes('[DONE]')) {
-                    try {
-                        const parsed = JSON.parse(line.substring(6));
-                        // Standard OpenAI-compatible usage field
-                        if (parsed.usage) extractedUsage = parsed.usage;
-                        // Groq may also surface usage inside x_groq metadata
-                        if (providerName === 'groq' && parsed.x_groq?.usage) {
-                            extractedUsage = {
-                                prompt_tokens: parsed.x_groq.usage.prompt_tokens || (extractedUsage?.prompt_tokens ?? 0),
-                                completion_tokens: parsed.x_groq.usage.completion_tokens || (extractedUsage?.completion_tokens ?? 0),
-                                total_tokens: parsed.x_groq.usage.total_tokens || (extractedUsage?.total_tokens ?? 0),
-                            };
-                        }
-                    } catch (e) { }
-                } else if (providerName === 'anthropic' && line.startsWith('data: ')) {
-                    try {
-                        const parsed = JSON.parse(line.substring(6));
-                        if (!extractedUsage) extractedUsage = { prompt_tokens: 0, completion_tokens: 0 };
-                        if (parsed.type === 'message_start' && parsed.message?.usage) {
-                            extractedUsage.prompt_tokens += parsed.message.usage.input_tokens || 0;
-                            extractedUsage.completion_tokens += parsed.message.usage.output_tokens || 0;
-                        } else if (parsed.type === 'message_delta' && parsed.usage) {
-                            extractedUsage.completion_tokens += parsed.usage.output_tokens || 0;
-                        }
-                    } catch (e) { }
-                } else if (providerName === 'google' && line.startsWith('data: ')) {
-                    try {
-                        const parsed = JSON.parse(line.substring(6));
-                        if (parsed.usageMetadata) {
-                            extractedUsage = {
-                                prompt_tokens: parsed.usageMetadata.promptTokenCount,
-                                completion_tokens: parsed.usageMetadata.candidatesTokenCount,
-                                total_tokens: parsed.usageMetadata.totalTokenCount
-                            };
-                        }
-                    } catch (e) { }
-                }
-            }
+            streamHandler.processChunk(chunkStr);
         } else {
-            // Non-streaming: accumulate safely up to 5MB, enough for massive contexts
+            // Non-streaming: accumulate safely up to 5MB
             if (fullBufferForJson.length < 5 * 1024 * 1024) {
                 fullBufferForJson += chunkStr;
             }
@@ -146,6 +105,7 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
 
         try {
             let usage = null;
+            const extractedUsage = streamHandler.getUsage();
 
             if (requestInfo.isStreaming && extractedUsage) {
                 let p = extractedUsage.prompt_tokens || 0;
@@ -191,7 +151,7 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 is_streaming: requestInfo.isStreaming ? 1 : 0,
                 has_tools: requestInfo.hasTools ? 1 : 0,
                 pricing_unknown: usage?.pricing_unknown ? 1 : 0,
-                tags: req.headers['x-tags'] as string || undefined,
+                tags: (req.headers['x-tags'] || req.headers['x-llm-observer-tags']) as string || undefined,
                 request_body: requestBodyStr,
                 response_body: dbResponseBody,
                 prompt_hash: promptHash || undefined,
