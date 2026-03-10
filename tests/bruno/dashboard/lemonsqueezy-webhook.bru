@@ -1,0 +1,35 @@
+meta {
+  name: LemonSqueezy Webhook (subscription_created)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{dashboard_url}}/api/webhooks/lemonsqueezy
+  body: json
+  auth: none
+}
+
+headers {
+  x-event-name: subscription_created
+}
+
+body:json {
+  {
+    "data": {
+      "id": "ls_sub_bruno_001",
+      "attributes": {
+        "customer_id": 42,
+        "user_email": "dev@example.com",
+        "total": 900,
+        "currency": "USD"
+      }
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.received: eq true
+  res.body.activated: eq true
+}

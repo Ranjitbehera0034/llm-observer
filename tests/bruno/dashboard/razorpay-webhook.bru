@@ -1,0 +1,33 @@
+meta {
+  name: Razorpay Webhook (subscription.activated)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{dashboard_url}}/api/webhooks/razorpay
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "event": "subscription.activated",
+    "payload": {
+      "subscription": {
+        "entity": {
+          "id": "sub_bruno_test_001",
+          "customer_id": "cust_test_ranjit",
+          "amount": 29900,
+          "currency": "INR"
+        }
+      }
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.received: eq true
+  res.body.activated: eq true
+}

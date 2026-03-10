@@ -1,0 +1,22 @@
+meta {
+  name: Activate License (PRO_ local)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{dashboard_url}}/api/license/activate
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "key": "PRO_TEST_KEY_FOR_DEV"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.success: eq true
+}
