@@ -99,3 +99,33 @@ export async function checkProjectLimit(): Promise<boolean> {
 
     return projectCount < info.limits.maxProjects;
 }
+
+/**
+ * Called by payment webhooks to instantly activate a Pro license locally.
+ * No external validation needed — the payment provider's webhook signature is the authority.
+ * Generates a deterministic PRO_ key from the subscription ID so it's replayable.
+ */
+export function activateLicenseFromPayment(opts: {
+    provider: 'lemonsqueezy' | 'razorpay';
+    subscriptionId: string;
+    customerId: string;
+    amountCents: number;
+    currency: string;
+    event: string; // e.g. 'subscription_created', 'payment.captured'
+}): { success: boolean; key: string } {
+    const key = `PRO_${opts.provider.toUpperCase()}_${opts.subscriptionId}`;
+
+    updateSetting('license_key', key);
+    updateSetting('license_provider', opts.provider);
+    updateSetting('license_subscription_id', opts.subscriptionId);
+    updateSetting('license_customer_id', opts.customerId);
+    updateSetting('license_amount_cents', String(opts.amountCents));
+    updateSetting('license_currency', opts.currency);
+    updateSetting('license_activated_at', new Date().toISOString());
+    updateSetting('license_last_event', opts.event);
+
+    cachedLicense = null; // Bust the in-memory cache
+
+    console.log(`[LICENSE] ✅ Activated via ${opts.provider} webhook. Key: ${key.substring(0, 20)}...`);
+    return { success: true, key };
+}
