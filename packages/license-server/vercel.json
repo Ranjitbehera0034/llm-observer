@@ -1,0 +1,27 @@
+{
+    "version": 2,
+    "name": "llm-observer-license-server",
+    "functions": {
+        "api/**/*.ts": {
+            "runtime": "nodejs22.x"
+        }
+    },
+    "routes": [
+        {
+            "src": "/health",
+            "dest": "/api/health.ts"
+        },
+        {
+            "src": "/webhook/lemonsqueezy",
+            "dest": "/api/webhook/lemonsqueezy.ts"
+        },
+        {
+            "src": "/webhook/razorpay",
+            "dest": "/api/webhook/razorpay.ts"
+        },
+        {
+            "src": "/license/validate",
+            "dest": "/api/license/validate.ts"
+        }
+    ]
+}
