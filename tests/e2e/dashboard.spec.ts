@@ -49,7 +49,7 @@ test.describe('Settings Page', () => {
         const licenseTab = page.getByRole('button', { name: /license/i });
         if (await licenseTab.isVisible()) {
             await licenseTab.click();
-            await expect(page.getByText(/Hobbyist|Pro/i)).toBeVisible({ timeout: 5000 });
+            await expect(page.getByRole('heading', { name: /Hobbyist|Pro/i }).first()).toBeVisible({ timeout: 5000 });
         }
     });
 
@@ -74,7 +74,7 @@ test.describe('Settings Page', () => {
         if (await licenseTab.isVisible()) {
             await licenseTab.click();
 
-            const keyInput = page.locator('input[placeholder="sk_live_..."]');
+            const keyInput = page.locator('input[placeholder="sk_live_..."]').first();
             if (await keyInput.isVisible()) {
                 await keyInput.fill('PRO_TEST_KEY_123');
                 await expect(keyInput).toHaveValue('PRO_TEST_KEY_123');

@@ -5,11 +5,11 @@ export function startAnomalyDetection(intervalMs: number = 60 * 60 * 1000) {
     console.log(chalk.gray('Starting background anomaly detector...'));
 
     // Run immediately then on interval
-    checkAnomalies();
-    setInterval(checkAnomalies, intervalMs);
+    _detectAnomalies();
+    setInterval(_detectAnomalies, intervalMs);
 }
 
-async function checkAnomalies() {
+export async function _detectAnomalies() {
     try {
         const db = getDb();
 
