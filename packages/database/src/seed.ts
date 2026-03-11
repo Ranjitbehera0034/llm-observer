@@ -1,8 +1,6 @@
 import { getDb } from './db';
 import { syncPricingToDb, PricingRecord } from './repositories/pricing.repo';
 
-export interface PricingEntry extends PricingRecord { }
-
 /**
  * LLM Model Pricing Data
  * All prices in USD per 1 Million tokens

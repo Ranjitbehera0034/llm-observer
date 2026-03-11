@@ -77,51 +77,6 @@ export class GroqProvider implements IProvider {
         };
     }
 
-    parseStreamResponse(responseData: string, requestData: any): ProviderResponse {
-        let promptTokens = 0;
-        let completionTokens = 0;
-        let totalTokens = 0;
-
-        // Groq streams in OpenAI SSE format: usage appears on the final chunk
-        const lines = responseData.split('\n');
-        for (const line of lines) {
-            if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                const dataStr = line.replace('data: ', '').trim();
-                try {
-                    const parsed = JSON.parse(dataStr);
-                    // Usage is included in the last streamed chunk by Groq
-                    if (parsed.usage) {
-                        promptTokens = parsed.usage.prompt_tokens || 0;
-                        completionTokens = parsed.usage.completion_tokens || 0;
-                        totalTokens = parsed.usage.total_tokens || 0;
-                    }
-                    // Groq may also surface usage inside x_groq object
-                    if (parsed.x_groq?.usage) {
-                        promptTokens = parsed.x_groq.usage.prompt_tokens || promptTokens;
-                        completionTokens = parsed.x_groq.usage.completion_tokens || completionTokens;
-                        totalTokens = parsed.x_groq.usage.total_tokens || totalTokens;
-                    }
-                } catch (e) {
-                    // Ignore parse errors on partial chunks
-                }
-            }
-        }
-
-        const costResult = this.calculateCost(requestData.model, promptTokens, completionTokens);
-
-        return {
-            provider: 'groq',
-            model: requestData.model,
-            isStreaming: true,
-            promptTokens,
-            completionTokens,
-            totalTokens,
-            costUsd: costResult.costUsd,
-            pricing_unknown: costResult.unknown,
-            hasTools: requestData.hasTools,
-        };
-    }
-
     calculateCost(model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean } {
         return calculateSharedCost('groq', model, promptTokens, completionTokens);
     }

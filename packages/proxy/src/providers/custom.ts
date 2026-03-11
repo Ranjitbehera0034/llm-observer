@@ -60,39 +60,6 @@ export class CustomProvider implements IProvider {
         };
     }
 
-    parseStreamResponse(responseData: string, requestData: any): ProviderResponse {
-        // Custom providers usually follow OpenAI format
-        let promptTokens = 0;
-        let completionTokens = 0;
-
-        const lines = responseData.split('\n');
-        for (const line of lines) {
-            if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                try {
-                    const parsed = JSON.parse(line.substring(6));
-                    if (parsed.usage) {
-                        promptTokens = parsed.usage.prompt_tokens || promptTokens;
-                        completionTokens = parsed.usage.completion_tokens || completionTokens;
-                    }
-                } catch (e) { }
-            }
-        }
-
-        const costResult = this.calculateCost(requestData.model, promptTokens, completionTokens);
-
-        return {
-            provider: 'custom',
-            model: requestData.model,
-            isStreaming: true,
-            promptTokens,
-            completionTokens,
-            totalTokens: promptTokens + completionTokens,
-            costUsd: costResult.costUsd,
-            pricing_unknown: costResult.unknown,
-            hasTools: requestData.hasTools,
-        };
-    }
-
     calculateCost(model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean } {
         // For custom/local, cost is usually 0, but we check if we have pricing for it anyway
         return calculateSharedCost('custom', model, promptTokens, completionTokens);

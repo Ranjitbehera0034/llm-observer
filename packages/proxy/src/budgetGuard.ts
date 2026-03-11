@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { getDb, validateApiKey } from '@llm-observer/database';
 import { randomUUID } from 'crypto';
+import './types';
 
 interface ProjectCache {
   id: string;
@@ -69,8 +70,8 @@ export const budgetGuard = (req: Request, res: Response, next: NextFunction) => 
     cache.set(cacheKey, project);
   }
 
-  (req as any).projectId = project.id;
-  (req as any).cacheKey = cacheKey;
+  req.projectId = project.id;
+  req.cacheKey = cacheKey;
 
   if (project.daily_budget != null && project.kill_switch) {
     if (project.spent_today >= project.daily_budget) {

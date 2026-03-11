@@ -25,10 +25,6 @@ export interface IProvider {
     /** Parse the outgoing response from provider to get tokens, usage */
     parseResponse(responseBody: any, requestData: any): ProviderResponse;
 
-    /** Parse the fully accumulated stream text from provider to get tokens, usage */
-    parseStreamResponse(responseData: string, requestData: any): ProviderResponse;
-
-
     /** Specifically calculate cost for a given token usage and model */
     calculateCost(model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean };
 }

@@ -13,6 +13,7 @@ import { startRetentionCleanup } from './retentionManager';
 import { startCostOptimizer } from './costOptimizer';
 import { startStatsAggregation } from './utils/statsAggregator';
 import { syncManager } from './syncManager';
+import './types';
 
 const app = express();
 
@@ -81,7 +82,7 @@ app.all('/v1/custom/:targetBaseUrl/*', (req, res) => {
         req.url = req.url.replace(`/v1/custom/${encodedUrl}`, '');
 
         // Pass the target URL through req object
-        (req as any).customTargetUrl = decodedUrl;
+        req.customTargetUrl = decodedUrl;
         handleProxyRequest(req, res, 'custom');
     } catch (e) {
         res.status(400).json({ error: 'Invalid targetBaseUrl encoding' });
@@ -138,8 +139,8 @@ async function bootstrap() {
         }
 
         // 4. Start accepting Proxy Traffic
-        app.listen(PORT, () => {
-            console.log(`🚀 LLM Observer Proxy running on http://localhost:${PORT}`);
+        app.listen(Number(PORT), '127.0.0.1', () => {
+            console.log(`🚀 LLM Observer Proxy running on http://127.0.0.1:${PORT}`);
         });
 
         // 5. Start background tasks
