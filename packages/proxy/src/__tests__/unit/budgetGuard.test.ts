@@ -1,6 +1,6 @@
 import { budgetGuard, incrementSpendCache } from '../../budgetGuard';
 import { getDb, getSetting } from '@llm-observer/database';
-import type { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 
 jest.mock('@llm-observer/database', () => ({
     getDb: jest.fn(),
@@ -17,11 +17,7 @@ describe('budgetGuard Unit Tests', () => {
     beforeEach(() => {
         req = {
             headers: { authorization: 'Bearer test-key' },
-            llmObserver: {
-                projectId: 'test-project',
-                apiKey: { id: 'key' },
-                isPricingUnknown: false
-            }
+            path: '/v1/chat/completions'
         } as any;
         res = {
             status: jest.fn().mockReturnThis(),
@@ -35,47 +31,48 @@ describe('budgetGuard Unit Tests', () => {
             run: jest.fn()
         };
         (getDb as jest.Mock).mockReturnValue(mockDb);
-        (getSetting as jest.Mock).mockReturnValue('0'); // Disabled auto-block by default
+        // Reset the internal cache between tests
+        require('../../budgetGuard')._getCacheForTest().clear();
     });
 
     afterEach(() => {
         jest.clearAllMocks();
     });
 
-    it('should bypass check if project is missing', async () => {
-        req.llmObserver!.projectId = undefined;
-        // mock validateApiKey locally so it doesn't fail if it's hit
+    it('should allow if project is missing from DB (default fallback)', () => {
+        req.headers = {}; // No auth header -> 'default' cacheKey
+        mockDb.get.mockReturnValue(undefined); // No default project
+
+        budgetGuard(req as Request, res as Response, next);
+        expect(next).toHaveBeenCalled();
+    });
+
+    it('should block with 401 if API key is invalid', () => {
         const { validateApiKey } = require('@llm-observer/database');
-        (validateApiKey as jest.Mock).mockReturnValue({ project_id: 'test' });
+        (validateApiKey as jest.Mock).mockReturnValue(null);
         
-        await new Promise<void>(resolve => {
-            next = jest.fn(() => resolve());
-            budgetGuard(req as Request, res as Response, next);
-        });
-        expect(next).toHaveBeenCalled();
+        budgetGuard(req as Request, res as Response, next);
+        
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith({ error: 'Invalid API Key' });
+        expect(next).not.toHaveBeenCalled();
     });
 
-    it('should bypass if model pricing is unknown (streaming/non-calculated)', async () => {
-        req.llmObserver!.isPricingUnknown = true;
-        
-        await new Promise<void>(resolve => {
-            next = jest.fn(() => resolve());
-            budgetGuard(req as Request, res as Response, next);
-        });
-        
-        expect(next).toHaveBeenCalled();
-    });
-
-    it('should block if spend equals budget and hard block is enabled', async () => {
-        (getSetting as jest.Mock).mockReturnValue('1'); // Enable hard blocking
-        mockDb.get.mockReturnValue({
-            daily_budget: 10.0,
-            spend_today: 10.0
-        });
+    it('should block if spend equals budget and kill_switch is true', () => {
         const { validateApiKey } = require('@llm-observer/database');
         (validateApiKey as jest.Mock).mockReturnValue({ project_id: 'test-project' });
+        
+        // Mock DB Project Details lookup
+        mockDb.get.mockReturnValueOnce({
+            id: 'test-project',
+            daily_budget: 10.0,
+            kill_switch: 1
+        });
+        
+        // Mock DB Spend lookup
+        mockDb.get.mockReturnValueOnce({ total: 10.0 });
 
-        await budgetGuard(req as Request, res as Response, next);
+        budgetGuard(req as Request, res as Response, next);
         
         expect(res.status).toHaveBeenCalledWith(429);
         expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -84,31 +81,35 @@ describe('budgetGuard Unit Tests', () => {
         expect(next).not.toHaveBeenCalled();
     });
 
-    it('should NOT block if spend equals budget but hard block is disabled', async () => {
-        (getSetting as jest.Mock).mockReturnValue('0'); // Disable hard blocking
-        mockDb.get.mockReturnValue({
-            daily_budget: 10.0,
-            spend_today: 10.0
-        });
+    it('should NOT block if spend equals budget but kill_switch is false', () => {
         const { validateApiKey } = require('@llm-observer/database');
         (validateApiKey as jest.Mock).mockReturnValue({ project_id: 'test-project' });
+        
+        mockDb.get.mockReturnValueOnce({
+            id: 'test-project',
+            daily_budget: 10.0,
+            kill_switch: 0 // kill switch off
+        });
+        mockDb.get.mockReturnValueOnce({ total: 10.0 });
 
-        await budgetGuard(req as Request, res as Response, next);
+        budgetGuard(req as Request, res as Response, next);
         
         expect(next).toHaveBeenCalled();
         expect(res.status).not.toHaveBeenCalled();
     });
 
-    it('should allow if spend is under budget', async () => {
-        (getSetting as jest.Mock).mockReturnValue('1');
-        mockDb.get.mockReturnValue({
-            daily_budget: 10.0,
-            spend_today: 5.0
-        });
+    it('should allow if spend is under budget', () => {
         const { validateApiKey } = require('@llm-observer/database');
         (validateApiKey as jest.Mock).mockReturnValue({ project_id: 'test-project' });
+        
+        mockDb.get.mockReturnValueOnce({
+            id: 'test-project',
+            daily_budget: 10.0,
+            kill_switch: 1
+        });
+        mockDb.get.mockReturnValueOnce({ total: 5.0 });
 
-        await budgetGuard(req as Request, res as Response, next);
+        budgetGuard(req as Request, res as Response, next);
         
         expect(next).toHaveBeenCalled();
     });
