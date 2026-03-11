@@ -22,6 +22,7 @@ export interface RequestRecord {
   pricing_unknown?: boolean;
   tags?: string;
   prompt_hash?: string;
+  metadata?: string;
   created_at?: string;
 }
 
@@ -33,9 +34,9 @@ export const insertRequest = (req: Omit<RequestRecord, 'id'>): string => {
       id, project_id, provider, model, endpoint, prompt_tokens, 
       completion_tokens, total_tokens, cost_usd, latency_ms, status_code, 
       status, is_streaming, has_tools, error_message, request_body, 
-      response_body, pricing_unknown, tags, prompt_hash
+      response_body, pricing_unknown, tags, prompt_hash, metadata
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     )
   `);
 
@@ -45,7 +46,8 @@ export const insertRequest = (req: Omit<RequestRecord, 'id'>): string => {
     req.cost_usd, req.latency_ms || null, req.status_code || null,
     req.status || 'success', req.is_streaming ? 1 : 0, req.has_tools ? 1 : 0,
     req.error_message || null, req.request_body || null, req.response_body || null,
-    req.pricing_unknown ? 1 : 0, req.tags || null, req.prompt_hash || null
+    req.pricing_unknown ? 1 : 0, req.tags || null, req.prompt_hash || null,
+    req.metadata || "{}"
   );
 
   return id;
@@ -59,9 +61,9 @@ export const bulkInsertRequests = (requests: Omit<RequestRecord, 'id'>[]) => {
       id, project_id, provider, model, endpoint, prompt_tokens, 
       completion_tokens, total_tokens, cost_usd, latency_ms, status_code, 
       status, is_streaming, has_tools, error_message, request_body, 
-      response_body, pricing_unknown, tags, prompt_hash, created_at
+      response_body, pricing_unknown, tags, prompt_hash, created_at, metadata
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     )
   `);
 
@@ -75,7 +77,8 @@ export const bulkInsertRequests = (requests: Omit<RequestRecord, 'id'>[]) => {
         req.status || 'success', req.is_streaming ? 1 : 0, req.has_tools ? 1 : 0,
         req.error_message || null, req.request_body || null, req.response_body || null,
         req.pricing_unknown ? 1 : 0, req.tags || null, req.prompt_hash || null,
-        req.created_at || new Date().toISOString()
+        req.created_at || new Date().toISOString(),
+        req.metadata || "{}"
       );
     }
   });
@@ -89,7 +92,7 @@ export const getRequests = (filters: any = {}) => {
     SELECT id, project_id, provider, model, endpoint, prompt_tokens, 
            completion_tokens, total_tokens, cost_usd, latency_ms, status_code, 
            status, is_streaming, has_tools, error_message, pricing_unknown, 
-           tags, created_at
+           tags, created_at, metadata
     FROM requests
     WHERE 1=1
   `;

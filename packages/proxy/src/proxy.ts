@@ -134,6 +134,15 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 promptHash = crypto.createHash('sha256').update(JSON.stringify(hashPayload)).digest('hex');
             }
 
+            const metadataHeader = req.headers['x-llm-observer-metadata'] as string;
+            let metadata = "{}";
+            if (metadataHeader) {
+                try {
+                    JSON.parse(metadataHeader); // validate JSON
+                    metadata = metadataHeader;
+                } catch { }
+            }
+
             const reqRecord = {
                 project_id: projectId,
                 provider: providerName,
@@ -153,6 +162,7 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 request_body: requestBodyStr,
                 response_body: dbResponseBody,
                 prompt_hash: promptHash || undefined,
+                metadata,
                 created_at: new Date().toISOString()
             };
 
@@ -171,7 +181,8 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
                 has_tools: !!reqRecord.has_tools,
                 pricing_unknown: !!reqRecord.pricing_unknown,
                 tags: reqRecord.tags || undefined,
-                prompt_hash: reqRecord.prompt_hash || undefined
+                prompt_hash: reqRecord.prompt_hash || undefined,
+                metadata: reqRecord.metadata
             })
                 .catch((err: any) => console.error('Failed to enqueue request log:', err));
 

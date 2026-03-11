@@ -86,6 +86,9 @@ export const initDb = (dbPath?: string): Database.Database => {
 
         applyMigration(6, 'Add synced_at to daily_stats',
             'ALTER TABLE daily_stats ADD COLUMN synced_at DATETIME;');
+
+        applyMigration(7, 'Add metadata to requests',
+            'ALTER TABLE requests ADD COLUMN metadata TEXT DEFAULT "{}";');
     } catch (err) {
         console.error('Migration checks failed:', err);
     }

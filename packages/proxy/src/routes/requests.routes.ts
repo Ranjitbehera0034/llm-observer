@@ -33,7 +33,7 @@ requestsRouter.get('/', (req, res) => {
                    COALESCE(completion_tokens, 0) as completion_tokens, 
                    COALESCE(total_tokens, 0) as total_tokens,
                    COALESCE(cost_usd, 0) as cost_usd, 
-                   latency_ms, status_code, status, is_streaming, created_at
+                   latency_ms, status_code, status, is_streaming, created_at, metadata
             FROM requests
             WHERE project_id = ?
         `;
@@ -126,14 +126,17 @@ requestsRouter.get('/events', (req, res) => {
         res.write(':\n\n');
     }, 30000);
 
-    req.on('close', () => {
+    const cleanup = () => {
         clearInterval(keepAliveTimer);
         requestEventEmitter.off('new_request', onNewRequest);
-    });
-    req.on('error', () => {
-        clearInterval(keepAliveTimer);
-        requestEventEmitter.off('new_request', onNewRequest);
-    });
+    };
+
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+    req.on('end', cleanup);
+    res.on('finish', cleanup);
+    res.on('close', cleanup);
+    res.on('error', cleanup);
 });
 
 // POST /api/teams/:id/sync
