@@ -81,29 +81,6 @@ requestsRouter.get('/', (req, res) => {
     }
 });
 
-// GET /api/requests/:id
-requestsRouter.get('/:id', (req, res) => {
-    try {
-        const db = getDb();
-        const stmt = db.prepare(`
-            SELECT *, 
-                   COALESCE(prompt_tokens, 0) as prompt_tokens, 
-                   COALESCE(completion_tokens, 0) as completion_tokens, 
-                   COALESCE(total_tokens, 0) as total_tokens,
-                   COALESCE(cost_usd, 0) as cost_usd 
-            FROM requests WHERE id = ?
-        `);
-        const data = stmt.get(req.params.id);
-
-        if (!data) {
-            return res.status(404).json({ error: 'Request not found' });
-        }
-        res.json({ data });
-    } catch (err) {
-        res.status(500).json({ error: 'Internal Server Error' });
-    }
-});
-
 // GET /api/events — SSE real-time stream
 requestsRouter.get('/events', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -138,6 +115,31 @@ requestsRouter.get('/events', (req, res) => {
     res.on('close', cleanup);
     res.on('error', cleanup);
 });
+
+// GET /api/requests/:id
+requestsRouter.get('/:id', (req, res) => {
+    try {
+        const db = getDb();
+        const stmt = db.prepare(`
+            SELECT *, 
+                   COALESCE(prompt_tokens, 0) as prompt_tokens, 
+                   COALESCE(completion_tokens, 0) as completion_tokens, 
+                   COALESCE(total_tokens, 0) as total_tokens,
+                   COALESCE(cost_usd, 0) as cost_usd 
+            FROM requests WHERE id = ?
+        `);
+        const data = stmt.get(req.params.id);
+
+        if (!data) {
+            return res.status(404).json({ error: 'Request not found' });
+        }
+        res.json({ data });
+    } catch (err) {
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// moved to top
 
 // POST /api/teams/:id/sync
 requestsRouter.post('/:id/sync', express.json({ limit: '10mb' }), (req, res) => {

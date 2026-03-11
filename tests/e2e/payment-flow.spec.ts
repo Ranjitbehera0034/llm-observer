@@ -9,6 +9,11 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Geo-based Payment Flow', () => {
     test('shows Razorpay UPI when country is India (IN)', async ({ page }) => {
+        // Intercept license API to ensure we see the pricing UI (isPro = false)
+        await page.route('**/api/license/status', async route => {
+            await route.fulfill({ json: { data: { isPro: false, limits: { maxProjects: 1 } } } });
+        });
+
         // Intercept the ipapi.co geolocation call and return India
         await page.route('https://ipapi.co/json/', (route) => {
             route.fulfill({
@@ -26,11 +31,15 @@ test.describe('Geo-based Payment Flow', () => {
             await licenseTab.click();
 
             // India pricing badge should appear
-            await expect(page.getByText(/Local Pricing Available|₹/i)).toBeVisible({ timeout: 6000 });
+            await expect(page.getByText(/Local Pricing Available|₹/i).first()).toBeVisible({ timeout: 6000 });
         }
     });
 
     test('shows Lemon Squeezy when country is US (Global)', async ({ page }) => {
+        await page.route('**/api/license/status', async route => {
+            await route.fulfill({ json: { data: { isPro: false, limits: { maxProjects: 1 } } } });
+        });
+
         // Intercept and return United States
         await page.route('https://ipapi.co/json/', (route) => {
             route.fulfill({
@@ -47,11 +56,15 @@ test.describe('Geo-based Payment Flow', () => {
             await licenseTab.click();
 
             // Global pricing badge should appear
-            await expect(page.getByText(/Global Coverage|\$9|\$79/i)).toBeVisible({ timeout: 6000 });
+            await expect(page.getByText(/Global Coverage|\$9|\$79/i).first()).toBeVisible({ timeout: 6000 });
         }
     });
 
     test('shows yearly prices when yearly toggle is selected (India)', async ({ page }) => {
+        await page.route('**/api/license/status', async route => {
+            await route.fulfill({ json: { data: { isPro: false, limits: { maxProjects: 1 } } } });
+        });
+
         await page.route('https://ipapi.co/json/', (route) => {
             route.fulfill({
                 status: 200,
