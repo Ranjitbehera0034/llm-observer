@@ -13,7 +13,9 @@ module.exports = {
         '/node_modules/',
         '<rootDir>/src/__tests__/helpers/',
     ],
-    // Exclude ts files that are not test suites
     modulePathIgnorePatterns: [],
+    transform: {
+        '^.+\\.tsx?$': ['ts-jest', { isolatedModules: true }]
+    }
 };
 
