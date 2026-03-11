@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { getDb } from '@llm-observer/database';
+import './types';
 
 interface TokenBucket {
     tokens: number;
@@ -56,7 +57,7 @@ setTimeout(() => {
 
 export const rateLimitGuard = (req: Request, res: Response, next: NextFunction) => {
     // Rely on project_id resolved by budgetGuard which runs right before this
-    const key = (req as any).projectId || req.ip || 'anonymous';
+    const key = req.projectId || req.ip || 'anonymous';
 
     const now = Date.now();
     let bucket = buckets[key];

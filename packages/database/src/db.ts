@@ -39,47 +39,53 @@ export const initDb = (dbPath?: string): Database.Database => {
     const alertsSchemaSql = fs.readFileSync(alertsSchemaPath, 'utf-8');
     db.exec(alertsSchemaSql);
 
-    // Database upgrade migrations (dynamic ALTER)
+    // --- Versioned migration system ---
+    // Track applied migrations in a _schema_version table to avoid re-running
+    db.exec(`CREATE TABLE IF NOT EXISTS _schema_version (
+        version INTEGER PRIMARY KEY,
+        description TEXT NOT NULL,
+        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );`);
+
+    const getSchemaVersion = (): number => {
+        const row = db!.prepare('SELECT MAX(version) as v FROM _schema_version').get() as any;
+        return row?.v || 0;
+    };
+
+    const applyMigration = (version: number, description: string, sql: string) => {
+        if (getSchemaVersion() >= version) return; // Already applied
+        try {
+            db!.exec(sql);
+            db!.prepare('INSERT INTO _schema_version (version, description) VALUES (?, ?)').run(version, description);
+            console.log(`Migration ${version} applied: ${description}`);
+        } catch (err: any) {
+            // Handle "duplicate column" gracefully for idempotency
+            if (err?.message?.includes('duplicate column')) {
+                db!.prepare('INSERT OR IGNORE INTO _schema_version (version, description) VALUES (?, ?)').run(version, description);
+            } else {
+                throw err;
+            }
+        }
+    };
+
     try {
-        // Migration 1: Add pricing_unknown to requests
-        const requestsColumns = db.prepare("PRAGMA table_info(requests)").all() as any[];
-        if (!requestsColumns.some(col => col.name === 'pricing_unknown')) {
-            db.exec('ALTER TABLE requests ADD COLUMN pricing_unknown BOOLEAN DEFAULT 0;');
-            console.log('Migrated requests table: added pricing_unknown column');
-        }
+        applyMigration(1, 'Add pricing_unknown to requests',
+            'ALTER TABLE requests ADD COLUMN pricing_unknown BOOLEAN DEFAULT 0;');
 
-        // Migration 2: Add is_custom to model_pricing
-        const pricingColumns = db.prepare("PRAGMA table_info(model_pricing)").all() as any[];
-        if (!pricingColumns.some(col => col.name === 'is_custom')) {
-            db.exec('ALTER TABLE model_pricing ADD COLUMN is_custom BOOLEAN DEFAULT 0;');
-            console.log('Migrated model_pricing table: added is_custom column');
-        }
+        applyMigration(2, 'Add is_custom to model_pricing',
+            'ALTER TABLE model_pricing ADD COLUMN is_custom BOOLEAN DEFAULT 0;');
 
-        // Migration 3: Add organization_id to projects
-        const projectColumns = db.prepare("PRAGMA table_info(projects)").all() as any[];
-        if (!projectColumns.some(col => col.name === 'organization_id')) {
-            db.exec('ALTER TABLE projects ADD COLUMN organization_id TEXT REFERENCES organizations(id);');
-            console.log('Migrated projects table: added organization_id column');
-        }
+        applyMigration(3, 'Add organization_id to projects',
+            'ALTER TABLE projects ADD COLUMN organization_id TEXT REFERENCES organizations(id);');
 
-        // Migration 4: Add prompt_hash to requests
-        const requestsColumnsPostAdd = db.prepare("PRAGMA table_info(requests)").all() as any[];
-        if (!requestsColumnsPostAdd.some(col => col.name === 'prompt_hash')) {
-            db.exec('ALTER TABLE requests ADD COLUMN prompt_hash TEXT;');
-            console.log('Migrated requests table: added prompt_hash column');
-        }
+        applyMigration(4, 'Add prompt_hash to requests',
+            'ALTER TABLE requests ADD COLUMN prompt_hash TEXT;');
 
-        // Migration 5: Add saved_filters to projects
-        if (!projectColumns.some(col => col.name === 'saved_filters')) {
-            db.exec('ALTER TABLE projects ADD COLUMN saved_filters TEXT DEFAULT "[]";');
-            console.log('Migrated projects table: added saved_filters column');
-        }
-        // Migration 6: Add synced_at to daily_stats
-        const statsColumns = db.prepare("PRAGMA table_info(daily_stats)").all() as any[];
-        if (!statsColumns.some(col => col.name === 'synced_at')) {
-            db.exec('ALTER TABLE daily_stats ADD COLUMN synced_at DATETIME;');
-            console.log('Migrated daily_stats table: added synced_at column');
-        }
+        applyMigration(5, 'Add saved_filters to projects',
+            'ALTER TABLE projects ADD COLUMN saved_filters TEXT DEFAULT "[]";');
+
+        applyMigration(6, 'Add synced_at to daily_stats',
+            'ALTER TABLE daily_stats ADD COLUMN synced_at DATETIME;');
     } catch (err) {
         console.error('Migration checks failed:', err);
     }

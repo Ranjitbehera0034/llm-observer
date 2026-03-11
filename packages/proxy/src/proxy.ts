@@ -4,6 +4,7 @@ import { Readable } from 'stream';
 import { IProvider } from './providers/base';
 import { OpenAIProvider } from './providers/openai';
 import { AnthropicProvider } from './providers/anthropic';
+import { GoogleProvider } from './providers/google';
 import { MistralProvider } from './providers/mistral';
 import { GroqProvider } from './providers/groq';
 import { CustomProvider } from './providers/custom';
@@ -13,16 +14,13 @@ import { requestEventEmitter } from './dashboardApi';
 import { internalLogger } from './internalLogger';
 import crypto from 'crypto';
 import { StreamHandler } from './utils/streamHandler';
-
-// Simple in-memory tracker for requests (project_id -> timestamps[])
-const requestWindow: Record<string, number[]> = {};
+import './types';
 
 export const proxy = httpProxy.createProxyServer({
     changeOrigin: true,
     // We will handle errors ourselves
 });
 
-import { GoogleProvider } from './providers/google';
 
 const providers: Record<string, IProvider> = {
     openai: new OpenAIProvider(),
@@ -39,11 +37,11 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
         return res.status(400).json({ error: `Unsupported provider: ${providerName}` });
     }
 
-    const targetUrl = (req as any).customTargetUrl || provider.getBaseUrl();
+    const targetUrl = req.customTargetUrl || provider.getBaseUrl();
     const authHeaders = provider.getAuthHeader(req);
 
-    const projectId = (req as any).projectId || 'default';
-    const cacheKey = (req as any).cacheKey || 'default';
+    const projectId = req.projectId || 'default';
+    const cacheKey = req.cacheKey || 'default';
 
     // Inject stream_options for OpenAI-compatible providers to get usage metrics in stream
     if ((providerName === 'openai' || providerName === 'groq') && req.body?.stream) {
@@ -160,7 +158,7 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
 
             // ✅ FIX BUG-02: Immediately update in-memory spend cache so burst requests are blocked
             if (usage?.costUsd && usage.costUsd > 0) {
-                incrementSpendCache((req as any).cacheKey || 'default', usage.costUsd);
+                incrementSpendCache(req.cacheKey || 'default', usage.costUsd);
             }
 
             // ✅ Emit SSE Event (real-time dashboard)
@@ -180,16 +178,6 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
             // Log output securely
             console.log(chalk.green(`✓ [${providerName}] ${requestInfo.model} | ${usage?.totalTokens || 0} tokens | ${latency}ms | $${(usage?.costUsd || 0).toFixed(6)}`));
 
-            const now = Date.now();
-            const windowStart = now - 60000;
-
-            if (!requestWindow[projectId]) requestWindow[projectId] = [];
-            requestWindow[projectId] = requestWindow[projectId].filter(t => t > windowStart);
-            requestWindow[projectId].push(now);
-
-            if (requestWindow[projectId].length > 10) {
-                console.log(chalk.yellow(`\n[ANOMALY DETECTED] High volume of requests (${requestWindow[projectId].length}/min) for project '${projectId}'!`));
-            }
 
         } catch (err) {
             console.error('Error logging request:', err);

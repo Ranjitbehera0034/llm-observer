@@ -65,44 +65,6 @@ export class OpenAIProvider implements IProvider {
         };
     }
 
-    parseStreamResponse(responseData: string, requestData: any): ProviderResponse {
-        let promptTokens = 0;
-        let completionTokens = 0;
-        let totalTokens = 0;
-
-        // Split by lines and look for "data: " lines
-        const lines = responseData.split('\n');
-        for (const line of lines) {
-            if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                const dataStr = line.replace('data: ', '').trim();
-                try {
-                    const parsed = JSON.parse(dataStr);
-                    if (parsed.usage) {
-                        promptTokens = parsed.usage.prompt_tokens || 0;
-                        completionTokens = parsed.usage.completion_tokens || 0;
-                        totalTokens = parsed.usage.total_tokens || 0;
-                    }
-                } catch (e) {
-                    // Ignore parse errors on partial chunks
-                }
-            }
-        }
-
-        const costResult = this.calculateCost(requestData.model, promptTokens, completionTokens);
-
-        return {
-            provider: 'openai',
-            model: requestData.model,
-            isStreaming: true,
-            promptTokens,
-            completionTokens,
-            totalTokens,
-            costUsd: costResult.costUsd,
-            pricing_unknown: costResult.unknown,
-            hasTools: requestData.hasTools,
-        };
-    }
-
 
     calculateCost(model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean } {
         return calculateSharedCost('openai', model, promptTokens, completionTokens);

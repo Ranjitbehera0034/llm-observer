@@ -1,6 +1,40 @@
 import { getDb, getSetting, updateSetting } from '@llm-observer/database';
-import { createHash } from 'crypto';
+import { createHash, createHmac } from 'crypto';
 import os from 'os';
+
+/**
+ * Generates a machine-specific HMAC key for signing locally stored license keys.
+ * Uses machine fingerprint as the HMAC secret so a key copied to another machine
+ * won't pass integrity checks.
+ */
+function getLicenseHmacSecret(): string {
+    return getMachineId();
+}
+
+/**
+ * Signs a license key with a machine-specific HMAC.
+ * The HMAC is stored alongside the key so we can detect tampering.
+ */
+function signLicenseKey(key: string): string {
+    return createHmac('sha256', getLicenseHmacSecret()).update(key).digest('hex');
+}
+
+/**
+ * Verifies that a stored license key has not been tampered with
+ * by comparing the stored HMAC against a freshly computed one.
+ */
+function verifyLicenseKeyIntegrity(key: string, storedHmac: string | null): boolean {
+    if (!storedHmac) return false;
+    const expected = signLicenseKey(key);
+    // Constant-time comparison
+    if (expected.length !== storedHmac.length) return false;
+    try {
+        const { timingSafeEqual } = require('crypto');
+        return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(storedHmac, 'hex'));
+    } catch {
+        return false;
+    }
+}
 
 export interface LicenseInfo {
     isPro: boolean;
@@ -63,6 +97,17 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
         licenseKey.startsWith('sk_live_')
     );
 
+    // Verify the stored key hasn't been tampered with (e.g. via direct DB edit)
+    if (isPro) {
+        const storedHmac = getSetting('license_key_hmac');
+        if (!verifyLicenseKeyIntegrity(licenseKey, storedHmac)) {
+            console.warn('[LICENSE] License key integrity check failed — key may have been tampered with. Treating as free tier.');
+            cachedLicense = { isPro: false, licenseKey: undefined, status: 'free', limits: FREE_LIMITS };
+            lastCheckTime = now;
+            return cachedLicense;
+        }
+    }
+
     cachedLicense = {
         isPro,
         licenseKey: licenseKey || undefined,
@@ -85,6 +130,7 @@ export async function activateLicense(key: string): Promise<{ success: boolean; 
         // PRO_ prefix is for local dev/testing — no seat enforcement
         if (key.startsWith('PRO_')) {
             updateSetting('license_key', key);
+            updateSetting('license_key_hmac', signLicenseKey(key));
             updateSetting('license_status', 'active');
             cachedLicense = null;
             return { success: true, message: 'License activated successfully! (Dev Mode)' };
@@ -99,13 +145,15 @@ export async function activateLicense(key: string): Promise<{ success: boolean; 
         const response = await fetch(VALIDATOR_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ license_key: key, machine_id: machineId, key_hash: keyHash })
+            // Only send the hash and machine ID — never the raw key over the wire
+            body: JSON.stringify({ machine_id: machineId, key_hash: keyHash })
         });
 
         const data = await response.json() as any;
 
         if (response.ok && data.valid) {
             updateSetting('license_key', key);
+            updateSetting('license_key_hmac', signLicenseKey(key));
             updateSetting('license_status', 'active');
             updateSetting('license_machine_id', machineId);
             cachedLicense = null;
@@ -157,6 +205,7 @@ export function activateLicenseFromPayment(opts: {
     const key = `PRO_${opts.provider.toUpperCase()}_${opts.subscriptionId}`;
 
     updateSetting('license_key', key);
+    updateSetting('license_key_hmac', signLicenseKey(key));
     updateSetting('license_status', 'active');
     updateSetting('license_provider', opts.provider);
     updateSetting('license_subscription_id', opts.subscriptionId);
