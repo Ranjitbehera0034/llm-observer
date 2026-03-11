@@ -18,10 +18,10 @@ export const internalLogger = {
         evaluateAlertRules(requestData).catch(err => console.error('Alert evaluation failed:', err));
 
         if (queue.length >= BATCH_SIZE) {
-            await internalLogger.flush();
+            internalLogger.flush().catch(err => console.error('Immediate flush failed:', err));
         } else if (!timeout) {
             timeout = setTimeout(() => {
-                internalLogger.flush();
+                internalLogger.flush().catch(err => console.error('Delayed flush failed:', err));
             }, BATCH_TIMEOUT);
         }
     },
