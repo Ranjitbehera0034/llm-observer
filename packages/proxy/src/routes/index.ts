@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import express from 'express';
 import { getDb } from '@llm-observer/database';
 import { statsRouter } from './stats.routes';
 import { projectsRouter } from './projects.routes';
@@ -15,6 +16,9 @@ import { webhooksRouter } from './webhooks.routes';
 export function createDashboardRouter(): Router {
     const router = Router();
 
+    // Re-add global JSON parsing for dashboard routes
+    router.use(express.json());
+
     // Stats
     router.use('/stats', statsRouter);
 
@@ -24,27 +28,27 @@ export function createDashboardRouter(): Router {
     // Requests (list, detail)
     router.use('/requests', requestsRouter);
 
-    // SSE events (mounted at /events, not under /requests)
-    router.get('/events', (req, res, next) => {
-        // Delegate to the events handler in requestsRouter
-        req.url = '/events';
-        requestsRouter(req, res, next);
-    });
-
-    // Teams sync
-    router.use('/', requestsRouter);
-
     // Auth / API keys
     router.use('/auth', authRouter);
-
-    // Settings, alerts, alert rules
-    router.use('/', settingsRouter);
 
     // License
     router.use('/license', licenseRouter);
 
     // Payment webhooks
     router.use('/webhooks', webhooksRouter);
+
+    // Teams sync
+    router.use('/teams', requestsRouter);
+
+    // Settings, alerts, alert rules (mounted at root but after specific paths)
+    router.use('/', settingsRouter);
+
+    // SSE events (mounted at /events)
+    router.get('/events', (req, res, next) => {
+        // Delegate to the events handler in requestsRouter
+        req.url = '/events';
+        requestsRouter(req, res, next);
+    });
 
     // Pricing
     router.get('/pricing', (req, res) => {

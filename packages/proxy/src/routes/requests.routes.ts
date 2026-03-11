@@ -28,8 +28,12 @@ requestsRouter.get('/', (req, res) => {
         const offset = (page - 1) * limit;
 
         let query = `
-            SELECT id, provider, model, endpoint, prompt_tokens, completion_tokens, total_tokens,
-                   cost_usd, latency_ms, status_code, status, is_streaming, created_at
+            SELECT id, provider, model, endpoint, 
+                   COALESCE(prompt_tokens, 0) as prompt_tokens, 
+                   COALESCE(completion_tokens, 0) as completion_tokens, 
+                   COALESCE(total_tokens, 0) as total_tokens,
+                   COALESCE(cost_usd, 0) as cost_usd, 
+                   latency_ms, status_code, status, is_streaming, created_at
             FROM requests
             WHERE project_id = ?
         `;
@@ -81,7 +85,14 @@ requestsRouter.get('/', (req, res) => {
 requestsRouter.get('/:id', (req, res) => {
     try {
         const db = getDb();
-        const stmt = db.prepare('SELECT * FROM requests WHERE id = ?');
+        const stmt = db.prepare(`
+            SELECT *, 
+                   COALESCE(prompt_tokens, 0) as prompt_tokens, 
+                   COALESCE(completion_tokens, 0) as completion_tokens, 
+                   COALESCE(total_tokens, 0) as total_tokens,
+                   COALESCE(cost_usd, 0) as cost_usd 
+            FROM requests WHERE id = ?
+        `);
         const data = stmt.get(req.params.id);
 
         if (!data) {
@@ -126,7 +137,7 @@ requestsRouter.get('/events', (req, res) => {
 });
 
 // POST /api/teams/:id/sync
-requestsRouter.post('/teams/:id/sync', express.json({ limit: '10mb' }), (req, res) => {
+requestsRouter.post('/:id/sync', express.json({ limit: '10mb' }), (req, res) => {
     try {
         const teamId = req.params.id;
         const requests = req.body.requests;

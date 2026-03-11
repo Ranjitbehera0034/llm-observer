@@ -36,7 +36,7 @@ projectsRouter.get('/', (req, res) => {
             SELECT 
                 p.id,
                 p.name,
-                p.daily_budget,
+                COALESCE(p.daily_budget, 0) as daily_budget,
                 COALESCE(SUM(r.cost_usd), 0) as total_spend_today,
                 COUNT(r.id) as total_requests_today
             FROM projects p

@@ -11,10 +11,10 @@ statsRouter.get('/overview', (req, res) => {
 
         const statsStmt = db.prepare(`
             SELECT 
-                sum(cost_usd) as total_spend,
+                COALESCE(sum(cost_usd), 0) as total_spend,
                 count(*) as total_requests,
-                avg(latency_ms) as avg_latency,
-                sum(case when status_code >= 400 then 1 else 0 end) as error_count
+                COALESCE(avg(latency_ms), 0) as avg_latency,
+                COALESCE(sum(case when status_code >= 400 then 1 else 0 end), 0) as error_count
             FROM requests 
             WHERE project_id = ? AND date(created_at) = date('now')
         `);
@@ -24,7 +24,7 @@ statsRouter.get('/overview', (req, res) => {
         const project = (projectStmt.get(projectId) as any) || { daily_budget: 0 };
 
         const tokenStmt = db.prepare(`
-            SELECT sum(total_tokens) as tokens
+            SELECT COALESCE(sum(total_tokens), 0) as tokens
             FROM requests
             WHERE project_id = ? AND date(created_at) = date('now')
         `);
@@ -54,7 +54,7 @@ statsRouter.get('/chart', (req, res) => {
         const chartStmt = db.prepare(`
             SELECT 
                 date(created_at) as date,
-                sum(cost_usd) as cost,
+                COALESCE(sum(cost_usd), 0) as cost,
                 count(*) as requests
             FROM requests
             WHERE project_id = ? AND created_at >= date('now', '-' || ? || ' days')
@@ -78,8 +78,8 @@ statsRouter.get('/models', (req, res) => {
         const modelStmt = db.prepare(`
             SELECT 
                 model,
-                sum(cost_usd) as cost,
-                sum(total_tokens) as tokens,
+                COALESCE(sum(cost_usd), 0) as cost,
+                COALESCE(sum(total_tokens), 0) as tokens,
                 count(*) as requests
             FROM requests
             WHERE project_id = ?
@@ -102,8 +102,8 @@ statsRouter.get('/provider', (req, res) => {
         const stmt = db.prepare(`
             SELECT 
                 provider, 
-                sum(cost_usd) as cost, 
-                sum(total_tokens) as tokens, 
+                COALESCE(sum(cost_usd), 0) as cost, 
+                COALESCE(sum(total_tokens), 0) as tokens, 
                 count(*) as requests
             FROM requests 
             WHERE project_id = ?
