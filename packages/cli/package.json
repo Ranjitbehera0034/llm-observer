@@ -13,14 +13,28 @@
   "files": [
     "dist"
   ],
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "llm",
+    "proxy",
+    "ai",
+    "observability",
+    "cost-tracking"
+  ],
+  "author": "Ranjit Behera <ranjitbehera0034@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ranjitbehera0034/llm-observer.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
   "dependencies": {
     "chalk": "^4.1.2",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.3",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "better-sqlite3": "^11.5.0"
   },
   "devDependencies": {
     "@llm-observer/database": "*",
