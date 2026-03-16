@@ -32,12 +32,13 @@ export default function Requests() {
         fetch(`${API_BASE_URL}/api/requests?${params.toString()}`)
             .then(res => res.json())
             .then(resData => {
-                setRequests(resData.data);
+                setRequests(resData.data ?? []);
                 setTotalPages(resData.meta?.totalPages || 1);
                 setLoading(false);
             })
             .catch(err => {
                 console.error('Failed to fetch requests:', err);
+                setRequests([]);
                 setLoading(false);
             });
     }, [provider, status, modelSearch]);

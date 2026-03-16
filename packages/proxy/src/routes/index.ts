@@ -41,9 +41,9 @@ export function createDashboardRouter(): Router {
     router.use('/teams', requestsRouter);
 
     // Settings, alerts, alert rules (mounted at root but after specific paths)
-    router.use('/', settingsRouter);
+    router.use('/settings', settingsRouter);
 
-    // SSE events (mounted at /events)
+    // SSE events (mounted at /events)ß
     router.get('/events', (req, res, next) => {
         // Delegate to the events handler in requestsRouter
         req.url = '/events';
