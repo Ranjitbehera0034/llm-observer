@@ -5,6 +5,9 @@ export default defineConfig({
     format: ['cjs'],
     minify: true,
     clean: true,
+    banner: {
+        js: '#!/usr/bin/env node',
+    },
     noExternal: [
         '@llm-observer/database',
         '@llm-observer/proxy',
