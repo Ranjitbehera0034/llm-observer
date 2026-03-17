@@ -4,13 +4,24 @@
   "private": true,
   "description": "Privacy-first LLM cost tracking for developers",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "landing-page"
   ],
   "scripts": {
+    "dev:all": "concurrently \"npm run dev --workspace=@llm-observer/proxy\" \"npm run dev --workspace=@llm-observer/dashboard\"",
+    "start:all": "concurrently \"npm run start --workspace=@llm-observer/proxy\" \"npm run start --workspace=@llm-observer/dashboard\"",
     "dev": "npm run dev --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build --workspace=@llm-observer/database && npm run build --workspace=@llm-observer/dashboard && npm run build --workspace=@llm-observer/proxy && npm run build --workspace=@llm-observer/team-server && npm run build --workspace=llm-observer && npm run tauri build --workspace=desktop && npm run build --workspace=llm-observer-landing",
+    "build:ci": "npm run build --workspace=@llm-observer/database && npm run build --workspace=@llm-observer/dashboard && npm run build --workspace=@llm-observer/proxy && npm run build --workspace=llm-observer && npm run build --workspace=llm-observer-landing",
     "lint": "eslint . --ext .ts,.tsx",
     "test": "npm run test --workspaces --if-present",
+    "test:unit": "vitest run tests/integration",
+    "test:unit:watch": "vitest tests/integration",
+    "test:unit:coverage": "vitest run tests/integration --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:load:artillery": "artillery run tests/load/artillery-proxy.yml",
+    "test:load:k6": "k6 run tests/load/k6-proxy-load.js",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "clean": "rm -rf node_modules packages/*/dist packages/*/node_modules"
   },
@@ -26,5 +37,14 @@
   "homepage": "https://github.com/Ranjitbehera0034/llm-observer#readme",
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/supertest": "^7.2.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "concurrently": "^9.2.1",
+    "pkg": "^5.8.1",
+    "supertest": "^7.2.2",
+    "vitest": "^4.0.18"
   }
 }

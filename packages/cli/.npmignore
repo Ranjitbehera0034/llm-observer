@@ -1,0 +1,14 @@
+# Ignore everything by default
+*
+
+# Whitelist release and important files
+!dist/
+!package.json
+!README.md
+!LICENSE
+
+# Ensure NO source code is leaked
+src/
+tsconfig.json
+node_modules/
+tests/

@@ -1,0 +1,1393 @@
+
+LLM OBSERVER
+Privacy-First LLM Cost Tracking for Developers
+Complete Product Blueprint
+Architecture  •  Database Design  •  API Surface  •  CLI Design
+Tauri Migration Plan  •  Week-by-Week Build Plan
+
+Prepared for: Ranjit Behera
+Date: March 8, 2026
+Version: 2.0 — Individual + Team Edition
+
+Table of Contents
+
+1. Executive Summary
+2. Target Users — Individual & Team Personas
+3. Core Principle & Tech Stack
+4. System Architecture
+5. Database Schema — Local (SQLite)
+6. Database Schema — Team Cloud (MongoDB)
+7. API Surface — Proxy Endpoints
+8. API Surface — Dashboard Endpoints
+9. API Surface — Team Cloud Endpoints
+10. CLI Design & Commands
+11. Tauri Desktop Migration Plan
+12. Individual → Team Growth Pipeline
+13. Week-by-Week Build Plan
+14. Pricing & Monetization
+15. Go-to-Market Strategy
+16. Risk Assessment
+
+1. Executive Summary
+LLM Observer is a privacy-first, local-only developer tool that tracks AI API costs, usage, and performance across multiple LLM providers. It serves both individual developers and engineering teams — running entirely on each developer's machine while offering an optional encrypted team dashboard for company-wide visibility.
+The product addresses a massive and growing pain point: as developers and businesses use OpenAI, Claude, Gemini, and other LLMs simultaneously, tracking token usage, managing costs, and preventing runaway API bills becomes a nightmare. A single infinite loop bug can rack up thousands of dollars in API charges overnight.
+
+Key Differentiator
+Unlike cloud-based competitors (Helicone, Portkey, LangSmith) that require routing API traffic through their servers, LLM Observer runs a lightweight local proxy. This eliminates the trust barrier — developers never need to hand over their API keys or route sensitive prompt data through a third-party server. For teams, only anonymized aggregated cost data is synced to the cloud — never prompts, responses, or API keys.
+
+Dual-Audience Strategy
+Individual developers are the acquisition engine — they discover the tool, adopt it for free, and spread word-of-mouth. Teams are the revenue engine — they pay higher prices, are stickier, and have longer retention. The individual product IS the team product; each team member runs the same local tool, with the team layer adding shared visibility on top.
+
+Business Model
+Plan
+Price
+Audience
+Features
+Free
+$0/forever
+Individual
+1 project, 7-day logs, full proxy + dashboard
+Pro
+$19/month
+Individual
+Unlimited projects, 90-day logs, budget alerts, cost optimizer
+Team
+$49/seat/month
+Small team (2-20)
+Pro + team dashboard, aggregated view, team budgets, role-based access
+Enterprise
+Custom ($200+)
+Company (20-50+)
+Self-hosted team server, SSO/SAML, audit logs, SLA, priority support
+
+Revenue Projections
+Milestone
+Individual Users
+Team Users
+Monthly Revenue
+Month 3
+500 free + 20 Pro
+2 teams (6 seats)
+$674 (~₹56K)
+Month 6
+2,000 free + 100 Pro
+10 teams (40 seats)
+$3,860 (~₹3.2L)
+Month 12
+10,000 free + 500 Pro
+50 teams (200 seats)
+$19,300 (~₹16.2L)
+Month 18
+30,000 free + 1,500 Pro
+150 teams (600 seats)
+$58,100 (~₹48.8L)
+Infrastructure costs are near-zero (everything runs on user machines, team cloud is minimal). Margins are approximately 95-99%.
+
+2. Target Users — Individual & Team Personas
+
+Persona 1: Individual Developer (Indie Dev / Freelancer)
+Attribute
+Details
+Who
+Solo developer, freelancer, indie hacker building AI-powered apps
+Team size
+1 person
+LLM usage
+1-3 providers (typically OpenAI + one alternative)
+Monthly AI spend
+$50-500
+Primary pain
+No visibility into costs, surprise bills, no idea which model is cheapest for their use case
+What they need
+Personal cost tracker, budget alerts, kill switch to prevent surprise bills, simple setup
+Willingness to pay
+$0 (free tier) to $19/month (Pro) — value must be immediately obvious
+How they find you
+npm search, GitHub, HackerNews, Twitter/X, Reddit, dev blogs
+Conversion trigger
+First time the budget alert saves them from a $100+ mistake
+
+Persona 2: Engineering Team Lead / CTO
+Attribute
+Details
+Who
+Team lead, engineering manager, or CTO at a startup or agency
+Team size
+2-50 developers
+LLM usage
+Multiple providers across multiple projects, multiple team members making calls
+Monthly AI spend
+$500-10,000+
+Primary pain
+No team-wide visibility — who is spending what? Are we staying within budget? Which projects are most expensive?
+What they need
+Team dashboard, per-developer spend tracking, company-wide budget controls, accountability, cost allocation by project
+Willingness to pay
+$49/seat/month — justified by preventing even one runaway bill ($500+) per month
+How they find you
+One developer on their team already uses it individually and recommends it
+Conversion trigger
+Developer says 'This tool saved me from a $500 bug last week, we need it for the whole team'
+
+The Individual → Team Pipeline
+This is the core growth strategy. Individual adoption drives team conversion:
+	•	Individual developer discovers tool (free tier) via npm, GitHub, or HackerNews
+	•	Uses it for 2-3 weeks, falls in love with the budget alerts and cost visibility
+	•	Mentions it in team Slack: 'This saved me from a $500 infinite loop bug'
+	•	Team lead says 'We need this for everyone — who's spending what on our AI APIs?'
+	•	Team upgrades to Team plan: $49/seat x 10 developers = $490/month
+This is exactly how Slack, Figma, Notion, and VS Code grew — individual adoption first, team conversion second. The individual product IS the team product.
+
+3. Core Principle & Tech Stack
+
+  CORE PRINCIPLE: Everything runs on the developer's machine. API keys never leave localhost. Prompts never touch external servers. The app is an invisible, lightweight observer — not a middleman.
+
+Phase 1: CLI + Browser Dashboard
+Component
+Technology
+Hosting/Cost
+Proxy Engine
+Node.js + Express + http-proxy
+localhost:4000 (free)
+Dashboard
+React + TypeScript + Vite + Tailwind
+localhost:4001 in browser (free)
+Database
+SQLite via better-sqlite3
+~/.llm-observer/data.db (free)
+CLI Interface
+Commander.js + Chalk + Ora
+Terminal (free)
+Token Counter
+tiktoken / provider response parsing
+Built-in (free)
+Alerts
+node-notifier + Slack/Discord webhooks
+Free
+
+Phase 2: Tauri Desktop App
+Component
+Technology
+Notes
+App Shell
+Tauri v2 (Rust + native webview)
+5-10MB app, ~20MB RAM
+Dashboard
+Same React app (zero rewrite)
+Renders in native OS webview
+Proxy Engine
+Node.js sidecar (pkg binary)
+Bundled inside Tauri, runs as background process
+System Tray
+Tauri tray API
+Green=running, Red=stopped, Right-click menu
+Notifications
+tauri-plugin-notification
+Native OS notifications for budget alerts
+Auto-Update
+tauri-plugin-updater
+Silent updates from GitHub Releases
+Auto-Start
+tauri-plugin-autostart
+Start on login, run invisibly
+
+Supported LLM Providers
+Provider
+Models
+Auth Method
+OpenAI
+GPT-4o, GPT-4o-mini, o1, o3
+Bearer token
+Anthropic
+Claude Opus, Sonnet, Haiku (4.x family)
+x-api-key header
+Google
+Gemini 2.5 Pro, Gemini 2.5 Flash
+API key in URL
+Mistral
+Large, Medium, Small, Codestral
+Bearer token (OpenAI-compatible)
+Groq
+Llama, Mixtral (fast inference)
+Bearer token (OpenAI-compatible)
+Custom/Local
+Ollama, vLLM, any OpenAI-compatible
+Configurable
+
+Infrastructure Cost
+Item
+Monthly Cost
+Notes
+Proxy server
+₹0
+Runs on user's machine
+Database
+₹0
+SQLite file on user's disk
+Dashboard
+₹0
+localhost in browser/Tauri webview
+License server (Render)
+~₹500
+Tiny API for key validation
+npm registry
+₹0
+Free to publish packages
+Landing page (Vercel)
+₹0
+Free tier
+TOTAL
+~₹500/month
+Essentially free
+
+4. System Architecture
+The architecture is built around a single core principle: nothing leaves the developer's machine. All processing happens locally — the proxy intercepts LLM API calls, logs them to a local SQLite database, and serves a dashboard from localhost.
+
+Architecture Flow
+1. Developer's app sends LLM request to localhost:4000 (instead of directly to OpenAI/Claude/Gemini)
+2. Local proxy intercepts the request, authenticates the project key, and checks budget limits
+3. If budget is OK, proxy forwards the request directly to the LLM provider's API
+4. Provider responds — proxy captures the response, counts tokens, calculates cost
+5. Proxy logs everything to local SQLite asynchronously (non-blocking — no latency added)
+6. Response is returned to the developer's app unchanged — the app never knows the proxy exists
+7. Dashboard reads from SQLite and displays real-time stats via Server-Sent Events (SSE)
+
+Request Processing Pipeline
+Step
+Action
+Details
+1
+Intercept
+Capture incoming HTTP request on localhost:4000
+2
+Authenticate
+Validate local project API key from x-llm-observer-key header
+3
+Check Budget
+SELECT SUM(cost) WHERE project_id=? AND date=today. If >= limit → HTTP 429
+4
+Start Timer
+Record request_start_time for latency measurement
+5
+Forward
+Send original request to real LLM provider API with all original headers
+6
+Capture Response
+Record response body, headers, status code, end time
+7
+Count Tokens
+Extract usage from response (or estimate if not provided)
+8
+Calculate Cost
+model pricing × tokens = cost in USD
+9
+Async Log
+Non-blocking INSERT to SQLite — never delays the response
+10
+Check Anomalies
+If cost_this_hour > 5x avg → trigger alert
+11
+Return
+Forward original provider response to developer's app unchanged
+
+Budget Kill Switch Flow
+The kill switch is the single most valuable feature — it prevents runaway API costs from bugs, infinite loops, or misconfigured retry logic.
+	•	Request arrives at proxy
+	•	Budget check: today's spend ($47.20) vs daily limit ($50.00)
+	•	LIMIT EXCEEDED: $47.20 >= $50.00 → BLOCK
+	•	Return HTTP 429 with clear error: 'LLM Observer: Daily budget limit ($50.00) reached. Requests blocked until midnight UTC.'
+	•	Send native OS notification + optional Slack/Discord webhook
+	•	Log blocked request with status='blocked_budget' for auditing
+
+Dashboard Real-Time Updates
+The dashboard receives real-time updates via Server-Sent Events (SSE), which is a lightweight persistent HTTP connection. This avoids the overhead of WebSocket while providing instant updates whenever a new LLM request is logged.
+Flow: New request logged → SSE event emitted → React state updates → Charts, counters, and log table refresh instantly. No polling required.
+
+5. Database Schema — Local (SQLite)
+All data is stored in a single SQLite file at ~/.llm-observer/data.db. SQLite was chosen for zero-config setup, single-file portability (easy to backup by copying one file), and excellent read performance for dashboard queries. The database has 6 tables.
+
+5.1 projects
+Organizes requests by project/application. Each project has independent budget settings.
+Column
+Type
+Notes
+id
+TEXT PK
+UUID — 'proj_a1b2c3d4'
+name
+TEXT NOT NULL
+'My SaaS App', 'Side Project'
+api_key
+TEXT UNIQUE
+Local project key for proxy authentication
+daily_budget
+REAL
+Daily spend limit in USD (e.g. 50.00)
+weekly_budget
+REAL
+Weekly limit (optional)
+monthly_budget
+REAL
+Monthly limit (optional)
+alert_threshold
+REAL DEFAULT 0.8
+Alert at 80% of budget
+kill_switch
+BOOLEAN DEFAULT 1
+Block requests when budget exceeded
+webhook_url
+TEXT
+Slack/Discord webhook URL for alerts
+created_at
+DATETIME
+
+
+5.2 requests
+The core table — every single LLM API call is logged here with full details for cost tracking and debugging.
+Column
+Type
+Notes
+id
+TEXT PK
+UUID
+project_id
+TEXT FK→projects
+Which project made this call
+provider
+TEXT NOT NULL
+'openai' | 'anthropic' | 'google' | 'mistral' | 'groq'
+model
+TEXT NOT NULL
+'gpt-4o', 'claude-sonnet-4-20250514', 'gemini-2.5-flash'
+endpoint
+TEXT
+'/chat/completions', '/messages'
+prompt_tokens
+INTEGER
+Input token count
+completion_tokens
+INTEGER
+Output token count
+total_tokens
+INTEGER
+prompt + completion
+cost_usd
+REAL NOT NULL
+Calculated cost (e.g. 0.0034)
+latency_ms
+INTEGER
+End-to-end response time in ms
+status_code
+INTEGER
+HTTP status: 200, 429, 500, etc.
+status
+TEXT DEFAULT 'success'
+'success' | 'error' | 'blocked_budget' | 'timeout'
+is_streaming
+BOOLEAN DEFAULT 0
+Was this a streaming SSE request?
+has_tools
+BOOLEAN DEFAULT 0
+Did request use function/tool calling?
+error_message
+TEXT
+Error details if request failed
+request_body
+TEXT
+Full request JSON (truncated at 50KB)
+response_body
+TEXT
+Full response JSON (truncated at 50KB)
+tags
+TEXT
+JSON array: ['production','chat-feature']
+created_at
+DATETIME NOT NULL
+Timestamp of request
+
+5.3 model_pricing
+Cost per token for each model. Pre-seeded with current pricing. Auto-updated when new pricing is released.
+Column
+Type
+Notes
+id
+INTEGER PK AUTOINCREMENT
+
+provider
+TEXT NOT NULL
+
+model
+TEXT NOT NULL
+
+input_cost_per_1m
+REAL NOT NULL
+USD per 1M input tokens
+output_cost_per_1m
+REAL NOT NULL
+USD per 1M output tokens
+cached_input_cost_per_1m
+REAL
+Discounted rate for cached inputs
+effective_date
+DATE
+When this pricing took effect
+updated_at
+DATETIME
+
+
+5.4 alerts
+Column
+Type
+Notes
+id
+TEXT PK
+UUID
+project_id
+TEXT FK→projects
+
+type
+TEXT NOT NULL
+'budget_warning' | 'budget_exceeded' | 'anomaly' | 'error_spike' | 'latency_spike'
+severity
+TEXT
+'info' | 'warning' | 'critical'
+message
+TEXT NOT NULL
+Human-readable alert message
+data
+TEXT
+JSON with context (current_spend, limit, etc.)
+notified_via
+TEXT
+'os_notification' | 'webhook' | 'both'
+acknowledged
+BOOLEAN DEFAULT 0
+
+created_at
+DATETIME
+
+
+5.5 daily_stats
+Pre-aggregated daily statistics for fast dashboard chart queries. Tiny table (~1KB per day per model) — kept forever even on free tier.
+Column
+Type
+Notes
+id
+INTEGER PK AUTOINCREMENT
+
+project_id
+TEXT FK→projects
+
+date
+DATE NOT NULL
+'2026-03-08'
+provider
+TEXT NOT NULL
+
+model
+TEXT NOT NULL
+
+total_requests
+INTEGER DEFAULT 0
+
+total_tokens
+INTEGER DEFAULT 0
+
+total_cost_usd
+REAL DEFAULT 0
+
+avg_latency_ms
+INTEGER
+
+error_count
+INTEGER DEFAULT 0
+
+blocked_count
+INTEGER DEFAULT 0
+
+
+5.6 settings
+Column
+Type
+Notes
+key
+TEXT PK
+'proxy_port', 'dashboard_port', 'theme', 'license_key'
+value
+TEXT NOT NULL
+
+updated_at
+DATETIME
+
+
+5.7 Critical Indexes
+CREATE INDEX idx_requests_project_date ON requests(project_id, created_at);
+CREATE INDEX idx_requests_provider_model ON requests(provider, model);
+CREATE INDEX idx_requests_status ON requests(status);
+CREATE INDEX idx_requests_cost ON requests(cost_usd);
+CREATE UNIQUE INDEX idx_daily_stats_unique ON daily_stats(project_id, date, provider, model);
+CREATE INDEX idx_alerts_project_type ON alerts(project_id, type, created_at);
+
+5.8 Data Retention
+Plan
+Full Request Logs
+daily_stats
+Free
+7 days (auto-purged)
+Kept forever
+Pro
+90 days (auto-purged)
+Kept forever
+Team
+1 year
+Kept forever
+
+6. Database Schema — Team Cloud (MongoDB)
+The team cloud database is separate from the local SQLite. It stores only aggregated, anonymized data — never prompts, responses, or API keys. Hosted on MongoDB Atlas (free tier to start). This database only comes into play for Team and Enterprise plan users.
+
+Privacy Boundary
+  WHAT SYNCS: developer ID, cost per model per day (aggregated), total tokens per day, budget status, alert history. WHAT NEVER LEAVES: API keys, prompts, responses, full request bodies, raw request logs.
+
+6.1 teams
+Column
+Type
+Notes
+_id
+ObjectId
+Primary key
+name
+String
+Team/company name
+slug
+String (unique)
+URL-friendly identifier for team dashboard
+owner_id
+ObjectId FK→users
+Team creator/admin
+plan
+String
+'team' | 'enterprise'
+max_seats
+Number
+Seat limit based on plan
+team_api_key
+String (unique)
+Key distributed to team members for joining
+team_daily_budget
+Number
+Company-wide daily budget limit in USD
+team_monthly_budget
+Number
+Company-wide monthly budget limit
+alert_webhook_url
+String
+Slack/Discord webhook for team-wide alerts
+stripe_subscription_id
+String
+Stripe subscription reference
+created_at
+Date
+
+
+6.2 users (cloud)
+Minimal user records — only what is needed for team membership and billing. No personal data beyond email.
+Column
+Type
+Notes
+_id
+ObjectId
+Primary key
+email
+String (unique)
+Login identity
+name
+String
+Display name
+avatar_url
+String
+Optional
+stripe_customer_id
+String
+For individual Pro billing
+created_at
+Date
+
+
+6.3 team_members
+Column
+Type
+Notes
+_id
+ObjectId
+Primary key
+team_id
+ObjectId FK→teams
+Which team
+user_id
+ObjectId FK→users
+Which user
+role
+String
+'admin' | 'developer' | 'viewer'
+status
+String
+'active' | 'invited' | 'deactivated'
+last_synced_at
+Date
+Last time their local app synced data
+joined_at
+Date
+
+
+6.4 team_daily_stats
+Aggregated daily stats synced from each team member's local app. This is the core table powering the team dashboard.
+Column
+Type
+Notes
+_id
+ObjectId
+Primary key
+team_id
+ObjectId FK→teams
+
+member_id
+ObjectId FK→team_members
+Which developer
+date
+Date
+'2026-03-08'
+provider
+String
+'openai' | 'anthropic' | 'google' | etc.
+model
+String
+'gpt-4o', 'claude-sonnet', etc.
+project_name
+String
+Project label (not full project data)
+total_requests
+Number
+Count of requests that day
+total_tokens
+Number
+Sum of all tokens
+total_cost_usd
+Number
+Sum of all costs
+avg_latency_ms
+Number
+Average response time
+error_count
+Number
+Failed requests count
+blocked_count
+Number
+Budget-blocked requests count
+
+6.5 team_alerts
+Column
+Type
+Notes
+_id
+ObjectId
+Primary key
+team_id
+ObjectId FK→teams
+
+triggered_by
+ObjectId FK→team_members
+Which developer triggered this
+type
+String
+'team_budget_warning' | 'team_budget_exceeded' | 'member_spike' | 'member_error_spike'
+severity
+String
+'info' | 'warning' | 'critical'
+message
+String
+Human-readable alert message
+data
+Object
+JSON context (spend, limit, member name, etc.)
+notified_via
+String
+'webhook' | 'email' | 'dashboard'
+acknowledged_by
+ObjectId FK→team_members
+Who acknowledged it
+created_at
+Date
+
+
+6.6 team_audit_log (Enterprise)
+For Enterprise plan only. Tracks all administrative actions for compliance and accountability.
+Column
+Type
+Notes
+_id
+ObjectId
+Primary key
+team_id
+ObjectId FK→teams
+
+actor_id
+ObjectId FK→team_members
+Who performed the action
+action
+String
+'member_invited' | 'member_removed' | 'budget_changed' | 'role_changed' | 'plan_changed'
+target
+String
+What was affected (member email, budget value, etc.)
+details
+Object
+JSON with before/after values
+created_at
+Date
+
+
+Local SQLite Addition for Team Sync
+One small addition to the local SQLite settings table on each developer's machine:
+Setting Key
+Example Value
+Purpose
+team_id
+team_abc123
+Which team this device belongs to
+team_api_key
+tkey_xyz789
+Authentication for syncing to team cloud
+sync_enabled
+true
+Whether to sync aggregated stats to team
+last_synced_at
+2026-03-08T14:30:00Z
+Timestamp of last successful sync
+sync_interval_minutes
+15
+How often to push aggregated stats (default: 15 min)
+
+7. API Surface — Proxy Endpoints
+These are the endpoints that the developer's application calls. They are drop-in replacements for the original provider APIs — same request format, same response format. The only change is the base URL.
+
+Integration Example
+// BEFORE (direct to OpenAI)
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// AFTER (through LLM Observer — ONE line added)
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: "http://localhost:4000/v1/openai",  // only change
+});
+
+Proxy Routes
+Method
+Path
+Description
+POST
+/v1/openai/*
+Proxies to api.openai.com — /chat/completions, /embeddings, etc.
+POST
+/v1/anthropic/*
+Proxies to api.anthropic.com — /messages
+POST
+/v1/google/*
+Proxies to generativelanguage.googleapis.com
+POST
+/v1/mistral/*
+Proxies to api.mistral.ai
+POST
+/v1/groq/*
+Proxies to api.groq.com
+POST
+/v1/custom/:baseUrl/*
+Proxy to any OpenAI-compatible endpoint (Ollama, vLLM)
+
+8. API Surface — Dashboard Endpoints
+Internal API served on localhost:4001/api. Powers the React dashboard UI. Not exposed externally.
+
+Method
+Path
+Description
+GET
+/api/stats/overview
+Today's spend, total requests, avg latency, error rate
+GET
+/api/stats/timeline?range=7d
+Cost & request count over time (hourly/daily)
+GET
+/api/stats/by-model
+Cost, requests, avg latency per model
+GET
+/api/stats/by-provider
+Breakdown by provider
+GET
+/api/requests?page=1&limit=50
+Paginated request log with filters
+GET
+/api/requests/:id
+Full request detail (prompt, response, tokens, cost)
+GET
+/api/projects
+List all projects with current spend
+POST
+/api/projects
+Create new project with budget settings
+PUT
+/api/projects/:id
+Update project name, budgets, webhook
+DELETE
+/api/projects/:id
+Delete project and its data
+GET
+/api/alerts?acknowledged=false
+List alerts (filterable)
+PUT
+/api/alerts/:id/ack
+Acknowledge an alert
+GET
+/api/pricing
+Current model pricing table
+GET
+/api/events
+SSE stream for real-time dashboard updates
+
+9. API Surface — Team Cloud Endpoints
+Hosted on your cloud server (Render or Railway). Only accessed by Team/Enterprise users. Handles team management, aggregated data sync, and the team dashboard.
+
+Sync API (called by local app)
+Method
+Path
+Description
+POST
+/api/sync/stats
+Push aggregated daily stats from local app to team cloud (runs every 15 min)
+POST
+/api/sync/alerts
+Push alert events from local app to team cloud
+GET
+/api/sync/team-config
+Get team settings (team budget, member list, team alerts)
+
+Team Management API
+Method
+Path
+Description
+POST
+/api/teams
+Create a new team
+GET
+/api/teams/:id
+Get team details
+PUT
+/api/teams/:id
+Update team name, budgets, webhook
+POST
+/api/teams/:id/invite
+Invite member by email
+DELETE
+/api/teams/:id/members/:memberId
+Remove team member
+PUT
+/api/teams/:id/members/:memberId/role
+Change member role
+GET
+/api/teams/:id/members
+List all team members with status
+
+Team Dashboard API
+Method
+Path
+Description
+GET
+/api/teams/:id/stats/overview
+Team-wide spend today/week/month, total across all members
+GET
+/api/teams/:id/stats/by-member
+Cost breakdown per team member
+GET
+/api/teams/:id/stats/by-model
+Cost breakdown per model across whole team
+GET
+/api/teams/:id/stats/by-project
+Cost breakdown per project across whole team
+GET
+/api/teams/:id/stats/timeline
+Team spend over time (daily/weekly/monthly)
+GET
+/api/teams/:id/alerts
+Team-level alerts (budget warnings, member spikes)
+GET
+/api/teams/:id/audit-log
+Audit log (Enterprise only)
+
+Team Billing API
+Method
+Path
+Description
+POST
+/api/billing/team/subscribe
+Create team Stripe subscription
+PUT
+/api/billing/team/seats
+Update seat count (add/remove seats)
+POST
+/api/billing/team/webhook
+Stripe webhook handler for team billing
+GET
+/api/billing/team/invoices
+List past invoices
+POST
+/api/billing/team/cancel
+Cancel team subscription
+
+10. CLI Design & Commands
+The CLI is the primary interface for Phase 1. Install globally via npm and use from any terminal.
+
+Installation
+npm install -g llm-observer
+# or use without installing:
+npx llm-observer start
+
+Commands
+Command
+Description
+Key Flags
+llm-observer start
+Start proxy + dashboard
+--port 4000 --dashboard-port 4001 --no-dashboard
+llm-observer stop
+Graceful shutdown
+
+llm-observer status
+Show running status + today's spend
+
+llm-observer stats
+Terminal stats display
+--model gpt-4o --provider anthropic --range 7d
+llm-observer logs
+Live tail of requests
+--provider --model --min-cost --status
+llm-observer projects list
+List projects with spend
+
+llm-observer projects create
+Interactive project creation
+
+llm-observer projects delete <id>
+Delete a project
+
+llm-observer budget set 50 --daily
+Set budget limit
+--daily --weekly --monthly
+llm-observer export
+Export data
+--format csv/json --range 30d
+llm-observer config
+View/edit settings
+
+llm-observer upgrade
+Open pricing page
+
+llm-observer activate <key>
+Activate license
+
+llm-observer team join <key>
+Join a team using team API key
+
+llm-observer team leave
+Leave current team
+
+llm-observer team status
+Show team info + sync status
+
+llm-observer team sync
+Force sync stats to team cloud now
+
+
+Configuration Directory
+~/.llm-observer/
+  ├── data.db        # SQLite database (all data)
+  ├── config.json    # User settings (ports, theme, license)
+  └── logs/          # Error logs
+
+11. Tauri Desktop Migration Plan
+
+Why Tauri (Not Electron)
+LLM Observer is a lightweight utility tool that developers keep running 8+ hours a day in the background. Electron bundles an entire Chromium browser (200MB, 100-300MB RAM). Tauri uses the native OS webview (5-10MB, 20-50MB RAM). For an always-on background utility, this difference is critical to user adoption and satisfaction.
+
+Factor
+Electron
+Tauri
+App size
+150-200MB
+5-10MB
+RAM usage
+100-300MB
+20-50MB
+Startup time
+2-5 seconds
+<1 second
+Developer perception
+'Another bloated Electron app'
+'Wow, this is tiny and fast'
+Security
+Larger attack surface (Chromium)
+Rust memory safety
+
+Sidecar Strategy (Phase 2)
+The sidecar approach means your battle-tested Node.js proxy code runs exactly as-is inside Tauri. No rewriting, no new bugs. You get Tauri benefits immediately while learning Rust gradually.
+
+	•	Install Rust + Tauri CLI: cargo install tauri-cli
+	•	Initialize Tauri in apps/tauri/: cargo tauri init
+	•	Point Tauri's webview to packages/dashboard build output
+	•	Bundle Node.js proxy as sidecar binary using pkg or nexe
+	•	Tauri launches sidecar on app start — proxy runs in background
+	•	Add system tray icon with status indicator
+	•	Add native OS notifications via tauri-plugin-notification
+	•	Configure auto-start on login via tauri-plugin-autostart
+	•	Set up auto-updater pointing to GitHub Releases
+	•	Package: cargo tauri build → .dmg (Mac) + .msi (Windows) + .AppImage (Linux)
+
+Tauri Plugins Used
+Plugin
+Purpose
+tauri::SystemTray
+Always-running icon in taskbar. Green dot = proxy active.
+tauri-plugin-notification
+Budget warnings, anomaly alerts as native OS notifications
+tauri-plugin-autostart
+Start on login. Proxy runs invisibly in background.
+tauri-plugin-updater
+Check GitHub Releases. Download + install silently.
+tauri::api::process::Command
+Sidecar management: start/stop/restart Node.js proxy
+tauri-plugin-shell
+Open browser, terminal, system interactions
+
+Optional Phase 3: Full Rust Migration
+If traction is strong and you've learned Rust, rewrite the proxy backend in Rust using hyper or axum for HTTP and rusqlite for database access. This eliminates the Node.js sidecar dependency entirely. Result: single binary, 5MB total, 10MB RAM, instant startup. Only do this if you need sub-millisecond proxy overhead.
+
+12. Individual to Team Growth Pipeline
+The growth strategy is built around a natural pipeline where individual adoption drives team conversion. This section details exactly how each stage works.
+
+Stage 1: Individual Discovery (Free)
+	•	Developer finds tool via npm, GitHub, HackerNews, or Twitter
+	•	Installs with one command: npx llm-observer start
+	•	Immediately sees their AI costs for the first time — 'wow' moment
+	•	Uses free tier for 2-3 weeks, gets hooked on budget alerts
+Conversion to Pro: First time budget alert prevents a $100+ surprise bill, or they need more than 1 project.
+
+Stage 2: Individual Power User (Pro - $19/mo)
+	•	Developer uses cost optimizer suggestions to save money
+	•	Exports reports for client billing (freelancers love this)
+	•	Becomes an advocate — shares tool in team Slack, tweets about it
+	•	This is the critical transition point to team adoption
+
+Stage 3: Team Champion (the internal seller)
+	•	Developer tells team lead: 'This tool saved me $500 last week from a runaway loop'
+	•	Team lead asks: 'Can I see what the whole team is spending on AI APIs?'
+	•	Developer says: 'Yes, there is a team plan — everyone runs it locally, but we get a shared dashboard'
+You never had to make a sales call. The developer sold it for you.
+
+Stage 4: Team Adoption (Team - $49/seat/mo)
+	•	Team lead creates team account on your website, pays for seats
+	•	Each developer joins with: llm-observer team join <TEAM_API_KEY>
+	•	Team dashboard shows company-wide spend broken down by developer, project, and model
+	•	Team lead sets company-wide budget: 'Engineering team max $2,000/month'
+	•	If any developer is burning too much, team lead gets alerted
+
+Stage 5: Enterprise Expansion ($200+/mo)
+	•	As team grows beyond 20+ developers, they need: SSO/SAML, audit logs, compliance features
+	•	Self-hosted team server option for companies that can't use cloud at all
+	•	Custom SLA and priority support
+	•	Annual contracts with volume discounts
+
+Key Metrics to Track
+Metric
+Target
+Why It Matters
+Free → Pro conversion
+5-8%
+Indicates product value is clear enough to pay for
+Pro → Team referral rate
+10-15% of Pro users
+Pro users recommending to their team
+Team activation rate
+80%+ seats active
+Team members actually installing and using
+Team churn (monthly)
+<3%
+Teams rarely leave once integrated into workflow
+Time from free signup to team upgrade
+30-60 days
+Pipeline velocity — how fast individuals convert teams
+Net Revenue Retention
+>120%
+Existing teams add seats + upgrade plans over time
+
+13. Week-by-Week Build Plan
+
+8-Week Milestone Timeline
+Week
+Milestone
+Outcome
+Week 1
+Proxy Engine
+Working proxy that intercepts, logs, and calculates costs
+Week 2
+Dashboard + CLI
+Full React dashboard + all CLI commands working
+Week 3
+npm Launch
+Published on npm, Product Hunt, HackerNews. First users.
+Week 4-5
+Tauri Desktop
+5MB desktop app for Mac/Windows/Linux
+Week 6
+Feature Expansion
+Cost optimizer, prompt dedup, export reports
+Week 7
+Team Features
+Encrypted team sync, role-based access (paid tier)
+Week 8
+Growth Push
+SEO content, marketing, target $1K MRR
+
+Week 1: The Proxy Engine
+Goal: A working local proxy that intercepts LLM calls, counts tokens, calculates cost, and logs everything to SQLite.
+
+Day
+Focus
+Hours
+Key Tasks
+Day 1
+Project Setup + Monorepo + Database Layer
+5.5 hrs
+Initialize npm workspaces monorepo. Set up TypeScript, ESLint, Prettier. Create SQLite database with all 6 tables + indexes. Seed model pricing data. Write repository layer for requests table.
+Day 2
+Core Proxy — Intercept & Forward
+7 hrs
+Build Express proxy server on port 4000. Implement base provider interface. Build OpenAI and Anthropic providers (parse requests, forward, parse responses). Test with real API calls.
+Day 3
+Token Counting + Cost Calculation + Logging
+7.5 hrs
+Build token counter module. Build cost calculator (model pricing lookup). Implement async SQLite logging (non-blocking). Add latency measurement. Add Google Gemini provider.
+Day 4
+Budget Guard + Kill Switch
+8 hrs
+Build budget guard middleware (check spend before forwarding). Implement projects repository. Build alert manager (OS notifications + webhooks). Add Mistral + Groq providers. End-to-end kill switch test.
+Day 5
+Streaming Support + Edge Cases
+8 hrs
+Handle SSE streaming responses (hardest part — buffer chunks, count tokens after stream completes). Handle error responses gracefully. Add request tagging. Add daily_stats aggregation. Full integration test with 50 mixed requests.
+
+Week 2: Dashboard + CLI Interface
+Goal: Beautiful real-time dashboard in the browser. Full CLI with all commands.
+
+Day
+Focus
+Hours
+Key Tasks
+Day 1
+Dashboard — Overview Page
+8 hrs
+Set up React + Vite + Tailwind. Build dashboard API server on port 4001. Build SpendCounter (animated real-time), CostChart (recharts timeline), ModelBreakdown (pie/bar chart), and overview stat cards.
+Day 2
+Dashboard — Request Log + Detail
+8 hrs
+Build sortable/filterable RequestTable with pagination. Build RequestDetail page (full prompt/response viewer with syntax highlighting). Add full-text search. Implement real-time SSE updates.
+Day 3
+Dashboard — Projects + Budget + Alerts
+8 hrs
+Build Projects page (CRUD + budget settings). Build BudgetMeter visual gauge. Build Alerts page. Build Settings page. Add sidebar navigation with React Router.
+Day 4
+CLI Interface
+8.75 hrs
+Set up Commander.js. Build all commands: start, stop, status, stats, logs (live tail), projects (list/create/delete), budget, config, export. Pretty terminal output with Chalk + Ora.
+Day 5
+Integration + Polish
+8 hrs
+Wire CLI to start proxy + dashboard together. Add npx support. Build anomaly detection (5x average spike). End-to-end testing. Fix bugs, polish terminal output.
+
+Week 3: Launch Preparation + Ship It
+Goal: Package everything. Write docs. Publish to npm. Launch publicly. Get first 100 users.
+
+Day
+Focus
+Hours
+Key Tasks
+Day 1
+Documentation
+8 hrs
+Write README.md (hero GIF, quick start, features, comparison table, pricing). Create demo GIF/video. Write docs site (Docusaurus/VitePress). Add --help text for all CLI commands.
+Day 2
+Packaging + npm Publish
+8 hrs
+Configure package.json for npm. Build + bundle. Test fresh install on clean machine (Docker). Publish to npm. Set up GitHub repo (CI, issue templates). Create landing page on Vercel.
+Day 3
+Billing + License System
+8 hrs
+Build minimal license server on Render. Integrate license check in CLI (free mode if no key). Set up Stripe/Razorpay. Build upgrade + activate flow. Implement free tier retention limits.
+Day 4-5
+LAUNCH
+14 hrs
+Prepare Product Hunt, HackerNews, Twitter thread, LinkedIn post, Reddit posts, Dev.to article. LAUNCH DAY: post everywhere. Monitor and respond to all feedback. Fix critical bugs same day. DM 20 dev influencers.
+
+Weeks 4-5: Tauri Desktop App
+Goal: Working desktop app that bundles CLI proxy as sidecar. System tray, native notifications, auto-start.
+	•	Days 1-2: Install Rust + Tauri. Initialize project. Bundle Node.js proxy as sidecar. Handle sidecar lifecycle. Configure Tauri permissions. (10 hrs)
+	•	Days 3-4: Add system tray, native notifications, auto-start, auto-updater, minimize to tray. Test on all platforms. (10 hrs)
+	•	Day 5: Configure app icons. Set up GitHub Releases CI. Create download page. Write desktop docs. Launch desktop version. (8 hrs)
+
+Weeks 6-8: Growth + Monetization
+Week 6 — Feature Expansion: Cost optimizer suggestions, prompt caching/dedup detection, CSV/PDF export reports, custom saved filters. (24 hrs)
+Week 7 — Team Features: Build team cloud server (MongoDB + Express on Render). Create team management API (create team, invite members, roles). Build local-to-cloud sync service (aggregated stats every 15 min). Build web-based team dashboard (React, hosted on Vercel). Add team budget controls and team alerts. Add team CLI commands (join, leave, status, sync). Integrate Stripe for team billing. (24 hrs)
+Week 8 — Growth Push: Write 3 SEO blog posts, create comparison pages vs competitors, GitHub Sponsors, dev podcast/newsletter outreach, analyze metrics + plan Q2 roadmap. (24 hrs)
+
+14. Pricing & Monetization
+Pricing is in USD since target customers are global developers. Lower than cloud competitors because infrastructure costs are near-zero (everything runs on user machines).
+
+Feature
+Free
+Pro ($19/mo)
+Team ($49/seat)
+Enterprise
+Audience
+Individual
+Individual
+Team (2-20)
+Company (20-50+)
+Projects
+1
+Unlimited
+Unlimited
+Unlimited
+Log retention
+7 days
+90 days
+1 year
+Custom
+Budget alerts
+Basic
+Full (OS + webhook)
+Full + team alerts
+Full + custom
+Cost optimizer
+No
+Yes
+Yes
+Yes
+Export
+No
+Yes
+Yes
+Yes + API
+Team dashboard
+No
+No
+Yes (cloud)
+Yes (self-hosted option)
+Team budget control
+No
+No
+Yes
+Yes
+Role-based access
+No
+No
+Admin/Dev/Viewer
+Custom roles
+Audit logs
+No
+No
+No
+Yes
+SSO/SAML
+No
+No
+No
+Yes
+Support
+GitHub issues
+Email
+Priority email
+Slack + SLA
+
+15. Go-to-Market Strategy
+The marketing strategy is built around the 'build and they will come' approach — no cold calling, no sales conversations. Let the product speak for itself through developer communities.
+
+Launch Channels
+	•	npm package — developers discover via npm search and install in 30 seconds
+	•	GitHub — open-source core gets stars, issues, and community contributions
+	•	Product Hunt — dev tools perform exceptionally well; target front page
+	•	HackerNews Show HN — privacy-first angle resonates strongly with HN audience
+	•	Twitter/X — demo GIFs, cost-saving screenshots, build-in-public threads
+	•	Reddit — r/programming, r/artificial, r/SaaS, r/webdev
+	•	Dev.to / Hashnode — technical blog posts about LLM cost management
+	•	YouTube — 2-minute demo videos, tutorial walkthroughs
+
+Content Marketing (SEO)
+	•	'How to reduce OpenAI API costs by 60%'
+	•	'Claude vs GPT-4o: Real cost comparison with data'
+	•	'Stop burning money on LLM APIs — a developer's guide'
+	•	'LLM Observer vs Helicone vs Portkey — honest comparison'
+
+Growth Loops
+	•	Free tier is genuinely useful forever — builds goodwill and word-of-mouth
+	•	Developer tells 3 teammates about the tool — team adopts paid plan
+	•	Open-source contributions bring visibility and trust
+	•	Blog posts rank for high-intent search queries
+
+16. Risk Assessment
+
+Risk
+Severity
+Mitigation
+Competition (Helicone, Portkey)
+Medium
+Privacy-first local approach is a genuine differentiator cloud competitors can't easily copy
+Electron-style bloat perception
+Low
+Using Tauri (5MB) instead of Electron (200MB) — solves this completely
+Latency added by proxy
+Medium
+Async logging, minimal processing in request path. Target <10ms overhead.
+Streaming response handling
+Medium
+Dedicated stream handler that buffers chunks. Thoroughly tested in Week 1.
+Free users never converting
+Medium
+Free tier has real limits (1 project, 7-day retention). Pro features are genuinely valuable.
+Token counting accuracy
+Low
+Use provider's own usage data when available. Fall back to tiktoken estimates.
+Provider API changes
+Low
+Modular provider architecture — each provider is independent. Easy to update.
+Monetization speed
+Medium
+Keep costs near-zero. Even $380/month (20 Pro users) covers all infrastructure.
+Team sync privacy concerns
+Medium
+Only aggregated stats sync — never prompts/keys. Clear documentation. Opt-in only.
+Team cloud infrastructure costs
+Low
+MongoDB Atlas free tier handles first 50 teams. Upgrade to $25/mo for 200+ teams.
+Individual→Team pipeline too slow
+Medium
+Actively encourage sharing: 'Share with your team' prompts in dashboard. Referral incentives.
+Enterprise sales cycle too long
+Medium
+Focus on self-serve Team plan first. Enterprise comes naturally from large Team accounts.
+
+Final Notes
+This document contains the complete blueprint for building LLM Observer from zero to a revenue-generating product in 8 weeks. The architecture is designed for simplicity, the database for performance, and the build plan for realistic execution by a solo developer.
+The interactive versions of the architecture diagram, database schema, and build plan are available as separate React artifacts for detailed exploration.
+
+Key files to reference alongside this document:
+	•	llm-observer-architecture.jsx — Interactive architecture with 8 tabs
+	•	llm-observer-build-plan.jsx — Interactive day-by-day build plan
+	•	framework-comparison.jsx — Electron vs Tauri vs CLI comparison
+
+Built with conviction. Shipped with speed. Let's go, Ranjit.

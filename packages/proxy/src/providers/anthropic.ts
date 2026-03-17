@@ -1,0 +1,73 @@
+import { Request } from 'express';
+import { IProvider, ProviderResponse } from './base';
+import { calculateSharedCost } from '../utils/pricing';
+import { getSetting } from '@llm-observer/database';
+
+export class AnthropicProvider implements IProvider {
+    getBaseUrl() {
+        return 'https://api.anthropic.com';
+    }
+
+    getAuthHeader(req: Request) {
+        let apiKey = [req.headers['x-api-key']].flat().filter(Boolean)[0] as string | undefined;
+
+        // Fallback to global setting
+        if (!apiKey) {
+            apiKey = getSetting('anthropic_api_key') || undefined;
+        }
+
+        const headers: Record<string, string> = {};
+        if (apiKey) headers['x-api-key'] = apiKey;
+
+        const versionList = [req.headers['anthropic-version']].flat().filter(Boolean) as string[];
+        const version = versionList[0] || '2023-06-01'; // Default version if missing
+        headers['anthropic-version'] = version;
+
+        return headers;
+    }
+
+    parseRequest(req: Request, body: any) {
+        let model = 'unknown';
+        let isStreaming = false;
+        let hasTools = false;
+
+        if (body) {
+            if (body.model) model = body.model;
+            if (body.stream === true) isStreaming = true;
+            if (body.tools && Array.isArray(body.tools) && body.tools.length > 0) hasTools = true;
+        }
+
+        return { model, isStreaming, hasTools };
+    }
+
+    parseResponse(responseBody: any, requestData: any): ProviderResponse {
+        let promptTokens = 0;
+        let completionTokens = 0;
+        let totalTokens = 0;
+
+        if (responseBody && responseBody.usage) {
+            promptTokens = responseBody.usage.input_tokens || 0;
+            completionTokens = responseBody.usage.output_tokens || 0;
+            totalTokens = promptTokens + completionTokens;
+        }
+
+        const costResult = this.calculateCost(requestData.model, promptTokens, completionTokens);
+
+        return {
+            provider: 'anthropic',
+            model: requestData.model,
+            isStreaming: requestData.isStreaming,
+            promptTokens,
+            completionTokens,
+            totalTokens,
+            costUsd: costResult.costUsd,
+            pricing_unknown: costResult.unknown,
+            hasTools: requestData.hasTools,
+        };
+    }
+
+
+    calculateCost(model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean } {
+        return calculateSharedCost('anthropic', model, promptTokens, completionTokens);
+    }
+}

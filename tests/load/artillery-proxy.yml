@@ -1,0 +1,58 @@
+config:
+  target: "http://localhost:4000"
+  phases:
+    - duration: 20
+      arrivalRate: 5
+      name: Warm up
+    - duration: 40
+      arrivalRate: 50
+      name: Peak load
+    - duration: 20
+      arrivalRate: 5
+      name: Cool down
+  defaults:
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Bearer sk-test-artillery-not-real"
+      x-llm-observer-project: "artillery-load-test"
+  plugins:
+    expect: {}
+
+scenarios:
+  - name: "Health check"
+    weight: 20
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+            - hasProperty: "status"
+
+  - name: "Proxy OpenAI request"
+    weight: 60
+    flow:
+      - post:
+          url: "/v1/openai/chat/completions"
+          json:
+            model: "gpt-4o-mini"
+            messages:
+              - role: "user"
+                content: "Say 'test' in one word."
+            max_tokens: 5
+          expect:
+            # Proxy must NOT return 500 or 502 — upstream auth errors are fine
+            - statusCode:
+                - 200
+                - 400
+                - 401
+                - 402
+                - 403
+                - 429
+
+  - name: "Dashboard API reads"
+    weight: 20
+    flow:
+      - get:
+          url: "http://localhost:4001/api/stats/overview"
+          expect:
+            - statusCode: 200

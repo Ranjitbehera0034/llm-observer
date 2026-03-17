@@ -2,7 +2,18 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
-    "lib": ["ES2022"],
+    "baseUrl": ".",
+    "paths": {
+      "@llm-observer/database": [
+        "./packages/database/src/index.ts"
+      ],
+      "@llm-observer/proxy": [
+        "./packages/proxy/src/index.ts"
+      ]
+    },
+    "lib": [
+      "ES2022"
+    ],
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
@@ -13,8 +24,10 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "moduleResolution": "node",
-    "outDir": "./dist",
-    "rootDir": "./src"
+    "outDir": "./dist"
   },
-  "exclude": ["node_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

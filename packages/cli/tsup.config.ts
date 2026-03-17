@@ -1,0 +1,19 @@
+import { defineConfig } from 'tsup';
+
+export default defineConfig({
+    entry: ['src/index.ts'],
+    format: ['cjs'],
+    minify: true,
+    clean: true,
+    noExternal: [
+        '@llm-observer/database',
+        '@llm-observer/proxy',
+        'chalk',
+        'cli-table3',
+        'commander',
+        'node-fetch'
+    ],
+    external: ['better-sqlite3'],
+    sourcemap: false,
+    shims: true,
+});

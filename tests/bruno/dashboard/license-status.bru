@@ -1,0 +1,17 @@
+meta {
+  name: License Status
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{dashboard_url}}/api/license/status
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.data.isPro: isDefined
+  res.body.data.limits.maxProjects: isDefined
+}
