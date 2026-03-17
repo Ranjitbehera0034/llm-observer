@@ -1,7 +1,7 @@
 {
   "name": "llm-observer",
-  "version": "1.0.0",
-  "description": "CLI interface for LLM Observer platform",
+  "version": "1.0.1",
+  "description": "Privacy-first, local-only LLM cost tracker. Track OpenAI, Anthropic, Gemini costs without sending data to the cloud.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsup && cp ../database/src/*.sql dist/",
@@ -11,36 +11,56 @@
     "llm-observer": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "keywords": [
     "llm",
-    "proxy",
-    "ai",
+    "openai",
+    "anthropic",
+    "claude",
+    "gemini",
+    "cost-tracking",
     "observability",
-    "cost-tracking"
+    "proxy",
+    "privacy",
+    "local-first",
+    "developer-tools",
+    "ai",
+    "typescript",
+    "budget",
+    "monitoring",
+    "groq",
+    "mistral",
+    "ollama",
+    "token-counting",
+    "llm-cost"
   ],
   "author": "Ranjit Behera <ranjitbehera0034@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/Ranjitbehera0034/llm-observer",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Ranjitbehera0034/llm-observer.git"
   },
+  "bugs": {
+    "url": "https://github.com/Ranjitbehera0034/llm-observer/issues"
+  },
   "engines": {
     "node": ">=18.0.0"
   },
-  "license": "MIT",
   "dependencies": {
     "chalk": "^4.1.2",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.3",
-    "node-fetch": "^2.7.0",
-    "better-sqlite3": "^11.5.0"
+    "node-fetch": "^2.7.0"
   },
   "devDependencies": {
     "@llm-observer/database": "*",
     "@llm-observer/proxy": "*",
     "@types/node": "^25.3.5",
     "@types/node-fetch": "^2.6.13",
+    "better-sqlite3": "^11.5.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   }
