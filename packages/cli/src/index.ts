@@ -19,6 +19,7 @@ import { setupStressCommands } from './commands/stress';
 import { setupActivateCommands } from './commands/activate';
 //import { setupUpgradeCommands } from './commands/upgrade';
 import { initDb } from '@llm-observer/database';
+import { version } from '../package.json';
 
 initDb();
 
@@ -38,7 +39,7 @@ const program = new Command();
 program
   .name('llm-observer')
   .description('CLI Management Tool for LLM Observer Proxy & Dashboard')
-  .version('1.0.0');
+  .version(version);
 
 // Register modular commands
 setupStatusCommands(program);
