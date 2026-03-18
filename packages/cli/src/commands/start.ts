@@ -6,54 +6,58 @@ import path from 'path';
 import { banner } from '../index';
 
 export function setupStartCommands(program: Command) {
-    program
-        .command('start')
-        .description('Boot up the Proxy Server and Dashboard UI concurrently')
-        .action(() => {
-            console.log(banner);
-            console.log(chalk.blue('Starting LLM Observer Services...\n'));
+  program
+    .command('start')
+    .description('Boot up the Proxy Server and Dashboard UI concurrently')
+    .action(() => {
+      console.log(banner);
+      console.log(chalk.blue('Starting LLM Observer Services...\n'));
 
-            let proxyPath: string;
-            try {
-                // Look for the built proxy script
-                proxyPath = require.resolve('@llm-observer/proxy');
-            } catch (e: any) {
-                console.error(chalk.red('Could not find @llm-observer/proxy. Have you built it?'));
-                return;
-            }
+      // Resolve the bundled server relative to this file's location
+      // Works both locally (dist/server.js) and after npm install
+      const serverPath = path.resolve(__dirname, 'server.js');
 
-            // Spawn the compiled node proxy directly
-            const child = spawn('node', [proxyPath], {
-                stdio: 'inherit',
-                shell: true,
-                env: process.env
-            });
+      if (!fs.existsSync(serverPath)) {
+        console.error(chalk.red(`Could not find server at: ${serverPath}`));
+        console.error(chalk.yellow('Try reinstalling: npm install -g llm-observer'));
+        return;
+      }
 
-            const pidPath = path.join(process.cwd(), '.llm-observer.pid');
-            if (child.pid) {
-                fs.writeFileSync(pidPath, child.pid.toString());
-            }
+      const child = spawn('node', [serverPath], {
+        stdio: 'inherit',
+        env: process.env
+      });
 
-            child.on('error', (err) => {
-                console.error(chalk.red(`Failed to start processes: ${err.message}`));
-            });
+      const pidPath = path.join(
+        process.env.HOME || process.env.USERPROFILE || '',
+        '.llm-observer',
+        'observer.pid'
+      );
 
-            child.on('exit', (code) => {
-                if (code !== 0) {
-                    console.log(chalk.yellow(`\nServices exited with code ${code}`));
-                }
-            });
+      if (child.pid) {
+        fs.mkdirSync(path.dirname(pidPath), { recursive: true });
+        fs.writeFileSync(pidPath, child.pid.toString());
+      }
 
-            // Handle graceful shutdown of child processes on Ctrl+C
-            process.on('SIGINT', () => {
-                console.log(chalk.yellow('\\nShutting down LLM Observer processes...'));
-                if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
-                child.kill('SIGINT');
-                process.exit(0);
-            });
+      child.on('error', (err) => {
+        console.error(chalk.red(`Failed to start: ${err.message}`));
+      });
 
-            process.on('exit', () => {
-                if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
-            });
-        });
+      child.on('exit', (code) => {
+        if (code !== 0) {
+          console.log(chalk.yellow(`\nServices exited with code ${code}`));
+        }
+      });
+
+      process.on('SIGINT', () => {
+        console.log(chalk.yellow('\nShutting down LLM Observer...'));
+        if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
+        child.kill('SIGINT');
+        process.exit(0);
+      });
+
+      process.on('exit', () => {
+        if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
+      });
+    });
 }
