@@ -1,20 +1,18 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-    entry: ['src/index.ts'],
+    entry: ['src/index.ts', 'src/server.ts'],
     format: ['cjs'],
     minify: true,
     clean: true,
-    banner: {
-        js: '#!/usr/bin/env node',
-    },
     noExternal: [
         '@llm-observer/database',
-        '@llm-observer/proxy',
         'chalk',
-        'cli-table3',
-        'commander',
-        'node-fetch'
+        'cors',
+        'express',
+        'http-proxy',
+        'node-fetch',
+        'lucide-react'
     ],
     external: ['better-sqlite3'],
     sourcemap: false,
