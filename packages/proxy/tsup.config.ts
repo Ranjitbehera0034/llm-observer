@@ -6,12 +6,12 @@ export default defineConfig({
     minify: true,
     clean: true,
     noExternal: [
+        '@llm-observer/database',
         'chalk',
         'cors',
         'express',
         'http-proxy',
-        'node-fetch',
-        'lucide-react'
+        'node-fetch'
     ],
     external: ['better-sqlite3'],
     sourcemap: false,
