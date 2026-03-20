@@ -18,7 +18,7 @@ import './types';
 const app = express();
 
 const corsOptions = {
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4001', process.env.DASHBOARD_URL].filter(Boolean) as string[],
+    origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4001', 'http://127.0.0.1:4001', process.env.DASHBOARD_URL].filter(Boolean) as string[],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
 };
