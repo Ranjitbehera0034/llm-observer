@@ -21,7 +21,7 @@ const getSpendFromDb = (projectId: string) => {
   const spendStmt = db.prepare(`
       SELECT sum(cost_usd) as total 
       FROM requests 
-      WHERE project_id = ? AND date(created_at) = date('now')
+      WHERE project_id = ? AND date(created_at, 'localtime') = date('now', 'localtime')
         AND status != 'blocked_budget'
     `);
   const row = spendStmt.get(projectId) as any;

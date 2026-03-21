@@ -16,7 +16,7 @@ statsRouter.get('/overview', (req, res) => {
                 COALESCE(avg(latency_ms), 0) as avg_latency,
                 COALESCE(sum(case when status_code >= 400 then 1 else 0 end), 0) as error_count
             FROM requests 
-            WHERE project_id = ? AND date(created_at) = date('now')
+            WHERE project_id = ? AND date(created_at, 'localtime') = date('now', 'localtime')
         `);
         const stats = (statsStmt.get(projectId) as any) || { total_spend: 0, total_requests: 0, avg_latency: 0, error_count: 0 };
 
@@ -26,7 +26,7 @@ statsRouter.get('/overview', (req, res) => {
         const tokenStmt = db.prepare(`
             SELECT COALESCE(sum(total_tokens), 0) as tokens
             FROM requests
-            WHERE project_id = ? AND date(created_at) = date('now')
+            WHERE project_id = ? AND date(created_at, 'localtime') = date('now', 'localtime')
         `);
         const tokenStats = (tokenStmt.get(projectId) as any) || { tokens: 0 };
 
@@ -53,13 +53,13 @@ statsRouter.get('/chart', (req, res) => {
 
         const chartStmt = db.prepare(`
             SELECT 
-                date(created_at) as date,
+                date(created_at, 'localtime') as date,
                 COALESCE(sum(cost_usd), 0) as cost,
                 count(*) as requests
             FROM requests
-            WHERE project_id = ? AND created_at >= date('now', '-' || ? || ' days')
-            GROUP BY date(created_at)
-            ORDER BY date(created_at) ASC
+            WHERE project_id = ? AND date(created_at, 'localtime') >= date('now', 'localtime', '-' || ? || ' days')
+            GROUP BY date(created_at, 'localtime')
+            ORDER BY date(created_at, 'localtime') ASC
         `);
         const data = chartStmt.all(projectId, days);
 

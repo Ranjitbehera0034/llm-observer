@@ -40,7 +40,7 @@ projectsRouter.get('/', (req, res) => {
                 COALESCE(SUM(r.cost_usd), 0) as total_spend_today,
                 COUNT(r.id) as total_requests_today
             FROM projects p
-            LEFT JOIN requests r ON p.id = r.project_id AND date(r.created_at) = date('now')
+            LEFT JOIN requests r ON p.id = r.project_id AND date(r.created_at, 'localtime') = date('now', 'localtime')
             GROUP BY p.id
         `);
         const data = stmt.all();
