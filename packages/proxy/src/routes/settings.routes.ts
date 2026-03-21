@@ -92,7 +92,16 @@ settingsRouter.get('/settings', (req, res) => {
 // PUT /api/settings
 settingsRouter.put('/settings', express.json(), (req, res) => {
     try {
-        updateSettings(req.body);
+        const payload = req.body;
+        const filteredPayload: Record<string, string> = {};
+        for (const [key, value] of Object.entries(payload)) {
+            // Ignore any values that contain the redact mask "****"
+            if (typeof value === 'string' && value.includes('****')) {
+                continue;
+            }
+            filteredPayload[key] = String(value);
+        }
+        updateSettings(filteredPayload);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Failed to update settings' });
