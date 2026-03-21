@@ -40,8 +40,8 @@ export function createDashboardRouter(): Router {
     // Teams sync
     router.use('/teams', requestsRouter);
 
-    // Settings, alerts, alert rules (mounted at root but after specific paths)
-    router.use('/settings', settingsRouter);
+    // Settings, alerts, alert rules (mounted at root — contains /settings, /alert-rules, /alerts sub-paths)
+    router.use('/', settingsRouter);
 
     // SSE events (mounted at /events)ß
     router.get('/events', (req, res, next) => {

@@ -185,7 +185,9 @@ export async function checkProjectLimit(): Promise<boolean> {
     const db = getDb();
     const info = await getLicenseInfo();
 
-    const countRow = db.prepare('SELECT count(*) as count FROM projects').get() as any;
+    // Exclude the bootstrapped 'default' project from the limit count
+    // so free users can always create at least one project of their own.
+    const countRow = db.prepare("SELECT count(*) as count FROM projects WHERE id != 'default'").get() as any;
     const projectCount = countRow.count;
 
     return projectCount < info.limits.maxProjects;
