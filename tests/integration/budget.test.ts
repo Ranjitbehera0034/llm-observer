@@ -73,6 +73,7 @@ describe('Budget Guard Tests', () => {
         const res = await request(app).post('/test').set('x-api-key', 'key-3').send({});
         expect(res.status).toBe(429);
         expect(res.body.error.type).toBe('budget_exceeded');
+        expect(res.body.error._source).toBeUndefined();
     });
 
     it('allows request when budget is exceeded but kill_switch is FALSE', async () => {
