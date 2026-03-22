@@ -7,5 +7,5 @@ export default defineConfig({
     clean: true,
     sourcemap: true,
     minify: false,
-    onSuccess: 'cp src/*.sql dist/',
+    onSuccess: 'mkdir -p dist/migrations && cp src/migrations/*.sql dist/migrations/',
 });

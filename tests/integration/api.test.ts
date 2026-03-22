@@ -58,7 +58,6 @@ const { dashboardApi } = await import('../../packages/proxy/src/dashboardApi');
 
 // ─── Build the test Express app ───────────────────────────────────────────────
 const app = express();
-app.use(express.json());
 app.use('/api', dashboardApi);
 
 // ─── Test Suites ──────────────────────────────────────────────────────────────
@@ -147,7 +146,11 @@ describe('GET /api/requests', () => {
 });
 
 describe('POST /api/webhooks/razorpay', () => {
-    it('returns 200 for valid subscription.activated event (no secret in dev mode)', async () => {
+    const secret = 'test_razorpay_secret';
+    beforeAll(() => { process.env.RAZORPAY_WEBHOOK_SECRET = secret; });
+    afterAll(() => { delete process.env.RAZORPAY_WEBHOOK_SECRET; });
+
+    it('returns 200 for valid subscription.activated event', async () => {
         const payload = {
             event: 'subscription.activated',
             payload: {
@@ -162,11 +165,13 @@ describe('POST /api/webhooks/razorpay', () => {
             }
         };
 
+        const signature = require('crypto').createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
+
         const res = await request(app)
             .post('/api/webhooks/razorpay')
+            .set('x-razorpay-signature', signature)
             .send(payload);
 
-        // Without the RAZORPAY_WEBHOOK_SECRET env var, signature check is skipped (dev mode)
         expect(res.status).toBe(200);
         expect(res.body).toHaveProperty('received', true);
         expect(res.body).toHaveProperty('activated', true);
@@ -174,14 +179,24 @@ describe('POST /api/webhooks/razorpay', () => {
 
     it('ignores non-activatable events', async () => {
         const payload = { event: 'refund.created', payload: {} };
-        const res = await request(app).post('/api/webhooks/razorpay').send(payload);
+        const signature = require('crypto').createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
+        
+        const res = await request(app)
+            .post('/api/webhooks/razorpay')
+            .set('x-razorpay-signature', signature)
+            .send(payload);
+            
         expect(res.status).toBe(200);
         expect(res.body.action).toBe('ignored');
     });
 });
 
 describe('POST /api/webhooks/lemonsqueezy', () => {
-    it('activates license on subscription_created (dev mode, no secret)', async () => {
+    const secret = 'test_lemonsqueezy_secret';
+    beforeAll(() => { process.env.LEMONSQUEEZY_WEBHOOK_SECRET = secret; });
+    afterAll(() => { delete process.env.LEMONSQUEEZY_WEBHOOK_SECRET; });
+
+    it('activates license on subscription_created', async () => {
         const payload = {
             data: {
                 id: '9999',
@@ -194,9 +209,12 @@ describe('POST /api/webhooks/lemonsqueezy', () => {
             }
         };
 
+        const signature = require('crypto').createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
+
         const res = await request(app)
             .post('/api/webhooks/lemonsqueezy')
             .set('x-event-name', 'subscription_created')
+            .set('x-signature', signature)
             .send(payload);
 
         expect(res.status).toBe(200);
@@ -205,10 +223,15 @@ describe('POST /api/webhooks/lemonsqueezy', () => {
     });
 
     it('ignores unknown events', async () => {
+        const payload = { data: {} };
+        const signature = require('crypto').createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
+        
         const res = await request(app)
             .post('/api/webhooks/lemonsqueezy')
             .set('x-event-name', 'review.created')
-            .send({ data: {} });
+            .set('x-signature', signature)
+            .send(payload);
+            
         expect(res.status).toBe(200);
         expect(res.body.action).toBe('ignored');
     });
