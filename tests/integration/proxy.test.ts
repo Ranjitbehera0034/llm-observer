@@ -47,6 +47,19 @@ beforeAll(async () => {
         let body = '';
         req.on('data', chunk => { body += chunk; });
         req.on('end', () => {
+            const forcedStatus = req.headers['x-test-error-status'];
+            if (forcedStatus) {
+                const status = parseInt(forcedStatus as string, 10);
+                const payload = { error: { message: "Test error" } };
+                const headers: any = { 'Content-Type': 'application/json' };
+                if (status === 429) {
+                    headers['Retry-After'] = '60';
+                }
+                res.writeHead(status, headers);
+                res.end(JSON.stringify(payload));
+                return;
+            }
+
             if (req.url === '/v1/chat/completions') {
                 let parsed: any = {};
                 try {
@@ -121,5 +134,30 @@ describe('Proxy Forwarding Tests', () => {
         expect(mockLoggerAdd).toHaveBeenCalled();
         const logData = mockLoggerAdd.mock.calls[mockLoggerAdd.mock.calls.length - 1][0];
         expect(logData.is_streaming).toBe(true);
+    });
+
+    it('intercepts 429 and enriches it with _source and _observer_note, preserving Retry-After', async () => {
+        const payload = { model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'test' }] };
+        const res = await request(proxyApp)
+            .post('/v1/openai/chat/completions')
+            .set('X-Test-Error-Status', '429')
+            .send(payload);
+
+        expect(res.status).toBe(429);
+        expect(res.headers['retry-after']).toBe('60');
+        expect(res.body.error._source).toBe('openai');
+        expect(res.body.error._observer_note).toContain('rate limited');
+    });
+
+    it('intercepts 402 and enriches it with _source and _observer_note', async () => {
+        const payload = { model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'test' }] };
+        const res = await request(proxyApp)
+            .post('/v1/openai/chat/completions')
+            .set('X-Test-Error-Status', '402')
+            .send(payload);
+
+        expect(res.status).toBe(402);
+        expect(res.body.error._source).toBe('openai');
+        expect(res.body.error._observer_note).toContain('insufficient credits');
     });
 });
