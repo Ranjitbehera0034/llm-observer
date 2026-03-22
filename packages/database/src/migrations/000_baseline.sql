@@ -1,3 +1,13 @@
+-- 000_baseline.sql
+-- Captures the exact schema of v1.0.11 including all inline column additions.
+-- This migration MUST be completely idempotent using IF NOT EXISTS.
+
+CREATE TABLE IF NOT EXISTS organizations (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -8,6 +18,8 @@ CREATE TABLE IF NOT EXISTS projects (
   alert_threshold REAL DEFAULT 0.8,
   kill_switch BOOLEAN DEFAULT 1,
   webhook_url TEXT,
+  organization_id TEXT REFERENCES organizations(id),
+  saved_filters TEXT DEFAULT "[]",
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -31,6 +43,8 @@ CREATE TABLE IF NOT EXISTS requests (
   response_body TEXT,
   pricing_unknown BOOLEAN DEFAULT 0,
   tags TEXT,
+  prompt_hash TEXT,
+  metadata TEXT DEFAULT "{}",
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (project_id) REFERENCES projects (id)
 );
@@ -79,6 +93,7 @@ CREATE TABLE IF NOT EXISTS daily_stats (
   avg_latency_ms INTEGER,
   error_count INTEGER DEFAULT 0,
   blocked_count INTEGER DEFAULT 0,
+  synced_at DATETIME,
   FOREIGN KEY (project_id) REFERENCES projects (id)
 );
 
@@ -88,4 +103,43 @@ CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    organization_id TEXT,
+    role TEXT DEFAULT 'admin',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (organization_id) REFERENCES organizations (id)
+);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    key_hash TEXT UNIQUE NOT NULL,
+    key_hint TEXT NOT NULL,
+    name TEXT NOT NULL,
+    project_id TEXT,
+    organization_id TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME,
+    last_used_at DATETIME,
+    FOREIGN KEY (project_id) REFERENCES projects (id),
+    FOREIGN KEY (organization_id) REFERENCES organizations (id)
+);
+
+CREATE TABLE IF NOT EXISTS alert_rules (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    organization_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    condition_type TEXT NOT NULL,
+    threshold REAL NOT NULL,
+    time_window_minutes INTEGER,
+    webhook_url TEXT,
+    email_notification TEXT,
+    is_active BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

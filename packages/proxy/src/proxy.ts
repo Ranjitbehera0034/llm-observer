@@ -46,6 +46,7 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
     // Inject stream_options for OpenAI-compatible providers to get usage metrics in stream
     if ((providerName === 'openai' || providerName === 'groq') && req.body?.stream) {
         req.body.stream_options = { include_usage: true };
+        delete req.headers['content-length'];
     }
 
     // Parse request to get model details
