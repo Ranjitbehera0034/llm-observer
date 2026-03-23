@@ -5,33 +5,12 @@ import { budgetGuard } from '../budgetGuard';
 import { rateLimitGuard } from '../rateLimitGuard';
 
 jest.mock('@llm-observer/database', () => {
-    const BetterSQLite3 = require('better-sqlite3');
-    const database = new BetterSQLite3(':memory:');
-    const path = require('path');
-    const fs = require('fs');
-
-    const migrationDir = path.join(__dirname, '../../../../packages/database/src');
-    ['001_initial.sql', '002_auth.sql', '003_alerts.sql'].forEach(file => {
-        const fullPath = path.join(migrationDir, file);
-        if (fs.existsSync(fullPath)) {
-            database.exec(fs.readFileSync(fullPath, 'utf8'));
-        }
-    });
-
-    // Apply necessary runtime patches
-    const safeExec = (sql: string) => { try { database.exec(sql); } catch (e) { /* ok */ } };
-    safeExec('ALTER TABLE requests ADD COLUMN pricing_unknown BOOLEAN DEFAULT 0;');
-    safeExec('ALTER TABLE model_pricing ADD COLUMN is_custom BOOLEAN DEFAULT 0;');
-    safeExec('ALTER TABLE projects ADD COLUMN organization_id TEXT;');
-    safeExec('ALTER TABLE requests ADD COLUMN prompt_hash TEXT;');
-    safeExec('ALTER TABLE projects ADD COLUMN saved_filters TEXT DEFAULT "[]";');
-
-    database.prepare('INSERT OR IGNORE INTO projects (id, name, daily_budget) VALUES (?, ?, ?)').run('default', 'Default', 10.0);
-
+    const { createTestDb } = require('./helpers/testDb');
+    const { database, bulkInsertRequests } = createTestDb();
     return {
         getDb: () => database,
         initDb: () => database,
-        bulkInsertRequests: jest.fn(),
+        bulkInsertRequests,
         validateApiKey: () => ({ project_id: 'default' }),
         getSetting: () => null,
     };

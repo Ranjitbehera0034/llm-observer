@@ -7,6 +7,7 @@ import Projects from './pages/Projects';
 import Alerts from './pages/Alerts';
 import Insights from './pages/Insights';
 import Settings from './pages/Settings';
+import SyncPage from './pages/SyncPage';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
             <Route path="/projects" element={<Projects />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/sync" element={<SyncPage />} />
           </Routes>
         </ErrorBoundary>
       </Layout>
