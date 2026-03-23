@@ -60,7 +60,7 @@ requestsRouter.get('/', (req, res) => {
         COALESCE(completion_tokens, 0) AS completion_tokens,
         COALESCE(total_tokens, 0)     AS total_tokens,
         COALESCE(cost_usd, 0)         AS cost_usd,
-        latency_ms, status_code, status, is_streaming, created_at
+        latency_ms, status_code, status, is_streaming, metadata, created_at
       FROM requests
       ${whereClause}
       ORDER BY created_at DESC
@@ -74,7 +74,7 @@ requestsRouter.get('/', (req, res) => {
                 total: count,
                 page,
                 limit,
-                totalPages: Math.ceil(count / limit) || 1
+                totalPages: count === 0 ? 0 : Math.ceil(count / limit)
             }
         });
     } catch (err) {

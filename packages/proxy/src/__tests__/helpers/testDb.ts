@@ -10,13 +10,22 @@ import { randomUUID } from 'crypto';
 
 export function createTestDb(): { database: Database; bulkInsertRequests: (requests: any[]) => void } {
     const database = new BetterSQLite3(':memory:');
-    const migrationDir = path.join(__dirname, '../../../../../packages/database/src');
+    const migrationDir = path.join(__dirname, '../../../../../packages/database/src/migrations');
 
-    // Base schemas
-    ['001_initial.sql', '002_auth.sql', '003_alerts.sql'].forEach(file => {
-        const fullPath = path.join(migrationDir, file);
-        if (fs.existsSync(fullPath)) database.exec(fs.readFileSync(fullPath, 'utf8'));
-    });
+    // Base schemas and runtime migrations (scan directory)
+    if (fs.existsSync(migrationDir)) {
+        const files = fs.readdirSync(migrationDir)
+            .filter(f => f.endsWith('.sql'))
+            .sort();
+        for (const file of files) {
+            const fullPath = path.join(migrationDir, file);
+            try {
+                database.exec(fs.readFileSync(fullPath, 'utf8'));
+            } catch (err: any) {
+                console.warn(`[testDb] Migration ${file} failed: ${err.message}`);
+            }
+        }
+    }
 
     // Runtime versioned migrations
     const safeExec = (sql: string) => {

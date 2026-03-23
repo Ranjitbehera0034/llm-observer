@@ -13,6 +13,7 @@ import { startRetentionCleanup } from './retentionManager';
 import { startCostOptimizer } from './costOptimizer';
 import { startStatsAggregation } from './utils/statsAggregator';
 import { syncManager } from './syncManager';
+import { usageSyncManager } from './sync';
 import './types';
 
 const app = express();
@@ -101,6 +102,10 @@ dashboardApp.use(express.json());
 // Mount the dashboard API router
 dashboardApp.use('/api', dashboardApi);
 
+// Import and register sync routes
+import syncRoutes from './routes/sync.routes';
+dashboardApp.use('/api/sync', syncRoutes);
+
 // Fallback to static Dashboard build if not hitting API
 // In development: ../../dashboard/dist
 // In bundled package: ./dashboard
@@ -149,6 +154,7 @@ async function bootstrap() {
         startCostOptimizer();
         startStatsAggregation();
         syncManager.start();
+        usageSyncManager.start();
 
     } catch (err) {
         console.error('Fatal Initialization Error:', err);
