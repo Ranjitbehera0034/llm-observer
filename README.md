@@ -11,6 +11,7 @@ Stop sending your prompt data to SaaS observability tools. LLM Observer is a dev
 - **🔒 100% Private**: Your prompts, completions, and API keys are stored in a local SQLite database. No telemetry. No middle-man.
 - **🛡️ Budget Guards**: Automatically block requests if a project hits its budget. Stop "wake-up-to-a-$1000-bill" surprises.
 - **⚡ Unified Proxy**: One endpoint to rule them all. Switch between OpenAI, Anthropic, and Gemini with simple config.
+- **🔄 Zero-Config Usage Sync**: Automatically fetch completions usage and cost data from Anthropic and OpenAI Admin APIs. No application code changes required.
 - **🕵️ Anomaly Alerts**: Real-time webhook notifications if we detect a 5x spike in spend velocity.
 
 ## 🚀 Getting Started (How to Use)

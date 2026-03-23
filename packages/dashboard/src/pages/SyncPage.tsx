@@ -17,11 +17,13 @@ interface SyncConfig {
 
 interface DailyPoint {
     date: string;
-    cost_usd: number;
-    num_requests: number;
+    total: number;
+    anthropic?: number;
+    openai?: number;
 }
 
 interface ModelRow {
+    provider: string;
     model: string;
     num_requests: number;
     input_tokens: number;
@@ -30,21 +32,101 @@ interface ModelRow {
     pct_of_total: number;
 }
 
-const SyncPage: React.FC = () => {
-    const [config, setConfig] = useState<SyncConfig | null>(null);
-    const [loading, setLoading] = useState(true);
+interface ProviderSetupProps {
+    config: SyncConfig;
+    onSave: (providerId: string, adminKey: string) => Promise<void>;
+    onCancel?: () => void;
+    isTesting: boolean;
+    error: string | null;
+}
+
+const ProviderSetup: React.FC<ProviderSetupProps> = ({ config, onSave, onCancel, isTesting, error }) => {
     const [adminKey, setAdminKey] = useState('');
+    const icon = config.id === 'anthropic' ? '🧡' : '🤖';
+    const color = config.id === 'anthropic' ? 'orange' : 'emerald';
+
+    return (
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 mb-6 animate-in fade-in slide-in-from-bottom-2">
+            <div className="flex items-center gap-4 mb-6">
+                <div className={`w-12 h-12 bg-${color}-500/10 rounded-lg flex items-center justify-center text-2xl`}>{icon}</div>
+                <div>
+                    <h2 className="text-xl font-semibold">{config.display_name} Connection</h2>
+                    <p className="text-sm text-slate-500">
+                        Requires an Organization Admin Key ({config.id === 'anthropic' ? 'sk-ant-admin...' : 'sk-admin-...'})
+                    </p>
+                </div>
+            </div>
+
+            <div className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-2">Admin API Key</label>
+                    <input
+                        type="password"
+                        placeholder={config.id === 'anthropic' ? 'sk-ant-admin...' : 'sk-admin...'}
+                        value={adminKey}
+                        onChange={(e) => setAdminKey(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && onSave(config.id, adminKey)}
+                        className={`w-full bg-black border ${error ? 'border-red-500/50' : 'border-slate-800'} rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500 transition-colors`}
+                    />
+                    {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
+                </div>
+
+                <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-lg p-4 text-sm text-indigo-200">
+                    <strong>How to get an Admin Key:</strong>
+                    <ol className="list-decimal ml-4 mt-2 space-y-1">
+                        {config.id === 'anthropic' ? (
+                            <>
+                                <li>Go to <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" className="underline">console.anthropic.com</a></li>
+                                <li>Navigate to <strong>Settings → Admin Keys</strong></li>
+                            </>
+                        ) : (
+                            <>
+                                <li>Go to <a href="https://platform.openai.com/settings/organization/admin-keys" target="_blank" rel="noreferrer" className="underline">platform.openai.com</a></li>
+                                <li>Must be an <strong>Organization Owner</strong> to create Admin keys</li>
+                            </>
+                        )}
+                        <li>Create a new key and paste it above</li>
+                    </ol>
+                </div>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => onSave(config.id, adminKey)}
+                        disabled={isTesting || !adminKey}
+                        className="bg-white text-black font-semibold px-6 py-2 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
+                    >
+                        {isTesting ? 'Validating...' : `Connect ${config.display_name}`}
+                    </button>
+                    {onCancel && (
+                        <button onClick={onCancel} className="px-6 py-2 text-slate-400 hover:text-white transition-colors">Cancel</button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const SyncPage: React.FC = () => {
+    const [configs, setConfigs] = useState<SyncConfig[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<'all' | 'anthropic' | 'openai'>('all');
+    
+    const [setupProvider, setSetupProvider] = useState<string | null>(null);
     const [isTesting, setIsTesting] = useState(false);
     const [testError, setTestError] = useState<string | null>(null);
+
     const [dailyData, setDailyData] = useState<DailyPoint[]>([]);
-    const [modelData, setModelData] = useState<ModelRow[]>([]);
+    const [modelData, setModelData] = useState<{ total: number, providers: any, models: ModelRow[] }>({
+        total: 0,
+        providers: {},
+        models: []
+    });
 
     const fetchStatus = useCallback(async () => {
         try {
             const res = await fetch('/api/sync/status');
             const data = await res.json();
-            const anthropic = data.find((c: any) => c.id === 'anthropic');
-            setConfig(anthropic || null);
+            setConfigs(data);
         } catch (err) {
             console.error('Failed to fetch sync status', err);
         } finally {
@@ -52,46 +134,33 @@ const SyncPage: React.FC = () => {
         }
     }, []);
 
-    const fetchChartData = useCallback(async () => {
+    const fetchUsageData = useCallback(async () => {
         try {
+            const providerQuery = activeTab === 'all' ? '' : `&provider=${activeTab}`;
             const [dailyRes, modelRes] = await Promise.all([
-                fetch('/api/sync/usage/daily?days=30'),
-                fetch('/api/sync/usage/by-model?days=7'),
+                fetch(`/api/sync/usage/daily?days=30${providerQuery}`),
+                fetch(`/api/sync/usage/today?${providerQuery}`),
             ]);
             if (dailyRes.ok) setDailyData(await dailyRes.json());
             if (modelRes.ok) setModelData(await modelRes.json());
         } catch (err) {
             console.error('Failed to fetch usage data', err);
         }
-    }, []);
+    }, [activeTab]);
 
     useEffect(() => {
         fetchStatus();
-        fetchChartData();
-        // Auto-refresh every 60 seconds while the page is open
-        const interval = setInterval(() => { fetchStatus(); fetchChartData(); }, 60_000);
+        fetchUsageData();
+        const interval = setInterval(() => { fetchStatus(); fetchUsageData(); }, 60_000);
         return () => clearInterval(interval);
-    }, [fetchStatus, fetchChartData]);
+    }, [fetchStatus, fetchUsageData]);
 
-    const handleSaveKey = async () => {
-        if (!adminKey.trim()) {
-            setTestError('Please enter an Admin API key.');
-            return;
-        }
-        if (adminKey.startsWith('sk-ant-api')) {
-            setTestError('This is a regular API key, not an Admin key. Admin keys start with sk-ant-admin.');
-            return;
-        }
-        if (!adminKey.startsWith('sk-ant-admin')) {
-            setTestError("This doesn't look like an Anthropic Admin key. Admin keys start with sk-ant-admin.");
-            return;
-        }
-
+    const handleSaveKey = async (providerId: string, adminKey: string) => {
         setIsTesting(true);
         setTestError(null);
 
         try {
-            const res = await fetch('/api/sync/providers/anthropic/key', {
+            const res = await fetch(`/api/sync/providers/${providerId}/key`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ adminKey })
@@ -101,8 +170,8 @@ const SyncPage: React.FC = () => {
                 setTestError(data.error || 'Failed to validate key');
             } else {
                 await fetchStatus();
-                await fetchChartData();
-                setAdminKey('');
+                await fetchUsageData();
+                setSetupProvider(null);
             }
         } catch (err: any) {
             setTestError(err.message);
@@ -111,11 +180,13 @@ const SyncPage: React.FC = () => {
         }
     };
 
-    const handleRemoveKey = async () => {
-        if (!confirm('Are you sure you want to disconnect Anthropic? Historical data will be preserved.')) return;
+    const handleRemoveKey = async (providerId: string) => {
+        const name = configs.find(c => c.id === providerId)?.display_name || providerId;
+        if (!confirm(`Are you sure you want to disconnect ${name}? Historical data will be preserved.`)) return;
         try {
-            await fetch('/api/sync/providers/anthropic/key', { method: 'DELETE' });
+            await fetch(`/api/sync/providers/${providerId}/key`, { method: 'DELETE' });
             await fetchStatus();
+            await fetchUsageData();
         } catch (err) {
             console.error('Failed to remove key', err);
         }
@@ -123,216 +194,205 @@ const SyncPage: React.FC = () => {
 
     if (loading) return <div className="p-8 text-slate-400">Loading sync status...</div>;
 
-    // ── STATE 1: No Key Configured ──────────────────────────────────────────
-    if (!config || !config.has_key || config.status === 'inactive') {
-        return (
-            <div className="p-8 max-w-4xl">
-                <h1 className="text-2xl font-bold mb-2">Usage Sync</h1>
-                <p className="text-slate-400 mb-8">
-                    Track your global Anthropic spend even for requests made outside LLM Observer
-                    (e.g., via Continue, Cursor, or Claude Code). Zero IDE changes — just paste one key.
-                </p>
+    const providers = [
+        configs.find(c => c.id === 'anthropic') || { id: 'anthropic', display_name: 'Anthropic', status: 'inactive', has_key: false } as SyncConfig,
+        configs.find(c => c.id === 'openai') || { id: 'openai', display_name: 'OpenAI', status: 'inactive', has_key: false } as SyncConfig,
+    ];
 
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-8">
-                    <div className="flex items-center gap-4 mb-6">
-                        <div className="w-12 h-12 bg-orange-500/10 rounded-lg flex items-center justify-center text-2xl">🔑</div>
-                        <div>
-                            <h2 className="text-xl font-semibold">Anthropic Integration</h2>
-                            <p className="text-sm text-slate-500">Requires an Organization Admin Key (sk-ant-admin...)</p>
-                        </div>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-400 mb-2">Admin API Key</label>
-                            <input
-                                type="password"
-                                placeholder="sk-ant-admin..."
-                                value={adminKey}
-                                onChange={(e) => { setAdminKey(e.target.value); setTestError(null); }}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSaveKey()}
-                                className="w-full bg-black border border-slate-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-orange-500 transition-colors"
-                            />
-                            {testError && <p className="text-red-400 text-sm mt-2">{testError}</p>}
-                        </div>
-
-                        <div className="bg-blue-500/5 border border-blue-500/10 rounded-lg p-4 text-sm text-blue-200">
-                            <strong>How to get an Admin Key:</strong>
-                            <ol className="list-decimal ml-4 mt-2 space-y-1">
-                                <li>Go to <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" className="underline">console.anthropic.com</a></li>
-                                <li>Navigate to <strong>Settings → Admin Keys</strong></li>
-                                <li>Create a new key and paste it above</li>
-                            </ol>
-                        </div>
-
-                        <button
-                            onClick={handleSaveKey}
-                            disabled={isTesting || !adminKey}
-                            className="bg-white text-black font-semibold px-6 py-2 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isTesting ? 'Validating...' : 'Connect Anthropic'}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
-    const totalSpend = modelData.reduce((acc, r) => acc + (r.cost_usd || 0), 0);
-    const totalRequests = modelData.reduce((acc, r) => acc + (r.num_requests || 0), 0);
-    const lastSyncStr = config.last_poll_at
-        ? new Date(config.last_poll_at).toLocaleString()
-        : 'Never';
-    const nextSyncStr = config.next_poll_in_seconds != null && config.status === 'active'
-        ? `Next sync in ${config.next_poll_in_seconds}s`
-        : '';
+    const hasAnyActive = configs.some(c => c.has_key);
+    const activeConfigs = configs.filter(c => c.has_key);
 
     return (
         <div className="p-8 max-w-6xl">
             {/* Header */}
             <div className="flex items-center justify-between mb-8">
                 <div>
-                    <h1 className="text-2xl font-bold flex items-center gap-3">
-                        Usage Sync
-                        <StatusBadge
-                            statusCode={config.status === 'error' ? 500 : 200}
-                            status={config.status === 'error' ? 'Error' : config.status === 'rate_limited' ? 'Rate Limited' : 'Active'}
-                        />
-                    </h1>
+                    <h1 className="text-2xl font-bold">Usage Sync</h1>
                     <p className="text-slate-400 text-sm mt-1">
-                        Monitoring <strong>{config.org_name || 'Anthropic Org'}</strong>
-                        {' · '}Last synced: {lastSyncStr}
-                        {nextSyncStr && <span className="text-slate-500"> · {nextSyncStr}</span>}
+                        Track global API spend. Syncs completions usage and costs every 15 minutes.
                     </p>
                 </div>
-                <button
-                    onClick={handleRemoveKey}
-                    className="text-xs text-slate-500 hover:text-red-400 transition-colors"
-                >
-                    Disconnect Provider
-                </button>
-            </div>
-
-            {/* STATE 3: Error Banner */}
-            {config.status === 'error' && (
-                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-8 flex items-start gap-4">
-                    <div className="text-red-500 text-lg leading-none">⚠</div>
-                    <div>
-                        <h3 className="text-red-200 font-semibold">Sync Error</h3>
-                        <p className="text-sm text-red-300/80">{config.last_error || 'Unknown error occurred during polling.'}</p>
-                    </div>
-                </div>
-            )}
-
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">7-Day Spend</h3>
-                    <div className="text-4xl font-black text-green-400">${totalSpend.toFixed(2)}</div>
-                    <p className="text-xs text-slate-500 mt-1">{totalRequests.toLocaleString()} requests</p>
-                </div>
-
-                {/* 30-Day Bar Chart */}
-                <div className="md:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6">
-                    <h3 className="text-sm font-medium text-slate-400 mb-4">30-Day Cost Trend</h3>
-                    {dailyData.every(d => d.cost_usd === 0) ? (
-                        <div className="flex items-center justify-center h-24 text-slate-600 text-sm">
-                            No cost data yet — check back after the first sync cycle
-                        </div>
-                    ) : (
-                        <ResponsiveContainer width="100%" height={120}>
-                            <BarChart data={dailyData.map(d => ({
-                                ...d,
-                                displayDate: new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                            }))} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
-                                <XAxis
-                                    dataKey="displayDate"
-                                    stroke="#94A3B8"
-                                    fontSize={9}
-                                    tickLine={false}
-                                    axisLine={false}
-                                    interval={4}
-                                />
-                                <YAxis
-                                    stroke="#94A3B8"
-                                    fontSize={9}
-                                    tickLine={false}
-                                    axisLine={false}
-                                    tickFormatter={(v) => `$${v}`}
-                                />
-                                <Tooltip
-                                    formatter={(val: any) => [`$${Number(val).toFixed(4)}`, 'Cost']}
-                                    labelStyle={{ color: '#94A3B8', fontSize: 11 }}
-                                    contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8 }}
-                                />
-                                <Bar dataKey="cost_usd" fill="#4F46E5" radius={[2, 2, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    )}
-                </div>
-            </div>
-
-            {/* Model Breakdown Table */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden mb-6">
-                <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">Model Breakdown</h3>
-                    <span className="text-xs text-slate-500">Last 7 days</span>
-                </div>
-
-                {/* STATE 4: Zero Usage */}
-                {modelData.length === 0 ? (
-                    <div className="p-12 text-center">
-                        <div className="text-4xl mb-4">✨</div>
-                        <h3 className="text-lg font-medium text-white mb-1">$0.00 today</h3>
-                        <p className="text-slate-500 text-sm max-w-sm mx-auto">
-                            No Anthropic API usage detected in the last 7 days. Usage typically appears within 5 minutes of making an API call.
-                        </p>
-                    </div>
-                ) : (
-                    <div className="p-6">
-                        <table className="w-full text-left text-sm">
-                            <thead>
-                                <tr className="text-slate-500 uppercase text-[10px] font-bold tracking-widest border-b border-white/5">
-                                    <th className="pb-3">Model</th>
-                                    <th className="pb-3">Requests</th>
-                                    <th className="pb-3 text-right">Input Tokens</th>
-                                    <th className="pb-3 text-right">Output Tokens</th>
-                                    <th className="pb-3 text-right">Cost</th>
-                                    <th className="pb-3 text-right">% of Total</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5">
-                                {modelData.map((row) => (
-                                    <tr key={row.model}>
-                                        <td className="py-4 font-medium text-white font-mono text-xs">{row.model}</td>
-                                        <td className="py-4 text-slate-400">{row.num_requests.toLocaleString()}</td>
-                                        <td className="py-4 text-slate-400 text-right">{(row.input_tokens || 0).toLocaleString()}</td>
-                                        <td className="py-4 text-slate-400 text-right">{(row.output_tokens || 0).toLocaleString()}</td>
-                                        <td className="py-4 text-green-400 font-bold text-right">${(row.cost_usd || 0).toFixed(4)}</td>
-                                        <td className="py-4 text-slate-500 text-right">{row.pct_of_total}%</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                            <tfoot className="border-t border-white/10">
-                                <tr>
-                                    <td className="pt-3 text-slate-400 font-medium text-xs">Total</td>
-                                    <td className="pt-3 text-slate-400 text-xs">{totalRequests.toLocaleString()}</td>
-                                    <td colSpan={2} />
-                                    <td className="pt-3 text-green-400 font-bold text-right text-xs">${totalSpend.toFixed(4)}</td>
-                                    <td className="pt-3 text-slate-500 text-right text-xs">100%</td>
-                                </tr>
-                            </tfoot>
-                        </table>
+                {hasAnyActive && (
+                    <div className="flex bg-slate-900 rounded-lg p-1 border border-slate-800">
+                        {(['all', ...activeConfigs.map(c => c.id)] as const).map(p => (
+                            <button
+                                key={p}
+                                onClick={() => setActiveTab(p as 'all' | 'anthropic' | 'openai')}
+                                className={`px-4 py-1 rounded-md text-xs font-semibold transition-all ${activeTab === p ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                {p === 'all' ? 'All Providers' : p.charAt(0).toUpperCase() + p.slice(1)}
+                            </button>
+                        ))}
                     </div>
                 )}
             </div>
 
-            {/* Data Source Disclaimer */}
-            <p className="text-xs text-slate-600 leading-relaxed">
-                Showing all usage billed to your Anthropic API account. This includes Claude Code, Continue, Aider, Cursor (BYOK mode), and any app using your API key.
-                Subscription tools like Cursor Pro and Claude.ai are not included — you can add those manually starting in v1.3.0.
-            </p>
+            {/* Provider Section */}
+            <div className="space-y-6 mb-8">
+                {setupProvider ? (
+                    <ProviderSetup 
+                        config={providers.find(p => p.id === setupProvider)!}
+                        onSave={handleSaveKey}
+                        onCancel={() => { setSetupProvider(null); setTestError(null); }}
+                        isTesting={isTesting}
+                        error={testError}
+                    />
+                ) : !hasAnyActive ? (
+                    // Initial Setup State: Show both if none connected, but in a grid
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {providers.map(p => (
+                            <ProviderSetup 
+                                key={p.id}
+                                config={p}
+                                onSave={async (id, key) => { 
+                                    setSetupProvider(id); // Lock to this one when starting
+                                    await handleSaveKey(id, key); 
+                                }}
+                                isTesting={false} // Will switch to the setupProvider view immediately
+                                error={null}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    // Regular State: Show active status list
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {providers.map(config => {
+                            if (!config.has_key) return (
+                                <div key={config.id} className="bg-slate-900/50 border border-slate-800 border-dashed rounded-xl p-6 flex items-center justify-between opacity-60 hover:opacity-100 transition-opacity">
+                                     <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center text-xl grayscale">
+                                            {config.id === 'anthropic' ? '🧡' : '🤖'}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-slate-400">{config.display_name}</h3>
+                                            <p className="text-xs text-slate-600">Disconnected</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setSetupProvider(config.id)} className="text-xs bg-slate-800 px-3 py-1.5 rounded-lg hover:bg-slate-700 transition-colors">Connect</button>
+                                </div>
+                            );
+                            
+                            const lastSyncStr = config.last_poll_at ? new Date(config.last_poll_at).toLocaleTimeString() : 'Never';
+                            const color = config.id === 'anthropic' ? 'orange' : 'emerald';
+
+                            return (
+                                <div key={config.id} className="bg-slate-900 border border-slate-800 rounded-xl p-6 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-10 h-10 bg-${color}-500/10 rounded-lg flex items-center justify-center text-xl`}>
+                                            {config.id === 'anthropic' ? '🧡' : '🤖'}
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="font-semibold">{config.display_name}</h3>
+                                                <StatusBadge statusCode={config.status === 'error' ? 500 : 200} status={config.status} />
+                                            </div>
+                                            <p className="text-xs text-slate-500 mt-1">
+                                                {config.org_name || 'Connected'} · {lastSyncStr}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-4">
+                                        <button onClick={() => setSetupProvider(config.id)} className="text-xs text-slate-400 hover:text-white transition-colors">Update Key</button>
+                                        <button onClick={() => handleRemoveKey(config.id)} className="text-xs text-slate-500 hover:text-red-400 transition-colors">Disconnect</button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
+            {hasAnyActive && (
+                <>
+                    {/* Error Banner for any provider */}
+                    {configs.filter(c => c.status === 'error').map(c => (
+                        <div key={c.id} className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-8 flex items-start gap-4">
+                            <div className="text-red-500 text-lg leading-none">⚠</div>
+                            <div>
+                                <h3 className="text-red-200 font-semibold">{c.display_name} Sync Error</h3>
+                                <p className="text-sm text-red-300/80">{c.last_error || 'Unknown error occurred.'}</p>
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* KPI Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">Total Today</h3>
+                            <div className="text-4xl font-black text-white">${modelData.total.toFixed(2)}</div>
+                            <div className="flex gap-2 mt-2">
+                                {Object.entries(modelData.providers).map(([p, cost]) => (
+                                    <span key={p} className={`text-[10px] px-1.5 py-0.5 rounded ${p === 'anthropic' ? 'bg-orange-500/10 text-orange-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                                        {p.toUpperCase().at(0)}: ${Number(cost).toFixed(2)}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="md:col-span-3 bg-slate-900 border border-slate-800 rounded-xl p-6">
+                            <h3 className="text-sm font-medium text-slate-400 mb-4">30-Day Cost Trend</h3>
+                            <ResponsiveContainer width="100%" height={120}>
+                                <BarChart data={dailyData} margin={{ top: 0, right: 0, left: -25, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                                    <XAxis 
+                                        dataKey="date" 
+                                        stroke="#475569" fontSize={9} tickLine={false} axisLine={false} 
+                                        tickFormatter={d => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                    />
+                                    <YAxis stroke="#475569" fontSize={9} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
+                                    <Tooltip 
+                                        contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8 }}
+                                        labelStyle={{ color: '#94a3b8', marginBottom: 4 }}
+                                        cursor={{ fill: '#ffffff05' }}
+                                    />
+                                    <Bar dataKey="anthropic" stackId="a" fill="#f97316" radius={[0, 0, 0, 0]} />
+                                    <Bar dataKey="openai" stackId="a" fill="#10b981" radius={[2, 2, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    {/* Model Breakdown */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden mb-6">
+                        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+                            <h3 className="text-lg font-semibold">Model Breakdown</h3>
+                            <span className="text-xs text-slate-500">Last 7 days</span>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-sm">
+                                <thead>
+                                    <tr className="text-slate-500 uppercase text-[10px] font-bold tracking-widest border-b border-white/5">
+                                        <th className="p-4">Provider</th>
+                                        <th className="p-4">Model</th>
+                                        <th className="p-4 text-right">Requests</th>
+                                        <th className="p-4 text-right">Input Tokens</th>
+                                        <th className="p-4 text-right">Output Tokens</th>
+                                        <th className="p-4 text-right">Cost</th>
+                                        <th className="p-4 text-right">%</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {modelData.models.map((row, i) => (
+                                        <tr key={`${row.provider}:${row.model}:${i}`} className="hover:bg-white/[0.02] transition-colors">
+                                            <td className="p-4">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${row.provider === 'anthropic' ? 'bg-orange-500/20 text-orange-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                                                    {row.provider.toUpperCase()}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 font-mono text-xs text-white">{row.model}</td>
+                                            <td className="p-4 text-slate-400 text-right">{row.num_requests.toLocaleString()}</td>
+                                            <td className="p-4 text-slate-400 text-right">{row.input_tokens.toLocaleString()}</td>
+                                            <td className="p-4 text-slate-400 text-right">{row.output_tokens.toLocaleString()}</td>
+                                            <td className="p-4 text-white font-bold text-right">${row.cost_usd.toFixed(4)}</td>
+                                            <td className="p-4 text-slate-500 text-right">{row.pct_of_total}%</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 };
