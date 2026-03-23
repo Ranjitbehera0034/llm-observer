@@ -42,6 +42,7 @@ app.use('/api/sync', syncRoutes);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function seedUsageRecord(db: any, overrides: Partial<{
+    provider: string;
     model: string;
     bucket_start: string;
     cost_usd: number;
@@ -54,7 +55,7 @@ function seedUsageRecord(db: any, overrides: Partial<{
         (provider, model, bucket_start, bucket_width, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, num_requests, cost_usd, raw_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-        'anthropic',
+        overrides.provider ?? 'anthropic',
         overrides.model ?? 'claude-sonnet-4',
         overrides.bucket_start ?? new Date().toISOString().split('T')[0] + 'T00:00:00',
         '1d',
@@ -136,7 +137,7 @@ describe('GET /api/sync/usage/daily', () => {
         expect(res.body).toHaveLength(30);
         // All zeros when no data
         res.body.forEach((point: any) => {
-            expect(point.cost_usd).toBe(0);
+            expect(point.total).toBe(0);
             expect(point).toHaveProperty('date');
         });
     });
@@ -155,7 +156,8 @@ describe('GET /api/sync/usage/daily', () => {
         expect(res.status).toBe(200);
         const todayPoint = res.body.find((p: any) => p.date === today);
         expect(todayPoint).toBeDefined();
-        expect(todayPoint.cost_usd).toBeCloseTo(3.50, 3);
+        expect(todayPoint.total).toBeCloseTo(3.50, 3);
+        expect(todayPoint.anthropic).toBeCloseTo(3.50, 3);
     });
 
     it('caps days at 90', async () => {
@@ -200,6 +202,32 @@ describe('GET /api/sync/usage/by-model', () => {
         const res = await request(app).get('/api/sync/usage/by-model?days=7');
         expect(res.status).toBe(200);
         expect(res.body[0].pct_of_total).toBe(0);
+    });
+});
+
+// ── NEW: Aggregated Today Route ──────────────────────────────────────────────
+describe('GET /api/sync/usage/today', () => {
+    let db: any;
+    beforeAll(() => { db = getDb(); });
+    beforeEach(() => { db.prepare('DELETE FROM usage_records').run(); });
+
+    it('returns object with total=0 when no data', async () => {
+        const res = await request(app).get('/api/sync/usage/today');
+        expect(res.status).toBe(200);
+        expect(res.body.total).toBe(0);
+        expect(res.body.models).toHaveLength(0);
+        expect(res.body.providers).toEqual({});
+    });
+
+    it('returns aggregated totals for Anthropic', async () => {
+        seedUsageRecord(db, { cost_usd: 1.50, model: 'model-a' });
+        seedUsageRecord(db, { cost_usd: 0.50, model: 'model-b' });
+
+        const res = await request(app).get('/api/sync/usage/today');
+        expect(res.status).toBe(200);
+        expect(res.body.total).toBe(2.00);
+        expect(res.body.providers.anthropic).toBe(2.00);
+        expect(res.body.models).toHaveLength(2);
     });
 });
 

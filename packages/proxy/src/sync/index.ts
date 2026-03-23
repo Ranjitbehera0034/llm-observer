@@ -1,5 +1,6 @@
 import { getDb, decrypt } from '@llm-observer/database';
 import { AnthropicPoller } from './anthropic-poller';
+import { OpenAIPoller } from './open-ai-poller';
 
 export class UsageSyncManager {
     private pollers: Map<string, any> = new Map();
@@ -26,9 +27,14 @@ export class UsageSyncManager {
         let poller;
         if (config.id === 'anthropic') {
             poller = new AnthropicPoller(config);
+        } else if (config.id === 'openai') {
+            poller = new OpenAIPoller(config);
+        }
+
+        if (poller) {
             poller.start();
             this.pollers.set(config.id, poller);
-            console.log(`[UsageSyncManager] Initialized poller for ${config.display_name}`);
+            console.log(`[UsageSyncManager] Initialized poller for ${config.display_name || config.id}`);
         }
     }
 
