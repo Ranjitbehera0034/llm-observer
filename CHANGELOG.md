@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-03-24
+
+### Added
+- **Network Monitor — Per-App Attribution** — Passively monitor AI API connections to attribute costs to specific applications (Cursor, VS Code, Claude Code, etc.)
+- **Apps Dashboard** — New page with per-app cost breakdowns, connection timelines, and application renaming/aliasing
+- **Electron & Generic Process Resolution** — Smart detection of actual app names for generic processes like `Electron`, `Node.js`, or `Python`
+- **Subscription Mode Detection** — Automatically identifies tools using fixed licenses (e.g., Cursor Pro) even when proxy usage is $0
+- **Network Status Diagnostics** — Live view of monitor status, known AI endpoints, and scan frequency adjustments
+- **Automatic Frequeny Scaling** — Gracefully reduces scan frequency if system load is high or scans are slow
+- **Privacy-First Design** — Monitor is OFF by default; only process names and destination IPs are tracked (no packet inspection)
+- **Top Apps Today Panel** — Integrated mini-view on the main Control Room dashboard
+- **Pre-populated Aliases** — Built-in support for 12+ common AI coding tools and utilities
+- **Data Retention for Connections** — Automatic 30-day purge of old connection logs to maintain performance
+
+### Changed
+- Improved `AppCorrelator` engine with proportional cost attribution (estimated ~85-90% accuracy)
+- Enhanced `UsageSyncManager` to support higher concurrency during initial data ingestion
+
+### Fixed
+- Fixed DNS resolution to correctly handle both IPv4 and IPv6 (AAAA) records for AI providers
+- Improved error handling and log rate-limiting for network scanning tools (`lsof`/`ss`)
+
 ## [1.4.0] - 2026-03-24
 
 ### Added

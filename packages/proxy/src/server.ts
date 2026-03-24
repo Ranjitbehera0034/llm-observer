@@ -14,6 +14,7 @@ import { startCostOptimizer } from './costOptimizer';
 import { startStatsAggregation } from './utils/statsAggregator';
 import { syncManager } from './syncManager';
 import { usageSyncManager } from './sync';
+import { networkMonitor } from './services/networkMonitor';
 import './types';
 
 const app = express();
@@ -160,6 +161,7 @@ async function bootstrap() {
         startStatsAggregation();
         syncManager.start();
         usageSyncManager.start();
+        networkMonitor.start();
 
     } catch (err) {
         console.error('Fatal Initialization Error:', err);

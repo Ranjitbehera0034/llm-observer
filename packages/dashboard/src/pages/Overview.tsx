@@ -8,7 +8,8 @@ import {
     Info, 
     ChevronRight,
     Search,
-    Target
+    Target,
+    MonitorSmartphone
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -66,6 +67,7 @@ export default function Overview() {
     const [monthData, setMonthData] = useState<OverviewData | null>(null);
     const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
     const [budgets, setBudgets] = useState<Budget[]>([]);
+    const [topApps, setTopApps] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddSub, setShowAddSub] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -73,12 +75,13 @@ export default function Overview() {
 
     const fetchData = useCallback(async () => {
         try {
-            const [todayRes, weekRes, monthRes, timelineRes, budgetsRes] = await Promise.all([
+            const [todayRes, weekRes, monthRes, timelineRes, budgetsRes, appsRes] = await Promise.all([
                 fetch('/api/overview?period=today'),
                 fetch('/api/overview?period=week'),
                 fetch('/api/overview?period=month'),
                 fetch('/api/overview/timeline?days=30'),
-                fetch('/api/budgets')
+                fetch('/api/budgets'),
+                fetch('/api/apps?period=today')
             ]);
             
             if (todayRes.ok) setTodayData(await todayRes.json());
@@ -86,6 +89,10 @@ export default function Overview() {
             if (monthRes.ok) setMonthData(await monthRes.json());
             if (timelineRes.ok) setTimeline(await timelineRes.json());
             if (budgetsRes.ok) setBudgets(await budgetsRes.json());
+            if (appsRes.ok) {
+                const appsData = await appsRes.json();
+                setTopApps(appsData.apps.slice(0, 3));
+            }
         } catch (err) {
             console.error('Failed to fetch overview data', err);
         } finally {
@@ -178,8 +185,8 @@ export default function Overview() {
             </div>
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden group">
+            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden group col-span-1 md:col-span-2 lg:col-span-1">
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                         <TrendingUp className="w-10 h-10 text-emerald-400" />
                     </div>
@@ -258,6 +265,31 @@ export default function Overview() {
                                     </div>
                                 );
                             })
+                        )}
+                    </div>
+                </div>
+
+                {/* Top Apps (v1.5.0) */}
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col group hover:border-indigo-500/30 transition-all">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500">Top Apps Today</h3>
+                        <Link to="/apps" className="text-[8px] font-black text-indigo-400 uppercase hover:underline">See All</Link>
+                    </div>
+                    <div className="space-y-4 flex-1">
+                        {topApps.length === 0 ? (
+                            <div className="h-full flex items-center justify-center opacity-40">
+                                <MonitorSmartphone className="w-8 h-8 text-slate-700" />
+                            </div>
+                        ) : (
+                            topApps.map(app => (
+                                <div key={app.process_name} className="flex items-center justify-between">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-bold text-white uppercase">{app.display_name}</span>
+                                        <span className="text-[8px] text-slate-500 font-mono">{app.connection_count} conns</span>
+                                    </div>
+                                    <span className="text-[10px] font-black text-white">${app.estimated_cost_usd.toFixed(2)}</span>
+                                </div>
+                            ))
                         )}
                     </div>
                 </div>

@@ -9,15 +9,15 @@ Stop sending your prompt data to SaaS observability tools. LLM Observer is a dev
 ## 💎 Why LLM Observer?
 
 - **🔒 100% Private**: Your prompts, completions, and API keys are stored in a local SQLite database. No telemetry. No middle-man.
-- **🛡️ Per-Provider Budgets & Kill Switch** *(v1.4.0)*: Set daily/weekly/monthly spend limits per provider or model. Optionally hard-block proxy requests when exceeded.
-- **🔔 Smart Alerts** *(v1.4.0)*: Automatic notifications at 80%, 90%, and 100% thresholds with deduplication. Bell icon on every page.
+- **🕵️ Network Monitor — Per-App Attribution** *(v1.5.0)*: Passively attribute AI spending to specific apps (Cursor, VS Code, etc.). Smart Electron resolution and subscription mode detection.
+- **🛡️ Per-Provider Budgets & Kill Switch**: Set daily/weekly/monthly spend limits per provider or model. Optionally hard-block proxy requests when exceeded.
+- **🔔 Smart Alerts**: Automatic notifications at 80%, 90%, and 100% thresholds with deduplication. Bell icon on every page.
 - **⚡ Unified Proxy**: One endpoint to rule them all. Switch between OpenAI, Anthropic, and Gemini with simple config.
 - **🔄 Zero-Config Usage Sync**: One-click connect to Anthropic and OpenAI.
 - **📊 Unified Control Room**: See Sync, Proxy, and Manual costs in a single dashboard.
 - **💳 Subscription Tracking**: Manage fixed costs for Cursor, Copilot, and Claude Pro.
 - **🧠 Smart Deduplication**: Zero double-counting between sync and proxy data.
-- **🚀 Pre-Estimation** *(v1.4.0)*: Proxy requests are cost-estimated before execution to prevent budget overshoot.
-- **🕵️ Anomaly Alerts**: Real-time webhook notifications if we detect a 5x spike in spend velocity.
+- **🚀 Pre-Estimation**: Proxy requests are cost-estimated before execution to prevent budget overshoot.
 
 ## 🚀 Getting Started (How to Use)
 

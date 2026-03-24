@@ -42,6 +42,10 @@ export default function Settings() {
     const [country, setCountry] = useState<string | null>(null);
     const [detectingCountry, setDetectingCountry] = useState(true);
 
+    // Network Monitor State (v1.5.0)
+    const [monitorStatus, setMonitorStatus] = useState<any>(null);
+    const [scanInterval, setScanInterval] = useState('5000');
+
     useEffect(() => {
         const fetchSettings = async () => {
             try {
@@ -53,12 +57,24 @@ export default function Settings() {
                     setGoogleKey(data.data.google_api_key || '');
                     setMistralKey(data.data.mistral_api_key || '');
                     setGroqKey(data.data.groq_api_key || '');
+                    setScanInterval(data.data.network_monitor_interval || '5000');
                 }
             } catch (err) {
                 console.error('Failed to fetch settings:', err);
             }
         };
         fetchSettings();
+
+        const fetchMonitorStatus = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/network/status`);
+                const data = await res.json();
+                setMonitorStatus(data);
+            } catch (err) {
+                console.error('Failed to fetch monitor status:', err);
+            }
+        };
+        fetchMonitorStatus();
 
         // Detect Country for Payments
         const detectCountry = async () => {
@@ -188,6 +204,32 @@ export default function Settings() {
             setTimeout(() => setSaved(false), 3000);
         } catch (err) {
             console.error('Failed to save settings:', err);
+        }
+    };
+
+    const toggleMonitor = async () => {
+        const action = monitorStatus?.running ? 'stop' : 'start';
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/network/${action}`, { method: 'POST' });
+            if (res.ok) {
+                const data = await res.json();
+                setMonitorStatus((prev: any) => ({ ...prev, running: data.running }));
+            }
+        } catch (err) {
+            console.error(`Failed to ${action} monitor`, err);
+        }
+    };
+
+    const updateScanInterval = async (val: string) => {
+        setScanInterval(val);
+        try {
+            await fetch(`${API_BASE_URL}/api/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ network_monitor_interval: val })
+            });
+        } catch (err) {
+            console.error('Failed to update scan interval', err);
         }
     };
 
@@ -400,10 +442,79 @@ export default function Settings() {
                     )}
 
                     {activeTab === 'security' && (
-                        <div className="card text-center py-20">
-                            <ShieldCheck className="w-16 h-16 text-textMuted mx-auto mb-4 opacity-20" />
-                            <h2 className="text-xl font-bold text-white mb-2">Security Settings</h2>
-                            <p className="text-textMuted max-w-sm mx-auto">Enterprise security features including SSO, IP Whitelisting, and Data Masking are coming soon.</p>
+                        <div className="space-y-6">
+                            <div className="card">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white mb-2">Network Monitor</h2>
+                                        <p className="text-sm text-textMuted">Attribute AI spending to specific applications by monitoring network connections.</p>
+                                    </div>
+                                    <button 
+                                        onClick={toggleMonitor}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${monitorStatus?.running ? 'bg-primary' : 'bg-background border border-border'}`}
+                                    >
+                                        <span
+                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${monitorStatus?.running ? 'translate-x-6' : 'translate-x-1'}`}
+                                        />
+                                    </button>
+                                </div>
+
+                                <div className="p-4 bg-primary/5 rounded-xl border border-primary/20 border-dashed flex items-start gap-4 mb-6">
+                                    <ShieldCheck className="w-6 h-6 text-primary shrink-0" />
+                                    <div>
+                                        <h4 className="text-white font-semibold text-sm">Privacy-First Tracking</h4>
+                                        <p className="text-xs text-textMuted mt-1 leading-relaxed">
+                                            The monitor only records the process name and destination IP. 
+                                            It does <strong>not</strong> inspect packet contents or read any sensitive data.
+                                            All data remains on your local machine.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {monitorStatus?.running && (
+                                    <div className="space-y-4 animate-in fade-in duration-500 pt-4 border-t border-border">
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-textMuted font-medium">Scan Interval</span>
+                                            <select 
+                                                value={scanInterval}
+                                                onChange={(e) => updateScanInterval(e.target.value)}
+                                                className="bg-background border border-border rounded px-3 py-1.5 text-white text-xs focus:outline-none focus:border-primary"
+                                            >
+                                                <option value="5000">5 seconds (Fastest)</option>
+                                                <option value="10000">10 seconds</option>
+                                                <option value="30000">30 seconds (Eco)</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-textMuted font-medium">Known AI IPs</span>
+                                            <span className="text-white font-mono text-xs">{monitorStatus.knownIps} endpoints</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-textMuted font-medium">Platform</span>
+                                            <span className="text-white text-xs uppercase">{monitorStatus.platform}</span>
+                                        </div>
+                                        <div className="pt-4 border-t border-border flex justify-end">
+                                            <button 
+                                                onClick={async () => {
+                                                    if (confirm('Clear all recorded network connection history? This cannot be undone.')) {
+                                                        const res = await fetch(`${API_BASE_URL}/api/network/history`, { method: 'DELETE' });
+                                                        if (res.ok) alert('History cleared.');
+                                                    }
+                                                }}
+                                                className="text-[10px] font-black uppercase tracking-widest text-danger hover:underline"
+                                            >
+                                                Clear Network History
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="card text-center py-12 opacity-50">
+                                <KeyRound className="w-12 h-12 text-textMuted mx-auto mb-4 opacity-20" />
+                                <h2 className="text-lg font-bold text-white mb-2">Advanced Security</h2>
+                                <p className="text-xs text-textMuted max-w-sm mx-auto">SSO, IP Whitelisting, and Data Masking are available for Enterprise customers.</p>
+                            </div>
                         </div>
                     )}
 
