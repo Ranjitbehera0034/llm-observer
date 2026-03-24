@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Key, Save, Plus, Trash2, Copy, ShieldCheck, Globe, AlertTriangle, Settings as SettingsIcon, CreditCard, CheckCircle2, Zap, History, Layers, KeyRound, AlertCircle } from 'lucide-react';
+import { Key, Save, Plus, Trash2, Copy, ShieldCheck, Globe, AlertTriangle, Settings as SettingsIcon, CreditCard, CheckCircle2, Zap, History, Layers, KeyRound, AlertCircle, Target } from 'lucide-react';
+import { BudgetsTab } from '../components/BudgetsTab';
 import { API_BASE_URL } from '../config';
 
 interface ApiKeyData {
@@ -11,7 +12,7 @@ interface ApiKeyData {
 }
 
 export default function Settings() {
-    const [activeTab, setActiveTab] = useState<'providers' | 'api_keys' | 'security' | 'license'>('providers');
+    const [activeTab, setActiveTab] = useState<'providers' | 'api_keys' | 'budgets' | 'security' | 'license'>('providers');
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
     // Provider Tab State
@@ -214,6 +215,11 @@ export default function Settings() {
                         <Key className="w-5 h-5" /> Observer Keys
                     </button>
                     <button
+                        onClick={() => setActiveTab('budgets')}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all ${activeTab === 'budgets' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-textMuted hover:text-white hover:bg-surfaceHighlight'}`}>
+                        <Target className="w-5 h-5" /> Budgets & Alerts
+                    </button>
+                    <button
                         onClick={() => setActiveTab('security')}
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all ${activeTab === 'security' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-textMuted hover:text-white hover:bg-surfaceHighlight'}`}>
                         <ShieldCheck className="w-5 h-5" /> Security & Privacy
@@ -312,6 +318,8 @@ export default function Settings() {
                             </div>
                         </div>
                     )}
+
+                    {activeTab === 'budgets' && <BudgetsTab />}
 
                     {activeTab === 'api_keys' && (
                         <div className="space-y-6">

@@ -9,5 +9,6 @@ export * from './repositories/alertRules.repo';
 export * from './seed';
 export * from './repositories/settings.repo';
 export * from './repositories/subscriptions.repo';
+export * from './repositories/budgets.repo';
 export * from './encryption';
 export { encrypt, decrypt } from './encryption';

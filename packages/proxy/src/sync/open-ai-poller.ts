@@ -1,6 +1,7 @@
 import { getDb, decrypt } from '@llm-observer/database';
 import fetch from 'node-fetch';
 import { calculateSharedCost } from '../utils/pricing';
+import { BudgetService } from '../services/budget.service';
 
 const CIRCUIT_BREAKER_THRESHOLD = 10;
 const MAX_BACKOFF_SECONDS = 300;
@@ -80,6 +81,9 @@ export class OpenAIPoller {
 
             // Phase 4 — Update success state
             db.prepare("UPDATE usage_sync_configs SET last_poll_at = CURRENT_TIMESTAMP, error_count = 0, last_error = NULL, status = 'active' WHERE id = 'openai'").run();
+
+            // v1.4.0: Trigger budget evaluation after data refresh
+            await BudgetService.evaluateAll();
 
         } catch (err: any) {
             console.error(`[OpenAIPoller] Poll failed:`, err.message);

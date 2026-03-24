@@ -9,13 +9,14 @@ Stop sending your prompt data to SaaS observability tools. LLM Observer is a dev
 ## 💎 Why LLM Observer?
 
 - **🔒 100% Private**: Your prompts, completions, and API keys are stored in a local SQLite database. No telemetry. No middle-man.
-- **🛡️ Budget Guards**: Automatically block requests if a project hits its budget. Stop "wake-up-to-a-$1000-bill" surprises.
+- **🛡️ Per-Provider Budgets & Kill Switch** *(v1.4.0)*: Set daily/weekly/monthly spend limits per provider or model. Optionally hard-block proxy requests when exceeded.
+- **🔔 Smart Alerts** *(v1.4.0)*: Automatic notifications at 80%, 90%, and 100% thresholds with deduplication. Bell icon on every page.
 - **⚡ Unified Proxy**: One endpoint to rule them all. Switch between OpenAI, Anthropic, and Gemini with simple config.
 - **🔄 Zero-Config Usage Sync**: One-click connect to Anthropic and OpenAI.
-- **Unified Control Room**: See Sync, Proxy, and Manual costs in a single dashboard.
-- **Subscription Tracking**: Manage fixed costs for Cursor, Copilot, and Claude Pro.
-- **Smart Deduplication**: Zero double-counting between sync and proxy data.
-- **Budget Guards**: Auto-kill requests when limits are exceeded.
+- **📊 Unified Control Room**: See Sync, Proxy, and Manual costs in a single dashboard.
+- **💳 Subscription Tracking**: Manage fixed costs for Cursor, Copilot, and Claude Pro.
+- **🧠 Smart Deduplication**: Zero double-counting between sync and proxy data.
+- **🚀 Pre-Estimation** *(v1.4.0)*: Proxy requests are cost-estimated before execution to prevent budget overshoot.
 - **🕵️ Anomaly Alerts**: Real-time webhook notifications if we detect a 5x spike in spend velocity.
 
 ## 🚀 Getting Started (How to Use)
@@ -57,6 +58,14 @@ const anthropic = new Anthropic({
 Start using your application as normal! All your LLM requests will now route securely through the proxy.
 Go back to your local dashboard to view live logs, track cost accumulation per project/model, and ensure your budgets are protected.
 
+### 5. Set Budget Guardrails *(v1.4.0)*
+Navigate to **Settings → Budgets & Alerts** to create spending limits:
+- **Global**: Cap total daily spend across all providers
+- **Per-provider**: Limit spend for OpenAI, Anthropic, etc.
+- **Per-model**: Control costs for expensive models like Claude Opus or GPT-4
+
+Enable the **Kill Switch** to automatically block proxy requests when a budget is exceeded. Alerts fire at 80%, 90%, and 100% thresholds — visible via the bell icon on every page.
+
 ## 📊 Pricing
 
 | Feature | Hobbyist (Free) | Pro (India) | Pro (International) |
@@ -65,6 +74,8 @@ Go back to your local dashboard to view live logs, track cost accumulation per p
 | **Projects** | 1 Project | **Unlimited** | **Unlimited** |
 | **Log Retention** | 7 Days | **90 Days** | **90 Days** |
 | **Budget Guards** | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Per-Provider Budgets** | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Budget Alerts** | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Anomaly Alerts** | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Data Residency** | Local | Local | Local |
 
