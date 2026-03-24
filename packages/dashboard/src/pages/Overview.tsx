@@ -14,16 +14,30 @@ import {
 } from 'recharts';
 import { SUBSCRIPTION_PRESETS } from '../data/subscriptionPresets';
 
+interface SubscriptionRecord {
+    id: number;
+    service_name: string;
+    provider?: string;
+    monthly_cost_usd: number;
+    billing_cycle: 'monthly' | 'yearly';
+    is_active: number;
+    start_date: string;
+    end_date?: string;
+    notes?: string;
+}
+
 interface OverviewData {
-    total_today_usd: number;
+    period: 'today' | 'week' | 'month';
+    total_usd: number;
     tracked_api: {
         total_usd: number;
-        providers: Record<string, { total_usd: number; source: 'sync' | 'proxy' | 'manual' }>;
+        providers: Record<string, { total_usd: number; source: 'sync' | 'proxy' }>;
     };
     subscriptions: {
-        total_monthly_usd: number;
-        daily_equivalent_usd: number;
-        active: any[];
+        total_monthly_commitment_usd: number;
+        period_cost_usd: number;
+        active_count: number;
+        active: SubscriptionRecord[];
     };
 }
 
@@ -35,19 +49,27 @@ interface TimelinePoint {
 }
 
 export default function Overview() {
-    const [data, setData] = useState<OverviewData | null>(null);
+    const [todayData, setTodayData] = useState<OverviewData | null>(null);
+    const [weekData, setWeekData] = useState<OverviewData | null>(null);
+    const [monthData, setMonthData] = useState<OverviewData | null>(null);
     const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddSub, setShowAddSub] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [activeTab, setActiveTab] = useState<'today' | 'week' | 'month'>('today');
 
     const fetchData = useCallback(async () => {
         try {
-            const [overviewRes, timelineRes] = await Promise.all([
-                fetch('/api/overview'),
+            const [todayRes, weekRes, monthRes, timelineRes] = await Promise.all([
+                fetch('/api/overview?period=today'),
+                fetch('/api/overview?period=week'),
+                fetch('/api/overview?period=month'),
                 fetch('/api/overview/timeline?days=30')
             ]);
-            if (overviewRes.ok) setData(await overviewRes.json());
+            
+            if (todayRes.ok) setTodayData(await todayRes.json());
+            if (weekRes.ok) setWeekData(await weekRes.json());
+            if (monthRes.ok) setMonthData(await monthRes.json());
             if (timelineRes.ok) setTimeline(await timelineRes.json());
         } catch (err) {
             console.error('Failed to fetch overview data', err);
@@ -62,7 +84,7 @@ export default function Overview() {
         return () => clearInterval(interval);
     }, [fetchData]);
 
-    const handleAddSub = async (preset: typeof SUBSCRIPTION_PRESETS[0]) => {
+    const handleAddSub = async (preset: Partial<SubscriptionRecord>) => {
         try {
             const res = await fetch('/api/subscriptions', {
                 method: 'POST',
@@ -94,6 +116,8 @@ export default function Overview() {
         </div>
     );
 
+    const data = activeTab === 'today' ? todayData : (activeTab === 'week' ? weekData : monthData);
+
     const filteredPresets = SUBSCRIPTION_PRESETS.filter(p => 
         p.service_name.toLowerCase().includes(searchQuery.toLowerCase())
     );
@@ -112,13 +136,30 @@ export default function Overview() {
                     <p className="text-slate-400 text-lg font-medium mt-1">Unified view of your AI spending.</p>
                 </div>
 
-                <button 
-                    onClick={() => setShowAddSub(true)}
-                    className="flex items-center gap-2 bg-white text-black font-bold px-6 py-3 rounded-2xl hover:bg-slate-200 transition-all active:scale-95 shadow-xl shadow-white/5"
-                >
-                    <Plus className="w-5 h-5" />
-                    Add Subscription
-                </button>
+                <div className="flex items-center gap-4">
+                    <div className="bg-slate-900 p-1 rounded-xl border border-slate-800 flex gap-1">
+                        {(['today', 'week', 'month'] as const).map(tab => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab)}
+                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                                    activeTab === tab 
+                                    ? 'bg-white text-black shadow-lg' 
+                                    : 'text-slate-500 hover:text-slate-300'
+                                }`}
+                            >
+                                {tab}
+                            </button>
+                        ))}
+                    </div>
+                    <button 
+                        onClick={() => setShowAddSub(true)}
+                        className="flex items-center gap-2 bg-white text-black font-bold px-6 py-2.5 rounded-xl hover:bg-slate-200 transition-all active:scale-95 shadow-xl shadow-white/5"
+                    >
+                        <Plus className="w-4 h-4" />
+                        Add Subscription
+                    </button>
+                </div>
             </div>
 
             {/* KPI Cards */}
@@ -127,14 +168,16 @@ export default function Overview() {
                     <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
                         <TrendingUp className="w-12 h-12 text-emerald-400" />
                     </div>
-                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500 mb-2">Today's Burn</h3>
-                    <div className="text-5xl font-black text-white">${data?.total_today_usd.toFixed(2)}</div>
+                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500 mb-2">
+                        {activeTab === 'today' ? "Today's Burn" : (activeTab === 'week' ? "This Week" : "This Month")}
+                    </h3>
+                    <div className="text-5xl font-black text-white">${data?.total_usd.toFixed(2) || '0.00'}</div>
                     <div className="flex flex-wrap gap-2 mt-4">
                         <span className="text-[10px] px-2 py-1 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold">
-                            API: ${data?.tracked_api.total_usd.toFixed(2)}
+                            API: ${data?.tracked_api?.total_usd?.toFixed(2) || '0.00'}
                         </span>
                         <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
-                            SUBS: ${data?.subscriptions.daily_equivalent_usd.toFixed(2)}
+                            SUBS: ${data?.subscriptions?.period_cost_usd?.toFixed(2) || '0.00'}
                         </span>
                     </div>
                 </div>
@@ -143,27 +186,32 @@ export default function Overview() {
                     <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
                         <CreditCard className="w-12 h-12 text-indigo-400" />
                     </div>
-                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500 mb-2">Monthly Subscriptions</h3>
-                    <div className="text-5xl font-black text-white">${data?.subscriptions.total_monthly_usd.toFixed(0)}</div>
-                    <p className="text-xs text-slate-500 mt-4 font-bold uppercase tracking-wider">Across {data?.subscriptions.active.length} active services</p>
+                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500 mb-2">Monthly Commitment</h3>
+                    <div className="text-5xl font-black text-white">${data?.subscriptions?.total_monthly_commitment_usd?.toFixed(0) || '0'}</div>
+                    <p className="text-xs text-slate-500 mt-4 font-bold uppercase tracking-wider">Across {data?.subscriptions?.active_count || 0} active services</p>
                 </div>
 
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 flex flex-col justify-center">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500">Live Infrastructure</h3>
+                        <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500">Data Sources</h3>
                         <div className="flex items-center gap-1.5">
                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-[10px] font-bold text-emerald-500 uppercase">Healthy</span>
+                            <span className="text-[10px] font-bold text-emerald-500 uppercase">Live</span>
                         </div>
                     </div>
                     <div className="space-y-3">
-                        {Object.entries(data?.tracked_api.providers || {}).map(([id, p]) => (
+                        {Object.entries(data?.tracked_api?.providers || {}).map(([id, p]: [string, any]) => (
                             <div key={id} className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${p.source === 'sync' ? 'bg-indigo-500' : 'bg-slate-600'}`} />
-                                    <p className="text-xs font-bold text-white uppercase">{id}</p>
+                                    <div className={`w-2 h-2 rounded-full ${p.source === 'sync' ? 'bg-indigo-400' : 'bg-slate-500'}`} />
+                                    <div className="flex flex-col">
+                                        <p className="text-xs font-bold text-white uppercase leading-tight">{id}</p>
+                                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
+                                            {p.source === 'sync' ? '● Verified Sync' : '◌ Proxy Logs'}
+                                        </p>
+                                    </div>
                                 </div>
-                                <p className="text-xs font-mono text-slate-400">${p.total_usd.toFixed(2)}</p>
+                                <p className="text-xs font-mono text-slate-400">${p.total_usd?.toFixed(2) || '0.00'}</p>
                             </div>
                         ))}
                     </div>
@@ -285,19 +333,32 @@ export default function Overview() {
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                                {filteredPresets.map(preset => (
-                                    <button 
-                                        key={preset.service_name} 
-                                        onClick={() => handleAddSub(preset)}
-                                        className="bg-black/40 border border-slate-800 p-6 rounded-2xl text-left hover:border-indigo-500/50 hover:bg-black transition-all flex items-center justify-between group"
-                                    >
-                                        <div>
-                                            <h4 className="font-bold text-white mb-1">{preset.service_name}</h4>
-                                            <span className="text-lg font-black text-indigo-400">${preset.monthly_cost_usd} <span className="text-[10px] text-slate-600 uppercase">/ mo</span></span>
-                                        </div>
-                                        <ChevronRight className="w-5 h-5 text-slate-800 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
-                                    </button>
-                                ))}
+                                {filteredPresets.map(preset => {
+                                    const isDuplicate = todayData?.subscriptions.active.some(s => s.service_name === preset.service_name);
+
+                                    return (
+                                        <button 
+                                            key={preset.service_name} 
+                                            onClick={() => {
+                                                if (isDuplicate) {
+                                                    alert(`You already have an active ${preset.service_name} subscription.`);
+                                                    return;
+                                                }
+                                                handleAddSub(preset);
+                                            }}
+                                            className={`bg-black/40 border p-6 rounded-2xl text-left transition-all flex items-center justify-between group ${
+                                                isDuplicate ? 'opacity-50 border-slate-800 grayscale cursor-not-allowed' : 'border-slate-800 hover:border-indigo-500/50 hover:bg-black'
+                                            }`}
+                                        >
+                                            <div>
+                                                <h4 className="font-bold text-white mb-1">{preset.service_name}</h4>
+                                                <span className="text-lg font-black text-indigo-400">${preset.monthly_cost_usd} <span className="text-[10px] text-slate-600 uppercase">/ mo</span></span>
+                                                {isDuplicate && <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Already Tracking</p>}
+                                            </div>
+                                            {!isDuplicate && <ChevronRight className="w-5 h-5 text-slate-800 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>

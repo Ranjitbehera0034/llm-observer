@@ -4,69 +4,122 @@ import { getDb, getSubscriptions } from '@llm-observer/database';
 const router = Router();
 
 /**
+ * Calculates the number of days a subscription was active within a date range.
+ */
+function getActiveDays(startDate: string, endDate: string | null, rangeStart: Date, rangeEnd: Date): number {
+    const subStart = new Date(startDate);
+    if (isNaN(subStart.getTime())) return 0;
+    subStart.setHours(0, 0, 0, 0);
+
+    const subEnd = endDate ? new Date(endDate) : new Date(864000000000000); // Decent future, not maxed out
+    if (isNaN(subEnd.getTime())) return 0;
+    subEnd.setHours(23, 59, 59, 999);
+
+    const rStart = new Date(rangeStart);
+    rStart.setHours(0, 0, 0, 0);
+    const rEnd = new Date(rangeEnd);
+    rEnd.setHours(23, 59, 59, 999);
+
+    const effectiveStart = new Date(Math.max(subStart.getTime(), rStart.getTime()));
+    const effectiveEnd = new Date(Math.min(subEnd.getTime(), rEnd.getTime()));
+
+    if (effectiveStart > effectiveEnd) return 0;
+
+    // Normalize to midnight for day counting
+    effectiveStart.setHours(0, 0, 0, 0);
+    effectiveEnd.setHours(0, 0, 0, 0);
+
+    const diffTime = effectiveEnd.getTime() - effectiveStart.getTime();
+    return Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+}
+
+/**
  * GET /api/overview
  * Main dashboard totals and breakdown.
+ * Supports ?period=today|week|month (default: today)
  */
 router.get('/', (req, res) => {
     try {
         const db = getDb();
-        const today = new Date().toISOString().split('T')[0];
+        const period = (req.query.period as string) || 'today';
         
+        const now = new Date();
+        let rangeStart = new Date(now);
+        rangeStart.setHours(0, 0, 0, 0);
+        const rangeEnd = new Date(now);
+        rangeEnd.setHours(23, 59, 59, 999);
+
+        if (period === 'week') {
+            rangeStart.setDate(rangeStart.getDate() - 7);
+        } else if (period === 'month') {
+            rangeStart.setDate(1); // Start of current month
+        }
+
+        const startStr = rangeStart.toISOString();
+        const endStr = rangeEnd.toISOString();
+
         // 1. Get List of active Sync Providers to avoid double counting
         const syncConfigs = db.prepare("SELECT id FROM usage_sync_configs WHERE status = 'active'").all() as any[];
         const syncProviderIds = syncConfigs.map(c => c.id);
 
-        // 2. Aggregate Sync Cost (Today)
-        const syncToday = db.prepare(`
+        // 2. Aggregate Sync Cost
+        const syncData = db.prepare(`
             SELECT provider, SUM(COALESCE(cost_usd, 0)) as total
             FROM usage_records
-            WHERE date(bucket_start) = ?
+            WHERE bucket_start BETWEEN ? AND ?
             GROUP BY provider
-        `).all(today) as any[];
+        `).all(startStr, endStr) as any[];
 
-        // 3. Aggregate Proxy Cost (Today) - Deduplicated
-        // Only include providers that are NOT in the sync list
-        const proxyToday = db.prepare(`
+        // 3. Aggregate Proxy Cost - Deduplicated
+        const proxyData = db.prepare(`
             SELECT provider, SUM(cost_usd) as total
             FROM requests
-            WHERE date(created_at) = ? AND provider NOT IN (${syncProviderIds.map(() => '?').join(',') || "''"})
+            WHERE created_at BETWEEN ? AND ? AND provider NOT IN (${syncProviderIds.map(() => '?').join(',') || "''"})
             GROUP BY provider
-        `).all(today, ...syncProviderIds) as any[];
+        `).all(startStr, endStr, ...syncProviderIds) as any[];
 
-        // 4. Calculate Subscriptions (Daily Proration)
-        const activeSubs = getSubscriptions(true);
-        const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-        const subDailyTotal = activeSubs.reduce((sum, sub) => {
-            // Very simple daily proration: monthly_cost / days_in_month
-            return sum + (sub.monthly_cost_usd / daysInMonth);
+        // 4. Calculate Subscriptions (Precise Proration)
+        const allSubs = getSubscriptions(false);
+        const activeSubs = allSubs.filter(s => s.is_active || (s.end_date && new Date(s.end_date) >= rangeStart));
+        
+        const subTotalInPeriod = activeSubs.reduce((sum, sub) => {
+            const activeDays = getActiveDays(sub.start_date, sub.end_date || null, rangeStart, rangeEnd);
+            const dailyRate = (sub.monthly_cost_usd || 0) / 30.42;
+            const cost = dailyRate * activeDays;
+            return sum + (isNaN(cost) ? 0 : cost);
         }, 0);
 
-        // Calculate Monthly Sub Total
-        const subMonthlyTotal = activeSubs.reduce((sum, sub) => sum + sub.monthly_cost_usd, 0);
-
-        // 5. Merge Providers for Breakdown
-        const providers: Record<string, { total_usd: number, source: 'sync' | 'proxy' | 'manual' }> = {};
+        const subMonthlyTotal = activeSubs.filter(s => s.is_active).reduce((sum, sub) => sum + (sub.monthly_cost_usd || 0), 0);
         
-        syncToday.forEach(r => {
-            providers[r.provider] = { total_usd: r.total, source: 'sync' };
+        // 5. Merge Providers for Breakdown
+        const providers: Record<string, { total_usd: number, source: 'sync' | 'proxy' }> = {};
+        
+        syncData.forEach(r => {
+            providers[r.provider] = { total_usd: r.total || 0, source: 'sync' };
         });
-        proxyToday.forEach(r => {
-            providers[r.provider] = { total_usd: r.total, source: 'proxy' };
+        proxyData.forEach(r => {
+            providers[r.provider] = { 
+                total_usd: (providers[r.provider]?.total_usd || 0) + (r.total || 0), 
+                source: providers[r.provider]?.source || 'proxy' 
+            };
         });
 
-        const trackedApiTotal = syncToday.reduce((s, r) => s + r.total, 0) + proxyToday.reduce((s, r) => s + r.total, 0);
-        const totalToday = trackedApiTotal + subDailyTotal;
+        const trackedApiTotal = syncData.reduce((s: number, r: any) => s + (r.total || 0), 0) + 
+                               proxyData.reduce((s: number, r: any) => s + (r.total || 0), 0);
+        const totalInPeriod = trackedApiTotal + subTotalInPeriod;
 
         res.json({
-            total_today_usd: totalToday,
+            period,
+            total_usd: totalInPeriod,
             tracked_api: {
                 total_usd: trackedApiTotal,
                 providers
             },
             subscriptions: {
-                total_monthly_usd: subMonthlyTotal,
-                daily_equivalent_usd: subDailyTotal,
-                active: activeSubs
+                total_monthly_commitment_usd: subMonthlyTotal,
+                period_cost_usd: subTotalInPeriod,
+                active_count: activeSubs.filter(s => s.is_active).length,
+                active: activeSubs.filter(s => s.is_active)
             }
         });
 
@@ -104,12 +157,13 @@ router.get('/timeline', (req, res) => {
 
         // Subscriptions (Flat daily average per month)
         const activeSubs = getSubscriptions(true);
-        const dailySubCost = activeSubs.reduce((sum, s) => sum + (s.monthly_cost_usd / 30.42), 0); // Using avg days in month
+        const dailySubCost = activeSubs.reduce((sum, s) => sum + (s.monthly_cost_usd / 30.42), 0);
 
         // Fill timeline
         const timelineMap = new Map<string, any>();
         for (let i = days - 1; i >= 0; i--) {
             const d = new Date();
+            d.setHours(0, 0, 0, 0);
             d.setDate(d.getDate() - i);
             const dateStr = d.toISOString().split('T')[0];
             timelineMap.set(dateStr, { 

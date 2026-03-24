@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
  
+## [1.3.1] - 2026-03-24
+ 
+### Added
+- **Multi-Period KPI Toggle** — Switch between Today, Week, and Month views on the Control Room dashboard.
+- **Precise Subscription Proration** — Automated cost calculation now respects `start_date` and `end_date` for mid-month subscriptions.
+- **Visual Data Source Indicators** — Clear "● Verified Sync" vs. "◌ Proxy Logs" labels to help users understand data provenance.
+- **Duplicate Subscription Guard** — Prevents adding the same service multiple times through a safety check in the Add Modal.
+ 
+### Fixed
+- Fixed a math error in subscription proration where the last day of the month could be double-counted.
+- Standardized data aggregation logic to handle empty states and fallback scenarios more gracefully.
+- Improved integration test coverage for the Unified Overview API.
+
 ## [1.3.0] - 2026-03-24
  
 ### Added
