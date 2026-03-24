@@ -1,6 +1,6 @@
 {
     "name": "@llm-observer/proxy",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "main": "dist/index.js",
     "scripts": {
         "build": "tsup && mkdir -p dist/dashboard && cp -r ../dashboard/dist/* dist/dashboard/ 2>/dev/null && cp -r ../database/src/migrations dist/ 2>/dev/null || true",

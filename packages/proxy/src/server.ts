@@ -104,7 +104,12 @@ dashboardApp.use('/api', dashboardApi);
 
 // Import and register sync routes
 import syncRoutes from './routes/sync.routes';
+import subscriptionRoutes from './routes/subscriptions.routes';
+import overviewRoutes from './routes/overview.routes';
+
 dashboardApp.use('/api/sync', syncRoutes);
+dashboardApp.use('/api/subscriptions', subscriptionRoutes);
+dashboardApp.use('/api/overview', overviewRoutes);
 
 // Fallback to static Dashboard build if not hitting API
 // In development: ../../dashboard/dist

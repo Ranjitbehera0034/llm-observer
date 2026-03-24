@@ -3,9 +3,9 @@ import { LayoutDashboard, Activity, FolderOpen, Bell, Settings as SettingsIcon, 
 import clsx from 'clsx';
 
 const navItems = [
-    { name: 'Overview', path: '/', icon: LayoutDashboard },
+    { name: 'Control Room', path: '/', icon: LayoutDashboard },
+    { name: 'API Sync', path: '/sync', icon: RefreshCw },
     { name: 'Requests', path: '/requests', icon: Activity },
-    { name: 'Sync', path: '/sync', icon: RefreshCw },
     { name: 'Insights', path: '/insights', icon: Lightbulb },
     { name: 'Projects', path: '/projects', icon: FolderOpen },
     { name: 'Alerts', path: '/alerts', icon: Bell },

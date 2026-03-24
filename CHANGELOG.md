@@ -1,6 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+ 
+## [1.3.0] - 2026-03-24
+ 
+### Added
+- **Unified Control Room Dashboard** — A single pane of glass for all AI spend, merging Sync data, Proxy logs, and Manual Subscriptions.
+- **Manual Subscription Tracking** — Track fixed monthly costs (Cursor, Copilot, ChatGPT Plus, etc.) with automated daily burn calculation.
+- **Smart Spend Deduplication** — Automatically prioritizes API Sync data over Proxy logs for the same provider to ensure $0 double-counting.
+- **Subscription Presets** — Quick-add templates for 10+ common AI services with latest pricing.
+- **Spending Trajectory Chart** — Stacked visualization showing tracked API costs vs. fixed subscription overhead.
+ 
+### Changed
+- Refactored `OverviewPage` to be the primary landing page (renamed to Control Room).
+- Updated Sidebar navigation to prioritize the Control Room view.
+- Improved cost aggregation logic to handle multi-source data merging.
 
 ## [1.2.0] - 2026-03-24
 
