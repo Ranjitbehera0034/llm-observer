@@ -8,6 +8,7 @@ import Alerts from './pages/Alerts';
 import Insights from './pages/Insights';
 import Settings from './pages/Settings';
 import SyncPage from './pages/SyncPage';
+import Apps from './pages/Apps';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/sync" element={<SyncPage />} />
+            <Route path="/apps" element={<Apps />} />
           </Routes>
         </ErrorBoundary>
       </Layout>

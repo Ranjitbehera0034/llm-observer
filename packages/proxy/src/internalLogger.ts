@@ -80,7 +80,7 @@ async function evaluateAlertRules(requestData: any) {
                 createAlert({
                     project_id: requestData.project_id || 'default',
                     type: rule.condition_type,
-                    severity: 'high',
+                    severity: 'critical',
                     message,
                     data: JSON.stringify(requestData),
                     notified_via: rule.webhook_url ? 'webhook' : 'dashboard'

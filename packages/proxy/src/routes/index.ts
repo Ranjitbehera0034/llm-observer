@@ -10,6 +10,8 @@ import { licenseRouter } from './license.routes';
 import { webhooksRouter } from './webhooks.routes';
 import budgetsRouter from './budgets.routes';
 import alertsRouter from './alerts.routes';
+import appsRouter from './apps.routes';
+import networkRouter from './network.routes';
 
 /**
  * Composes all dashboard API sub-routers into a single router.
@@ -50,6 +52,10 @@ export function createDashboardRouter(): Router {
 
     // Settings, alert rules (mounted at root)
     router.use('/', settingsRouter);
+
+    // Apps & Network
+    router.use('/apps', appsRouter);
+    router.use('/network', networkRouter);
 
     // SSE events (mounted at /events)ß
     router.get('/events', (req, res, next) => {
