@@ -12,11 +12,56 @@ export const getDbPath = () => {
     return path.join(dbDir, 'data.db');
 };
 
+const migrateLegacyDb = (newPath: string) => {
+    // Check common legacy locations
+    const legacyPaths = [
+        path.join(process.cwd(), 'data.db'),
+        path.join(__dirname, '..', 'data.db'), // e.g. packages/proxy/data.db or dist/../data.db
+        path.join(__dirname, 'data.db')
+    ];
+
+    for (const oldPath of legacyPaths) {
+        if (fs.existsSync(oldPath) && oldPath !== newPath) {
+            // Only migrate if the new DB doesn't exist or is very small (just initialized)
+            const newExists = fs.existsSync(newPath);
+            const legacySize = fs.statSync(oldPath).size;
+            
+            // basic check: only migrate if legacy exists and has data
+            if (legacySize > 0) {
+                if (newExists && fs.statSync(newPath).size > legacySize) {
+                    console.log(`[MIGRATION] Legacy database found at ${oldPath}, but newer database already has more data. Skipping auto-migration.`);
+                    continue;
+                }
+
+                console.log(`[MIGRATION] Found legacy database at ${oldPath}. Moving to ${newPath}...`);
+                try {
+                    const newDir = path.dirname(newPath);
+                    if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
+                    
+                    // Close any handles? Not yet opened.
+                    fs.copyFileSync(oldPath, newPath);
+                    fs.renameSync(oldPath, `${oldPath}.legacy.bak`); // Keep a backup of the old one
+                    console.log(`[MIGRATION] Successfully moved database. Old file renamed to .legacy.bak`);
+                    return; 
+                } catch (err) {
+                    console.error(`[MIGRATION] Failed to move legacy database:`, err);
+                }
+            }
+        }
+    }
+};
+
 let db: Database.Database | null = null;
 
 export const initDb = (dbPath?: string): Database.Database => {
     if (db) return db;
     const targetPath = dbPath || getDbPath();
+    
+    // Auto-migrate from old locations if needed
+    if (!dbPath) {
+        migrateLegacyDb(targetPath);
+    }
+
     db = new Database(targetPath);
 
     db.pragma('journal_mode = WAL');

@@ -36,6 +36,7 @@ export class NetworkMonitor {
         console.log('[NetworkMonitor] Starting...');
         
         await this.resolveDomains();
+        await this.ensureTablesExist();
         
         this.scanIntervalMs = parseInt(getSetting('network_monitor_interval') || '5000');
         this.scheduleScan();
@@ -54,6 +55,28 @@ export class NetworkMonitor {
         this.interval = null;
         this.dnsInterval = null;
         console.log('[NetworkMonitor] Stopped.');
+    }
+
+    private async ensureTablesExist() {
+        const db = getDb();
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS app_connections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                process_name TEXT NOT NULL,
+                process_pid INTEGER,
+                provider TEXT NOT NULL,
+                destination_ip TEXT,
+                destination_port INTEGER DEFAULT 443,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS app_aliases (
+                process_name TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                icon TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
     }
 
     private async resolveDomains() {
@@ -100,7 +123,9 @@ export class NetworkMonitor {
             const nowMs = Date.now();
 
             for (const conn of connections) {
-                const provider = this.resolvedIps.get(conn.ip);
+                // Strip brackets from IPv6 if lsof/ss includes them
+                const cleanIp = conn.ip.replace(/^\[|\]$/g, '');
+                const provider = this.resolvedIps.get(cleanIp);
                 if (!provider) continue;
 
                 // Deduplication: 30s window per (process, provider)
@@ -168,28 +193,40 @@ export class NetworkMonitor {
 
     private async scanMacOS() {
         try {
-            const { stdout } = await execAsync('lsof -i -n -P');
+            // Use -F for machine-readable output to avoid truncation and parsing issues
+            // p=PID, c=Command, n=Name, TST=TCP State info
+            const { stdout } = await execAsync('lsof -i -n -P -F pcnT');
             const lines = stdout.split('\n');
-            const results = [];
+            const results: { process: string, pid: number, ip: string, port: number }[] = [];
+
+            let currentPid: number | null = null;
+            let currentCmd: string | null = null;
+            let lastFoundIp: { ip: string, port: number } | null = null;
 
             for (const line of lines) {
-                if (!line.includes('ESTABLISHED')) continue;
-                
-                const parts = line.trim().split(/\s+/);
-                if (parts.length < 9) continue;
-
-                const processName = parts[0];
-                const pid = parseInt(parts[1]);
-                const connectionPart = parts[8]; 
-                
-                const remotePart = connectionPart.split('->')[1];
-                if (!remotePart) continue;
-
-                const colonIndex = remotePart.lastIndexOf(':');
-                const ip = remotePart.substring(0, colonIndex);
-                const port = parseInt(remotePart.substring(colonIndex + 1));
-
-                results.push({ process: processName, pid, ip, port });
+                if (line.startsWith('p')) {
+                    currentPid = parseInt(line.substring(1));
+                } else if (line.startsWith('c')) {
+                    currentCmd = line.substring(1);
+                } else if (line.startsWith('n')) {
+                    const namePart = line.substring(1);
+                    if (namePart.includes('->')) {
+                        const remotePart = namePart.split('->')[1];
+                        const colonIndex = remotePart.lastIndexOf(':');
+                        if (colonIndex > 0) {
+                            const ip = remotePart.substring(0, colonIndex);
+                            const port = parseInt(remotePart.substring(colonIndex + 1));
+                            lastFoundIp = { ip, port };
+                        }
+                    } else {
+                        lastFoundIp = null;
+                    }
+                } else if (line.startsWith('TST=ESTABLISHED')) {
+                    if (currentPid && currentCmd && lastFoundIp) {
+                        results.push({ process: currentCmd, pid: currentPid, ip: lastFoundIp.ip, port: lastFoundIp.port });
+                        lastFoundIp = null; // Consume
+                    }
+                }
             }
             return results;
         } catch (err) {

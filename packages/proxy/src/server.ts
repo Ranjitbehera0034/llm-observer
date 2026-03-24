@@ -3,7 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { handleProxyRequest } from './proxy';
-import { initDb, seedPricing, getDb, seedDefaultApiKey } from '@llm-observer/database';
+import { initDb, seedPricing, getDb, seedDefaultApiKey, seedSyncProviders } from '@llm-observer/database';
 import { initPricingCache } from './utils/pricing';
 import { GoogleProvider } from './providers/google';
 import { budgetGuard } from './budgetGuard';
@@ -139,6 +139,7 @@ async function bootstrap() {
 
         // 2. Refresh bundled default pricing, Remote Registry & Auth
         seedPricing();
+        seedSyncProviders();
         initPricingCache();
         seedDefaultApiKey();
         console.log('Pricing engine and Auth ready.');
@@ -146,7 +147,7 @@ async function bootstrap() {
         // 3. Ensure a default project exists for MVP usability
         const row = db.prepare('SELECT count(*) as count FROM projects WHERE id = ?').get('default') as any;
         if (row.count === 0) {
-            db.prepare(`INSERT INTO projects (id, name, daily_budget) VALUES (?, ?, ?)`).run('default', 'My Local Project', 5.0);
+            db.prepare(`INSERT INTO projects (id, name, daily_budget) VALUES (?, ?, ?)`).run('default', 'Default Project', 5.0);
         }
 
         // 4. Start accepting Proxy Traffic

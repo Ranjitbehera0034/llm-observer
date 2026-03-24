@@ -56,15 +56,12 @@ router.post('/providers/anthropic/key', async (req, res) => {
     const { adminKey } = req.body;
     if (!adminKey) return res.status(400).json({ error: "No key provided." });
     
-    if (adminKey.startsWith('sk-ant-api')) {
-        return res.status(400).json({
-            error: 'This is a regular API key, not an Admin key. Admin keys start with sk-ant-admin and can be created at console.anthropic.com → Settings → Admin Keys.'
-        });
-    }
-    if (!adminKey.startsWith('sk-ant-admin')) {
-        return res.status(400).json({
-            error: "This doesn't look like an Anthropic Admin API key. Admin keys start with sk-ant-admin."
-        });
+    // Soft prefix check for Anthropic
+    const looksLikeStandardKey = adminKey.startsWith('sk-ant-api');
+    const looksLikeAdminKey = adminKey.startsWith('sk-ant-admin');
+
+    if (!looksLikeAdminKey && !adminKey.includes(':')) {
+        console.warn(`[Anthropic] Key prefix check: ${adminKey.substring(0, 10)}... does not look like an admin key.`);
     }
 
     try {
@@ -74,7 +71,11 @@ router.post('/providers/anthropic/key', async (req, res) => {
 
         if (!testRes.ok) {
             if (testRes.status === 401) return res.status(401).json({ error: 'This key was rejected by Anthropic. It may be expired, revoked, or invalid.' });
-            if (testRes.status === 403) return res.status(403).json({ error: 'Access denied. Only organization admins can create Admin API keys.' });
+            if (testRes.status === 403) {
+                return res.status(403).json({ 
+                    error: 'Permissions Denied: Standard Anthropic API keys (sk-ant-api-...) cannot access usage data. Please use an Admin API key from console.anthropic.com → Settings → Admin Keys.' 
+                });
+            }
             const errBody = await testRes.text();
             return res.status(testRes.status).json({ error: `Anthropic rejected key: ${errBody}` });
         }
@@ -106,20 +107,18 @@ router.post('/providers/openai/key', async (req, res) => {
     const { adminKey } = req.body;
     if (!adminKey) return res.status(400).json({ error: "No key provided." });
 
-    if (adminKey.startsWith('sk-proj-')) {
-        return res.status(400).json({
-            error: 'This is a project API key, not an Admin key. Admin keys start with sk-admin- and are created at platform.openai.com/settings/organization/admin-keys.'
-        });
-    }
+    // Soft prefix check for OpenAI
+    const looksLikeProjectKey = adminKey.startsWith('sk-proj-');
+    const looksLikeAdminKey = adminKey.startsWith('sk-admin-');
+
     if (adminKey.startsWith('sk-ant-')) {
         return res.status(400).json({
             error: 'This is an Anthropic key, not an OpenAI key. Use the Anthropic card instead.'
         });
     }
-    if (!adminKey.startsWith('sk-admin-')) {
-        return res.status(400).json({
-            error: "This doesn't look like an OpenAI Admin API key. Admin keys start with sk-admin- and are created at platform.openai.com/settings/organization/admin-keys. Note: only Organization Owners can create Admin keys."
-        });
+    
+    if (!looksLikeAdminKey && !adminKey.includes(':')) {
+        console.warn(`[OpenAI] Key prefix check: ${adminKey.substring(0, 10)}... does not look like an admin key.`);
     }
 
     try {
@@ -129,7 +128,11 @@ router.post('/providers/openai/key', async (req, res) => {
 
         if (!testRes.ok) {
             if (testRes.status === 401) return res.status(401).json({ error: 'This key was rejected by OpenAI. It may be expired, revoked, or invalid.' });
-            if (testRes.status === 403) return res.status(403).json({ error: 'Access denied. Only Organization Owners can use Admin API keys.' });
+            if (testRes.status === 403) {
+                return res.status(403).json({ 
+                    error: 'Permissions Denied: Project API keys (sk-proj-...) or restricted keys cannot access organization management APIs. Please use an Organization Admin key from platform.openai.com/settings/organization/admin-keys.' 
+                });
+            }
             const errBody = await testRes.text();
             return res.status(testRes.status).json({ error: `OpenAI rejected key: ${errBody}` });
         }
