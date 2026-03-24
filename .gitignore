@@ -54,3 +54,4 @@ yarn-error.log*
 
 # Local GitHub Rulesets (Manual Upload)
 .github/rulesets/
+LLM_Observer_v1.4.0_RELEASE_Plan.md

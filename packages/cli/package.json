@@ -1,6 +1,6 @@
 {
   "name": "llm-observer",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "Privacy-first, local-only LLM cost tracker. Track OpenAI, Anthropic, Gemini costs without sending data to the cloud.",
   "main": "dist/index.js",
   "scripts": {

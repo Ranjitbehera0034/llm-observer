@@ -8,6 +8,8 @@ import { authRouter } from './auth.routes';
 import { settingsRouter } from './settings.routes';
 import { licenseRouter } from './license.routes';
 import { webhooksRouter } from './webhooks.routes';
+import budgetsRouter from './budgets.routes';
+import alertsRouter from './alerts.routes';
 
 /**
  * Composes all dashboard API sub-routers into a single router.
@@ -40,7 +42,13 @@ export function createDashboardRouter(): Router {
     // Teams sync
     router.use('/teams', requestsRouter);
 
-    // Settings, alerts, alert rules (mounted at root — contains /settings, /alert-rules, /alerts sub-paths)
+    // Budgets
+    router.use('/budgets', budgetsRouter);
+
+    // Alerts (v1.4.0 Unified)
+    router.use('/alerts', alertsRouter);
+
+    // Settings, alert rules (mounted at root)
     router.use('/', settingsRouter);
 
     // SSE events (mounted at /events)ß

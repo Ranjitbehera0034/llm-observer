@@ -7,11 +7,13 @@ import {
     Trash2, 
     Info, 
     ChevronRight,
-    Search
+    Search,
+    Target
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
+import { Link } from 'react-router-dom';
 import { SUBSCRIPTION_PRESETS } from '../data/subscriptionPresets';
 
 interface SubscriptionRecord {
@@ -48,11 +50,22 @@ interface TimelinePoint {
     total_usd: number;
 }
 
+interface Budget {
+    id: number;
+    name: string;
+    scope: string;
+    scope_value?: string;
+    limit_usd: number;
+    current_spend?: number;
+    period: string;
+}
+
 export default function Overview() {
     const [todayData, setTodayData] = useState<OverviewData | null>(null);
     const [weekData, setWeekData] = useState<OverviewData | null>(null);
     const [monthData, setMonthData] = useState<OverviewData | null>(null);
     const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
+    const [budgets, setBudgets] = useState<Budget[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddSub, setShowAddSub] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -60,17 +73,19 @@ export default function Overview() {
 
     const fetchData = useCallback(async () => {
         try {
-            const [todayRes, weekRes, monthRes, timelineRes] = await Promise.all([
+            const [todayRes, weekRes, monthRes, timelineRes, budgetsRes] = await Promise.all([
                 fetch('/api/overview?period=today'),
                 fetch('/api/overview?period=week'),
                 fetch('/api/overview?period=month'),
-                fetch('/api/overview/timeline?days=30')
+                fetch('/api/overview/timeline?days=30'),
+                fetch('/api/budgets')
             ]);
             
             if (todayRes.ok) setTodayData(await todayRes.json());
             if (weekRes.ok) setWeekData(await weekRes.json());
             if (monthRes.ok) setMonthData(await monthRes.json());
             if (timelineRes.ok) setTimeline(await timelineRes.json());
+            if (budgetsRes.ok) setBudgets(await budgetsRes.json());
         } catch (err) {
             console.error('Failed to fetch overview data', err);
         } finally {
@@ -163,57 +178,87 @@ export default function Overview() {
             </div>
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <TrendingUp className="w-12 h-12 text-emerald-400" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <TrendingUp className="w-10 h-10 text-emerald-400" />
                     </div>
-                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500 mb-2">
+                    <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500 mb-1">
                         {activeTab === 'today' ? "Today's Burn" : (activeTab === 'week' ? "This Week" : "This Month")}
                     </h3>
-                    <div className="text-5xl font-black text-white">${data?.total_usd.toFixed(2) || '0.00'}</div>
+                    <div className="text-4xl font-black text-white">${data?.total_usd.toFixed(2) || '0.00'}</div>
                     <div className="flex flex-wrap gap-2 mt-4">
-                        <span className="text-[10px] px-2 py-1 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold">
+                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold">
                             API: ${data?.tracked_api?.total_usd?.toFixed(2) || '0.00'}
                         </span>
-                        <span className="text-[10px] px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
-                            SUBS: ${data?.subscriptions?.period_cost_usd?.toFixed(2) || '0.00'}
-                        </span>
                     </div>
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <CreditCard className="w-12 h-12 text-indigo-400" />
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <CreditCard className="w-10 h-10 text-indigo-400" />
                     </div>
-                    <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500 mb-2">Monthly Commitment</h3>
-                    <div className="text-5xl font-black text-white">${data?.subscriptions?.total_monthly_commitment_usd?.toFixed(0) || '0'}</div>
-                    <p className="text-xs text-slate-500 mt-4 font-bold uppercase tracking-wider">Across {data?.subscriptions?.active_count || 0} active services</p>
+                    <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500 mb-1">Subscriptions</h3>
+                    <div className="text-4xl font-black text-white">${data?.subscriptions?.period_cost_usd?.toFixed(0) || '0'}</div>
+                    <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase tracking-wider">{data?.subscriptions?.active_count || 0} active</p>
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 flex flex-col justify-center">
+                {/* Data Sources */}
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500">Data Sources</h3>
-                        <div className="flex items-center gap-1.5">
+                        <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500">Sources</h3>
+                        <div className="flex items-center gap-1">
                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-[10px] font-bold text-emerald-500 uppercase">Live</span>
+                            <span className="text-[8px] font-bold text-emerald-500 uppercase">Live</span>
                         </div>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                         {Object.entries(data?.tracked_api?.providers || {}).map(([id, p]: [string, any]) => (
                             <div key={id} className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${p.source === 'sync' ? 'bg-indigo-400' : 'bg-slate-500'}`} />
-                                    <div className="flex flex-col">
-                                        <p className="text-xs font-bold text-white uppercase leading-tight">{id}</p>
-                                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
-                                            {p.source === 'sync' ? '● Verified Sync' : '◌ Proxy Logs'}
-                                        </p>
-                                    </div>
+                                    <div className={`w-1.5 h-1.5 rounded-full ${p.source === 'sync' ? 'bg-indigo-400' : 'bg-slate-500'}`} />
+                                    <span className="text-[10px] font-bold text-white uppercase">{id}</span>
                                 </div>
-                                <p className="text-xs font-mono text-slate-400">${p.total_usd?.toFixed(2) || '0.00'}</p>
+                                <span className="text-[10px] font-mono text-slate-400">${p.total_usd?.toFixed(2)}</span>
                             </div>
                         ))}
+                    </div>
+                </div>
+
+                {/* Budget Status Card (v1.4.0) */}
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col group hover:border-indigo-500/30 transition-all">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500">Active Budgets</h3>
+                        <Link to="/settings#budgets" className="text-[8px] font-black text-indigo-400 uppercase hover:underline">Manage</Link>
+                    </div>
+                    <div className="space-y-4 flex-1 overflow-y-auto pr-1 custom-scrollbar">
+                        {budgets.length === 0 ? (
+                            <div className="h-full flex items-center justify-center opacity-40">
+                                <Target className="w-8 h-8 text-slate-700" />
+                            </div>
+                        ) : (
+                            budgets.slice(0, 3).map(budget => {
+                                let current = 0;
+                                if (budget.scope === 'global') current = data?.tracked_api?.total_usd || 0;
+                                else if (budget.scope === 'provider') current = data?.tracked_api?.providers[budget.scope_value || '']?.total_usd || 0;
+
+                                const pct = Math.min((current / budget.limit_usd) * 100, 100);
+                                return (
+                                    <div key={budget.id} className="space-y-1.5">
+                                        <div className="flex justify-between items-end">
+                                            <span className="text-[10px] font-bold text-white uppercase truncate pr-2">{budget.name}</span>
+                                            <span className="text-[9px] font-mono text-slate-500">${current.toFixed(0)}/${budget.limit_usd.toFixed(0)}</span>
+                                        </div>
+                                        <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                                            <div 
+                                                className={`h-full transition-all duration-1000 ${pct > 90 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : pct > 75 ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                                                style={{ width: `${pct}%` }} 
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
                 </div>
             </div>

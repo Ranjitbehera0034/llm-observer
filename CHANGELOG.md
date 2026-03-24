@@ -1,6 +1,30 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [1.4.0] - 2026-03-24
+
+### Added
+- **Per-provider and per-model budgets** — Set daily, weekly, or monthly spend
+  limits for any provider or specific model
+- **Alerts system** — Get notified at 80%, 90%, and 100% of budget thresholds
+- **Kill switch** — Optionally hard-block proxy requests when a budget is exceeded
+- Alert deduplication (each threshold fires at most once per budget period)
+- Budget progress bars on Overview page
+- Bell icon with unread alert count in dashboard navigation
+- Alert dropdown panel with acknowledge/dismiss controls
+- Simplified pre-estimation to prevent budget overshoot on proxy requests
+- Safety buffer (configurable, default $0.05) creates a cushion before the hard limit
+- Budget presets for common configurations ($5/day Global, $3/day OpenAI)
+- Inline kill-switch toggle on budget cards
+- Real-time current spend progress bars in budget management
+
+### Changed
+- budgetGuard middleware now checks both old project-level budgets AND new
+  provider/model budgets. Both must pass for a request to proceed.
+
+### Breaking changes
+- None (existing project-level budgets continue to work identically)
  
 ## [1.3.1] - 2026-03-24
  

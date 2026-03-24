@@ -46,6 +46,19 @@ export const addCustomPricing = (record: PricingRecord) => {
     })();
 };
 
+export const getPricingForModel = (provider: string, model: string): PricingRecord | undefined => {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM model_pricing WHERE provider = ? AND model = ?').get(provider, model) as any;
+    if (!row) return undefined;
+    return {
+        provider: row.provider,
+        model: row.model,
+        input: row.input_cost_per_1m,
+        output: row.output_cost_per_1m,
+        cached: row.cached_input_cost_per_1m
+    };
+};
+
 export const fetchPricingFromDb = (): any[] => {
     const db = getDb();
     return db.prepare('SELECT * FROM model_pricing').all();
