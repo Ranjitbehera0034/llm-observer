@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { Link } from 'react-router-dom';
 import { SUBSCRIPTION_PRESETS } from '../data/subscriptionPresets';
+import { API_BASE_URL } from '../config';
 
 interface SubscriptionRecord {
     id: number;
@@ -76,12 +77,12 @@ export default function Overview() {
     const fetchData = useCallback(async () => {
         try {
             const [todayRes, weekRes, monthRes, timelineRes, budgetsRes, appsRes] = await Promise.all([
-                fetch('/api/overview?period=today'),
-                fetch('/api/overview?period=week'),
-                fetch('/api/overview?period=month'),
-                fetch('/api/overview/timeline?days=30'),
-                fetch('/api/budgets'),
-                fetch('/api/apps?period=today')
+                fetch(`${API_BASE_URL}/api/overview?period=today`),
+                fetch(`${API_BASE_URL}/api/overview?period=week`),
+                fetch(`${API_BASE_URL}/api/overview?period=month`),
+                fetch(`${API_BASE_URL}/api/overview/timeline?days=30`),
+                fetch(`${API_BASE_URL}/api/budgets`),
+                fetch(`${API_BASE_URL}/api/apps?period=today`)
             ]);
             
             if (todayRes.ok) setTodayData(await todayRes.json());
@@ -108,7 +109,7 @@ export default function Overview() {
 
     const handleAddSub = async (preset: Partial<SubscriptionRecord>) => {
         try {
-            const res = await fetch('/api/subscriptions', {
+            const res = await fetch(`${API_BASE_URL}/api/subscriptions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(preset)
@@ -125,7 +126,7 @@ export default function Overview() {
     const handleDeleteSub = async (id: number) => {
         if (!confirm('Remove this subscription?')) return;
         try {
-            await fetch(`/api/subscriptions/${id}`, { method: 'DELETE' });
+            await fetch(`${API_BASE_URL}/api/subscriptions/${id}`, { method: 'DELETE' });
             fetchData();
         } catch (err) {
             console.error('Failed to delete subscription', err);

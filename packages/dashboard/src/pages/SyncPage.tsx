@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { StatusBadge } from '../components/StatusBadge';
+import { API_BASE_URL } from '../config';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -124,7 +125,7 @@ const SyncPage: React.FC = () => {
 
     const fetchStatus = useCallback(async () => {
         try {
-            const res = await fetch('/api/sync/status');
+            const res = await fetch(`${API_BASE_URL}/api/sync/status`);
             const data = await res.json();
             setConfigs(data);
         } catch (err) {
@@ -138,8 +139,8 @@ const SyncPage: React.FC = () => {
         try {
             const providerQuery = activeTab === 'all' ? '' : `&provider=${activeTab}`;
             const [dailyRes, modelRes] = await Promise.all([
-                fetch(`/api/sync/usage/daily?days=30${providerQuery}`),
-                fetch(`/api/sync/usage/today?${providerQuery}`),
+                fetch(`${API_BASE_URL}/api/sync/usage/daily?days=30${providerQuery}`),
+                fetch(`${API_BASE_URL}/api/sync/usage/today?${providerQuery}`),
             ]);
             if (dailyRes.ok) setDailyData(await dailyRes.json());
             if (modelRes.ok) setModelData(await modelRes.json());
@@ -160,7 +161,7 @@ const SyncPage: React.FC = () => {
         setTestError(null);
 
         try {
-            const res = await fetch(`/api/sync/providers/${providerId}/key`, {
+            const res = await fetch(`${API_BASE_URL}/api/sync/providers/${providerId}/key`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ adminKey })
@@ -184,7 +185,7 @@ const SyncPage: React.FC = () => {
         const name = configs.find(c => c.id === providerId)?.display_name || providerId;
         if (!confirm(`Are you sure you want to disconnect ${name}? Historical data will be preserved.`)) return;
         try {
-            await fetch(`/api/sync/providers/${providerId}/key`, { method: 'DELETE' });
+            await fetch(`${API_BASE_URL}/api/sync/providers/${providerId}/key`, { method: 'DELETE' });
             await fetchStatus();
             await fetchUsageData();
         } catch (err) {

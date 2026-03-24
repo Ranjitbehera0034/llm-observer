@@ -21,7 +21,10 @@ All notable changes to this project will be documented in this file.
 - Enhanced `UsageSyncManager` to support higher concurrency during initial data ingestion
 
 ### Fixed
-- Fixed DNS resolution to correctly handle both IPv4 and IPv6 (AAAA) records for AI providers
+- **Fixed DNS resolution** to correctly handle both IPv4 and IPv6 (AAAA) records for AI providers
+- **Flexible Key Validation** — Removed hard blocks for standard API keys in Usage Sync; provided descriptive error messaging for permission issues
+- **Database Persistence & Upgrade Safety** — Automatic migration of legacy databases to persistent home directory location to prevent data loss during upgrades
+- **CLI Reset Command** — Added `llm-observer reset` for safe database and log cleanup
 - Improved error handling and log rate-limiting for network scanning tools (`lsof`/`ss`)
 
 ## [1.4.0] - 2026-03-24

@@ -214,6 +214,17 @@ export const seedPricing = () => {
     console.log(`Pricing data seeded: ${initialPricing.length} defaults synced.`);
 };
 
+export const seedSyncProviders = () => {
+    const db = getDb();
+    db.prepare(`
+        INSERT OR IGNORE INTO usage_sync_configs (id, display_name, status) VALUES ('openai', 'OpenAI', 'inactive')
+    `).run();
+    db.prepare(`
+        INSERT OR IGNORE INTO usage_sync_configs (id, display_name, status) VALUES ('anthropic', 'Anthropic', 'inactive')
+    `).run();
+    console.log('Sync providers seeded (OpenAI, Anthropic).');
+};
+
 /**
  * Upsert pricing — inserts new models and updates existing ones.
  * Call this to refresh pricing without wiping the table.

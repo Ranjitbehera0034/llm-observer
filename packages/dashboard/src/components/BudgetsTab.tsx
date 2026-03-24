@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, Shield, ShieldAlert, ShieldCheck, Globe, Cpu, AlertTriangle, RefreshCw } from 'lucide-react';
 import { BudgetMeter } from './BudgetMeter';
+import { API_BASE_URL } from '../config';
 
 interface Budget {
     id: number;
@@ -34,7 +35,7 @@ export function BudgetsTab() {
 
     const fetchBudgets = async () => {
         try {
-            const res = await fetch('/api/budgets');
+            const res = await fetch(`${API_BASE_URL}/api/budgets`);
             if (res.ok) {
                 const data = await res.json();
                 setBudgets(data);
@@ -78,7 +79,7 @@ export function BudgetsTab() {
         };
 
         try {
-            const url = editing ? `/api/budgets/${editing.id}` : '/api/budgets';
+            const url = editing ? `${API_BASE_URL}/api/budgets/${editing.id}` : `${API_BASE_URL}/api/budgets`;
             const method = editing ? 'PUT' : 'POST';
             
             const res = await fetch(url, {
@@ -102,7 +103,7 @@ export function BudgetsTab() {
         if (!confirmDelete) return;
         setDeleting(true);
         try {
-            const res = await fetch(`/api/budgets/${confirmDelete.id}`, { method: 'DELETE' });
+            const res = await fetch(`${API_BASE_URL}/api/budgets/${confirmDelete.id}`, { method: 'DELETE' });
             if (!res.ok) {
                 const data = await res.json();
                 alert(`Failed to delete budget: ${data.error || 'Unknown error'}`);
@@ -146,7 +147,7 @@ export function BudgetsTab() {
 
     const toggleKillSwitch = async (budget: Budget) => {
         try {
-            const res = await fetch(`/api/budgets/${budget.id}`, {
+            const res = await fetch(`${API_BASE_URL}/api/budgets/${budget.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ kill_switch: !budget.kill_switch })

@@ -19,6 +19,7 @@ import {
     AreaChart,
     Area
 } from 'recharts';
+import { API_BASE_URL } from '../config';
 import clsx from 'clsx';
 
 interface AppSpend {
@@ -66,8 +67,8 @@ export default function Apps() {
     const fetchData = useCallback(async () => {
         try {
             const [appsRes, statusRes] = await Promise.all([
-                fetch(`/api/apps?period=${period}`),
-                fetch('/api/network/status')
+                fetch(`${API_BASE_URL}/api/apps?period=${period}`),
+                fetch(`${API_BASE_URL}/api/network/status`)
             ]);
             if (appsRes.ok) setData(await appsRes.json());
             if (statusRes.ok) setStatus(await statusRes.json());
@@ -80,7 +81,7 @@ export default function Apps() {
 
     const fetchAppDetail = useCallback(async (name: string) => {
         try {
-            const res = await fetch(`/api/apps/${name}/detail?days=30`);
+            const res = await fetch(`${API_BASE_URL}/api/apps/${name}/detail?days=30`);
             if (res.ok) {
                 setAppDetail(await res.json());
             }
@@ -106,7 +107,7 @@ export default function Apps() {
     const toggleMonitor = async () => {
         const action = status?.running ? 'stop' : 'start';
         try {
-            const res = await fetch(`/api/network/${action}`, { method: 'POST' });
+            const res = await fetch(`${API_BASE_URL}/api/network/${action}`, { method: 'POST' });
             if (res.ok) {
                 fetchData();
             }
@@ -118,7 +119,7 @@ export default function Apps() {
     const handleRename = async (processName: string) => {
         if (!newName.trim()) return;
         try {
-            const res = await fetch(`/api/apps/${processName}/alias`, {
+            const res = await fetch(`${API_BASE_URL}/api/apps/${processName}/alias`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ display_name: newName })
