@@ -38,3 +38,5 @@ INSERT OR IGNORE INTO app_aliases (process_name, display_name) VALUES ('pycharm'
 INSERT OR IGNORE INTO app_aliases (process_name, display_name) VALUES ('claude', 'Claude Code');
 INSERT OR IGNORE INTO app_aliases (process_name, display_name) VALUES ('aider', 'Aider');
 INSERT OR IGNORE INTO app_aliases (process_name, display_name) VALUES ('curl', 'cURL');
+INSERT OR IGNORE INTO app_aliases (process_name, display_name) VALUES ('language_', 'Language Server (IDE)');
+INSERT OR IGNORE INTO app_aliases (process_name, display_name) VALUES ('antigravity', 'Antigravity (AI Agent)');

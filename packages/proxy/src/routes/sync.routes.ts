@@ -73,7 +73,7 @@ router.post('/providers/anthropic/key', async (req, res) => {
             if (testRes.status === 401) return res.status(401).json({ error: 'This key was rejected by Anthropic. It may be expired, revoked, or invalid.' });
             if (testRes.status === 403) {
                 return res.status(403).json({ 
-                    error: 'Permissions Denied: Standard Anthropic API keys (sk-ant-api-...) cannot access usage data. Please use an Admin API key from console.anthropic.com → Settings → Admin Keys.' 
+                    error: 'Permissions Denied: Standard Anthropic API keys (sk-ant-api-...) cannot access usage data. Please use an Admin API key from console.anthropic.com/settings/admin-keys.' 
                 });
             }
             const errBody = await testRes.text();

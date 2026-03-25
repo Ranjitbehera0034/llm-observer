@@ -74,6 +74,7 @@ const initialPricing: PricingEntry[] = [
     // Claude 4.6 Series (Current generation)
     { provider: 'anthropic', model: 'claude-opus-4-6', input: 5.00, output: 25.00, cached: 0.50 },
     { provider: 'anthropic', model: 'claude-sonnet-4-6', input: 3.00, output: 15.00, cached: 0.30 },
+    { provider: 'anthropic', model: 'claude-haiku-4-6', input: 1.00, output: 5.00, cached: 0.10 },
 
     // Claude 4.5 Series
     { provider: 'anthropic', model: 'claude-opus-4-5-20251101', input: 5.00, output: 25.00, cached: 0.50 },
@@ -102,6 +103,8 @@ const initialPricing: PricingEntry[] = [
     // Gemini 3 Series (Nov 2025+)
     { provider: 'google', model: 'gemini-3-pro', input: 2.00, output: 12.00, cached: 0.20 },
     { provider: 'google', model: 'gemini-3-flash', input: 0.50, output: 3.00, cached: 0.05 },
+    { provider: 'google', model: 'gemini-3.1-pro', input: 2.00, output: 12.00, cached: 0.20 },
+    { provider: 'google', model: 'gemini-3.1-flash', input: 0.50, output: 3.00, cached: 0.05 },
 
     // Gemini 2.5 Series
     { provider: 'google', model: 'gemini-2.5-pro', input: 1.25, output: 10.00, cached: 0.3125 },
