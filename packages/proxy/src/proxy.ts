@@ -40,14 +40,20 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
     const targetUrl = req.customTargetUrl || provider.getBaseUrl();
     const authHeaders = provider.getAuthHeader(req);
 
+    // Strip original auth headers from incoming request to avoid pass-through of Observer Keys
+    delete req.headers['authorization'];
+    delete req.headers['x-api-key'];
+
     const projectId = req.projectId || 'default';
     const cacheKey = req.cacheKey || 'default';
 
     // Inject stream_options for OpenAI-compatible providers to get usage metrics in stream
     if ((providerName === 'openai' || providerName === 'groq') && req.body?.stream) {
         req.body.stream_options = { include_usage: true };
-        delete req.headers['content-length'];
     }
+    
+    // Always delete content-length because we are re-streaming the stringified body
+    delete req.headers['content-length'];
 
     // Parse request to get model details
     const requestInfo = provider.parseRequest(req, req.body);

@@ -366,7 +366,7 @@ export default function Apps() {
                                                 <span className="text-[10px] font-black text-primary uppercase">Subscription Mode Detected</span>
                                             </div>
                                             <p className="text-[9px] text-textMuted leading-relaxed">
-                                                This app connects to AI APIs but sync shows $0. It likely uses its own license or a Pro subscription.
+                                                This app is making AI requests, but no related costs were found in your linked billing accounts. This usually means the app is using a private license or a Pro subscription (like Cursor Pro) that isn't billed per-token.
                                             </p>
                                         </div>
                                     )}

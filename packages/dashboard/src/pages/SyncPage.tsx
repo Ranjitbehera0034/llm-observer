@@ -87,6 +87,9 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ config, onSave, onCancel,
                             </>
                         )}
                         <li>Create a new key and paste it above</li>
+                        <li className="text-[10px] mt-4 opacity-70 italic">
+                            Note: If you are on an <strong>Individual</strong> Anthropic plan, you may not see "Admin Keys". In this case, use the <strong>Apps</strong> tab (Network Monitor) to track usage instead.
+                        </li>
                     </ol>
                 </div>
 
@@ -230,77 +233,72 @@ const SyncPage: React.FC = () => {
 
             {/* Provider Section */}
             <div className="space-y-6 mb-8">
-                {setupProvider ? (
-                    <ProviderSetup 
-                        config={providers.find(p => p.id === setupProvider)!}
-                        onSave={handleSaveKey}
-                        onCancel={() => { setSetupProvider(null); setTestError(null); }}
-                        isTesting={isTesting}
-                        error={testError}
-                    />
-                ) : !hasAnyActive ? (
-                    // Initial Setup State: Show both if none connected, but in a grid
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {providers.map(p => (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                {providers.map(config => {
+                    // Show setup form if this specific provider is being set up
+                    if (setupProvider === config.id) {
+                        return (
                             <ProviderSetup 
-                                key={p.id}
-                                config={p}
-                                onSave={async (id, key) => { 
-                                    setSetupProvider(id); // Lock to this one when starting
-                                    await handleSaveKey(id, key); 
-                                }}
-                                isTesting={false} // Will switch to the setupProvider view immediately
-                                error={null}
+                                key={config.id}
+                                config={config}
+                                onSave={handleSaveKey}
+                                onCancel={() => { setSetupProvider(null); setTestError(null); }}
+                                isTesting={isTesting}
+                                error={testError}
                             />
-                        ))}
-                    </div>
-                ) : (
-                    // Regular State: Show active status list
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {providers.map(config => {
-                            if (!config.has_key) return (
-                                <div key={config.id} className="bg-slate-900/50 border border-slate-800 border-dashed rounded-xl p-6 flex items-center justify-between opacity-60 hover:opacity-100 transition-opacity">
-                                     <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 bg-slate-800 rounded-lg flex items-center justify-center text-xl grayscale">
-                                            {config.id === 'anthropic' ? '🧡' : '🤖'}
-                                        </div>
-                                        <div>
-                                            <h3 className="font-semibold text-slate-400">{config.display_name}</h3>
-                                            <p className="text-xs text-slate-600">Disconnected</p>
-                                        </div>
-                                    </div>
-                                    <button onClick={() => setSetupProvider(config.id)} className="text-xs bg-slate-800 px-3 py-1.5 rounded-lg hover:bg-slate-700 transition-colors">Connect</button>
-                                </div>
-                            );
-                            
-                            const lastSyncStr = config.last_poll_at ? new Date(config.last_poll_at).toLocaleTimeString() : 'Never';
-                            const color = config.id === 'anthropic' ? 'orange' : 'emerald';
+                        );
+                    }
 
-                            return (
-                                <div key={config.id} className="bg-slate-900 border border-slate-800 rounded-xl p-6 flex items-center justify-between">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-10 h-10 bg-${color}-500/10 rounded-lg flex items-center justify-center text-xl`}>
-                                            {config.id === 'anthropic' ? '🧡' : '🤖'}
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <h3 className="font-semibold">{config.display_name}</h3>
-                                                <StatusBadge statusCode={config.status === 'error' ? 500 : 200} status={config.status} />
-                                            </div>
-                                            <p className="text-xs text-slate-500 mt-1">
-                                                {config.org_name || 'Connected'} · {lastSyncStr}
-                                            </p>
-                                        </div>
+                    // Otherwise show status/connect button
+                    if (!config.has_key) {
+                        return (
+                            <div key={config.id} className="bg-slate-900/50 border border-slate-800 border-dashed rounded-xl p-8 flex flex-col justify-between min-h-[200px] hover:border-slate-700 transition-colors">
+                                <div className="flex items-center gap-4 mb-6">
+                                    <div className="w-12 h-12 bg-slate-800 rounded-lg flex items-center justify-center text-2xl grayscale">
+                                        {config.id === 'anthropic' ? '🧡' : '🤖'}
                                     </div>
-                                    <div className="flex gap-4">
-                                        <button onClick={() => setSetupProvider(config.id)} className="text-xs text-slate-400 hover:text-white transition-colors">Update Key</button>
-                                        <button onClick={() => handleRemoveKey(config.id)} className="text-xs text-slate-500 hover:text-red-400 transition-colors">Disconnect</button>
+                                    <div>
+                                        <h3 className="text-xl font-semibold text-slate-400">{config.display_name}</h3>
+                                        <p className="text-sm text-slate-600">Not Connected</p>
                                     </div>
                                 </div>
-                            );
-                        })}
-                    </div>
-                )}
+                                <button 
+                                    onClick={() => setSetupProvider(config.id)} 
+                                    className="w-full bg-slate-800 text-white font-semibold py-3 rounded-lg hover:bg-slate-700 transition-colors"
+                                >
+                                    Connect {config.display_name}
+                                </button>
+                            </div>
+                        );
+                    }
+                    
+                    const lastSyncStr = config.last_poll_at ? new Date(config.last_poll_at).toLocaleTimeString() : 'Never';
+                    const color = config.id === 'anthropic' ? 'orange' : 'emerald';
+
+                    return (
+                        <div key={config.id} className="bg-slate-900 border border-slate-800 rounded-xl p-8 flex flex-col justify-between min-h-[200px]">
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className={`w-12 h-12 bg-${color}-500/10 rounded-lg flex items-center justify-center text-2xl`}>
+                                    {config.id === 'anthropic' ? '🧡' : '🤖'}
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-xl font-semibold">{config.display_name}</h3>
+                                        <StatusBadge statusCode={config.status === 'error' ? 500 : 200} status={config.status} />
+                                    </div>
+                                    <p className="text-sm text-slate-500 mt-1">
+                                        {config.org_name || 'Connected'} · Last sync: {lastSyncStr}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex gap-4">
+                                <button onClick={() => setSetupProvider(config.id)} className="flex-1 text-sm bg-slate-800/50 hover:bg-slate-800 py-2 rounded-lg transition-colors">Update Key</button>
+                                <button onClick={() => handleRemoveKey(config.id)} className="px-4 py-2 text-sm text-slate-500 hover:text-red-400 transition-colors">Disconnect</button>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
             </div>
 
             {hasAnyActive && (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Key, Save, Plus, Trash2, Copy, ShieldCheck, Globe, AlertTriangle, Settings as SettingsIcon, CreditCard, CheckCircle2, Zap, History, Layers, KeyRound, AlertCircle, Target } from 'lucide-react';
+import { Key, Save, Plus, Trash2, Copy, ShieldCheck, Globe, AlertTriangle, Settings as SettingsIcon, CreditCard, CheckCircle2, Zap, History, Layers, KeyRound, AlertCircle, Target, Eye, EyeOff } from 'lucide-react';
 import { BudgetsTab } from '../components/BudgetsTab';
 import { API_BASE_URL } from '../config';
 
@@ -21,6 +21,11 @@ export default function Settings() {
     const [googleKey, setGoogleKey] = useState('');
     const [mistralKey, setMistralKey] = useState('');
     const [groqKey, setGroqKey] = useState('');
+    const [showOpenAiKey, setShowOpenAiKey] = useState(false);
+    const [showAnthropicKey, setShowAnthropicKey] = useState(false);
+    const [showGoogleKey, setShowGoogleKey] = useState(false);
+    const [showMistralKey, setShowMistralKey] = useState(false);
+    const [showGroqKey, setShowGroqKey] = useState(false);
     const [saved, setSaved] = useState(false);
 
     // API Keys Tab State
@@ -286,57 +291,107 @@ export default function Settings() {
                                 <div className="space-y-6">
                                     <div>
                                         <label className="block text-sm font-medium text-textMuted mb-2">OpenAI API Key</label>
-                                        <input
-                                            type="password"
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                            placeholder="sk-..."
-                                            value={openAiKey}
-                                            onChange={e => setOpenAiKey(e.target.value)}
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type={showOpenAiKey ? "text" : "password"}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors pr-12"
+                                                placeholder="sk-..."
+                                                value={openAiKey}
+                                                onChange={e => setOpenAiKey(e.target.value)}
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setShowOpenAiKey(!showOpenAiKey)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white transition-colors p-1"
+                                                title={showOpenAiKey ? "Hide API Key" : "Show API Key"}
+                                            >
+                                                {showOpenAiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div>
                                         <label className="block text-sm font-medium text-textMuted mb-2">Anthropic API Key</label>
-                                        <input
-                                            type="password"
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                            placeholder="sk-ant-..."
-                                            value={anthropicKey}
-                                            onChange={e => setAnthropicKey(e.target.value)}
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type={showAnthropicKey ? "text" : "password"}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors pr-12"
+                                                placeholder="sk-ant-..."
+                                                value={anthropicKey}
+                                                onChange={e => setAnthropicKey(e.target.value)}
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setShowAnthropicKey(!showAnthropicKey)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white transition-colors p-1"
+                                                title={showAnthropicKey ? "Hide API Key" : "Show API Key"}
+                                            >
+                                                {showAnthropicKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div>
                                         <label className="block text-sm font-medium text-textMuted mb-2">Google API Key</label>
-                                        <input
-                                            type="password"
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                            placeholder="AIza..."
-                                            value={googleKey}
-                                            onChange={e => setGoogleKey(e.target.value)}
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type={showGoogleKey ? "text" : "password"}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors pr-12"
+                                                placeholder="AIza..."
+                                                value={googleKey}
+                                                onChange={e => setGoogleKey(e.target.value)}
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setShowGoogleKey(!showGoogleKey)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white transition-colors p-1"
+                                                title={showGoogleKey ? "Hide API Key" : "Show API Key"}
+                                            >
+                                                {showGoogleKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div>
                                         <label className="block text-sm font-medium text-textMuted mb-2">Mistral API Key</label>
-                                        <input
-                                            type="password"
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                            placeholder="..."
-                                            value={mistralKey}
-                                            onChange={e => setMistralKey(e.target.value)}
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type={showMistralKey ? "text" : "password"}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors pr-12"
+                                                placeholder="..."
+                                                value={mistralKey}
+                                                onChange={e => setMistralKey(e.target.value)}
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setShowMistralKey(!showMistralKey)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white transition-colors p-1"
+                                                title={showMistralKey ? "Hide API Key" : "Show API Key"}
+                                            >
+                                                {showMistralKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div>
                                         <label className="block text-sm font-medium text-textMuted mb-2">Groq API Key</label>
-                                        <input
-                                            type="password"
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                            placeholder="gsk_..."
-                                            value={groqKey}
-                                            onChange={e => setGroqKey(e.target.value)}
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type={showGroqKey ? "text" : "password"}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors pr-12"
+                                                placeholder="gsk_..."
+                                                value={groqKey}
+                                                onChange={e => setGroqKey(e.target.value)}
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setShowGroqKey(!showGroqKey)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white transition-colors p-1"
+                                                title={showGroqKey ? "Hide API Key" : "Show API Key"}
+                                            >
+                                                {showGroqKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="pt-6 mt-6 border-t border-border flex items-center justify-end gap-4">
