@@ -58,6 +58,7 @@ interface Budget {
     scope: string;
     scope_value?: string;
     limit_usd: number;
+    safety_buffer_usd: number;
     current_spend?: number;
     period: string;
 }
@@ -251,15 +252,27 @@ export default function Overview() {
                                 else if (budget.scope === 'provider') current = data?.tracked_api?.providers[budget.scope_value || '']?.total_usd || 0;
 
                                 const pct = Math.min((current / budget.limit_usd) * 100, 100);
+                                const bufferPct = (budget.safety_buffer_usd / budget.limit_usd) * 100;
+                                const isInBufferZone = pct >= (100 - bufferPct) && pct < 100;
+
                                 return (
                                     <div key={budget.id} className="space-y-1.5">
-                                        <div className="flex justify-between items-end">
-                                            <span className="text-[10px] font-bold text-white uppercase truncate pr-2">{budget.name}</span>
-                                            <span className="text-[9px] font-mono text-slate-500">${current.toFixed(0)}/${budget.limit_usd.toFixed(0)}</span>
+                                        <div className="flex justify-between items-end text-[8px] font-black uppercase tracking-tighter">
+                                            <span className="text-white truncate pr-2">{budget.name}</span>
+                                            <div className="flex items-center gap-2">
+                                                {isInBufferZone && <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
+                                                <span className="text-slate-500">${current.toFixed(0)}/${budget.limit_usd.toFixed(0)}</span>
+                                            </div>
                                         </div>
-                                        <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                                        <div className="h-1 bg-slate-800 rounded-full overflow-hidden relative">
+                                            {bufferPct > 0 && (
+                                                <div 
+                                                    className="absolute right-0 top-0 h-full bg-red-500/30"
+                                                    style={{ width: `${bufferPct}%` }}
+                                                />
+                                            )}
                                             <div 
-                                                className={`h-full transition-all duration-1000 ${pct > 90 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : pct > 75 ? 'bg-amber-500' : 'bg-indigo-500'}`}
+                                                className={`h-full transition-all duration-1000 ${pct >= 100 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : isInBufferZone ? 'bg-amber-500' : pct > 75 ? 'bg-amber-400' : 'bg-indigo-500'}`}
                                                 style={{ width: `${pct}%` }} 
                                             />
                                         </div>

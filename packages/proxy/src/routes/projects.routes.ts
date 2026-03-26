@@ -54,12 +54,14 @@ projectsRouter.get('/', (req, res) => {
 // POST /api/projects
 projectsRouter.post('/', express.json(), featureGateMiddleware, async (req, res) => {
     try {
-        const { name, daily_budget } = req.body;
+        const { name, daily_budget, safety_buffer, estimate_multiplier } = req.body;
         if (!name) return res.status(400).json({ error: 'Project name is required' });
 
         const result = createProject({
             name,
             daily_budget: daily_budget || 0,
+            safety_buffer: safety_buffer ?? 0.05,
+            estimate_multiplier: estimate_multiplier ?? 3.0,
             organization_id: 'default'
         });
         res.json({ data: result });
@@ -87,7 +89,7 @@ projectsRouter.put('/:id/budget', express.json(), (req, res) => {
 projectsRouter.put('/:id', express.json(), (req, res) => {
     try {
         const db = getDb();
-        const { name, daily_budget, weekly_budget, monthly_budget, webhook_url } = req.body;
+        const { name, daily_budget, weekly_budget, monthly_budget, webhook_url, safety_buffer, estimate_multiplier } = req.body;
 
         const stmt = db.prepare(`
             UPDATE projects SET
@@ -95,7 +97,9 @@ projectsRouter.put('/:id', express.json(), (req, res) => {
                 daily_budget = COALESCE(?, daily_budget),
                 weekly_budget = COALESCE(?, weekly_budget),
                 monthly_budget = COALESCE(?, monthly_budget),
-                webhook_url = COALESCE(?, webhook_url)
+                webhook_url = COALESCE(?, webhook_url),
+                safety_buffer = COALESCE(?, safety_buffer),
+                estimate_multiplier = COALESCE(?, estimate_multiplier)
             WHERE id = ?
         `);
 
@@ -105,6 +109,8 @@ projectsRouter.put('/:id', express.json(), (req, res) => {
             weekly_budget ?? null,
             monthly_budget ?? null,
             webhook_url || null,
+            safety_buffer ?? null,
+            estimate_multiplier ?? null,
             req.params.id
         );
 

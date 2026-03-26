@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
 // POST /api/budgets - Create a budget
 router.post('/', async (req, res) => {
     try {
-        const { name, scope, scope_value, period, limit_usd, warning_pct_1, warning_pct_2, kill_switch, safety_buffer_usd } = req.body;
+        const { name, scope, scope_value, period, limit_usd, warning_pct_1, warning_pct_2, kill_switch, safety_buffer_usd, estimate_multiplier } = req.body;
         
         if (!name || !scope || !period || !limit_usd) {
             return res.status(400).json({ error: 'Missing required fields' });
@@ -47,6 +47,7 @@ router.post('/', async (req, res) => {
             warning_pct_2: warning_pct_2 || 0.9,
             kill_switch: !!kill_switch,
             safety_buffer_usd: safety_buffer_usd || 0.05,
+            estimate_multiplier: estimate_multiplier || 3.0,
             is_active: true
         });
 

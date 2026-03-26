@@ -53,12 +53,19 @@ describe('Anthropic Usage Sync Tests', () => {
     });
 
     it('rejects keys without sk-ant-admin prefix', async () => {
+        // Mock a 403 Forbidden which is what Anthropic returns for standard keys
+        (fetch as any).mockResolvedValueOnce({
+            ok: false,
+            status: 403,
+            text: async () => 'Forbidden'
+        });
+
         const res = await request(app)
             .post('/api/sync/providers/anthropic/key')
             .send({ adminKey: 'sk-ant-api-wrong-prefix' });
 
-        expect(res.status).toBe(400);
-        expect(res.body.error).toContain('Must start with sk-ant-admin');
+        expect(res.status).toBe(403);
+        expect(res.body.error).toContain('Standard Anthropic API keys');
     });
 
     it('stores usage records correctly after polling', async () => {
@@ -126,7 +133,8 @@ describe('Anthropic Usage Sync Tests', () => {
                 ok: true,
                 json: async () => ({
                     data: [{ model: 'm1', bucket_start: '2026-01-01T00:00:00Z', input_tokens: 100 }],
-                    has_more: true
+                    has_more: true,
+                    next_page: 'cursor-1'
                 })
             })
             .mockResolvedValueOnce({
