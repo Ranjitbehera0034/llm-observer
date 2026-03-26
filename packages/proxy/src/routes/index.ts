@@ -8,6 +8,10 @@ import { authRouter } from './auth.routes';
 import { settingsRouter } from './settings.routes';
 import { licenseRouter } from './license.routes';
 import { webhooksRouter } from './webhooks.routes';
+import budgetsRouter from './budgets.routes';
+import alertsRouter from './alerts.routes';
+import appsRouter from './apps.routes';
+import networkRouter from './network.routes';
 
 /**
  * Composes all dashboard API sub-routers into a single router.
@@ -15,6 +19,9 @@ import { webhooksRouter } from './webhooks.routes';
  */
 export function createDashboardRouter(): Router {
     const router = Router();
+
+    // Payment webhooks (MUST be mounted before express.json() so it can read raw body)
+    router.use('/webhooks', webhooksRouter);
 
     // Re-add global JSON parsing for dashboard routes
     router.use(express.json());
@@ -34,14 +41,21 @@ export function createDashboardRouter(): Router {
     // License
     router.use('/license', licenseRouter);
 
-    // Payment webhooks
-    router.use('/webhooks', webhooksRouter);
-
     // Teams sync
     router.use('/teams', requestsRouter);
 
-    // Settings, alerts, alert rules (mounted at root but after specific paths)
-    router.use('/settings', settingsRouter);
+    // Budgets
+    router.use('/budgets', budgetsRouter);
+
+    // Alerts (v1.4.0 Unified)
+    router.use('/alerts', alertsRouter);
+
+    // Settings, alert rules (mounted at root)
+    router.use('/', settingsRouter);
+
+    // Apps & Network
+    router.use('/apps', appsRouter);
+    router.use('/network', networkRouter);
 
     // SSE events (mounted at /events)ß
     router.get('/events', (req, res, next) => {

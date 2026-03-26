@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Key, Save, Plus, Trash2, Copy, ShieldCheck, Globe, AlertTriangle, Settings as SettingsIcon, CreditCard, CheckCircle2, Zap, History, Layers, KeyRound, AlertCircle } from 'lucide-react';
+import { Key, Save, Plus, Trash2, Copy, ShieldCheck, Globe, AlertTriangle, Settings as SettingsIcon, CreditCard, CheckCircle2, Zap, History, Layers, KeyRound, AlertCircle, Target, Eye, EyeOff } from 'lucide-react';
+import { BudgetsTab } from '../components/BudgetsTab';
 import { API_BASE_URL } from '../config';
 
 interface ApiKeyData {
@@ -11,7 +12,7 @@ interface ApiKeyData {
 }
 
 export default function Settings() {
-    const [activeTab, setActiveTab] = useState<'providers' | 'api_keys' | 'security' | 'license'>('providers');
+    const [activeTab, setActiveTab] = useState<'providers' | 'api_keys' | 'budgets' | 'security' | 'license'>('providers');
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
     // Provider Tab State
@@ -20,6 +21,11 @@ export default function Settings() {
     const [googleKey, setGoogleKey] = useState('');
     const [mistralKey, setMistralKey] = useState('');
     const [groqKey, setGroqKey] = useState('');
+    const [showOpenAiKey, setShowOpenAiKey] = useState(false);
+    const [showAnthropicKey, setShowAnthropicKey] = useState(false);
+    const [showGoogleKey, setShowGoogleKey] = useState(false);
+    const [showMistralKey, setShowMistralKey] = useState(false);
+    const [showGroqKey, setShowGroqKey] = useState(false);
     const [saved, setSaved] = useState(false);
 
     // API Keys Tab State
@@ -41,6 +47,10 @@ export default function Settings() {
     const [country, setCountry] = useState<string | null>(null);
     const [detectingCountry, setDetectingCountry] = useState(true);
 
+    // Network Monitor State (v1.5.0)
+    const [monitorStatus, setMonitorStatus] = useState<any>(null);
+    const [scanInterval, setScanInterval] = useState('5000');
+
     useEffect(() => {
         const fetchSettings = async () => {
             try {
@@ -52,12 +62,24 @@ export default function Settings() {
                     setGoogleKey(data.data.google_api_key || '');
                     setMistralKey(data.data.mistral_api_key || '');
                     setGroqKey(data.data.groq_api_key || '');
+                    setScanInterval(data.data.network_monitor_interval || '5000');
                 }
             } catch (err) {
                 console.error('Failed to fetch settings:', err);
             }
         };
         fetchSettings();
+
+        const fetchMonitorStatus = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/network/status`);
+                const data = await res.json();
+                setMonitorStatus(data);
+            } catch (err) {
+                console.error('Failed to fetch monitor status:', err);
+            }
+        };
+        fetchMonitorStatus();
 
         // Detect Country for Payments
         const detectCountry = async () => {
@@ -190,6 +212,32 @@ export default function Settings() {
         }
     };
 
+    const toggleMonitor = async () => {
+        const action = monitorStatus?.running ? 'stop' : 'start';
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/network/${action}`, { method: 'POST' });
+            if (res.ok) {
+                const data = await res.json();
+                setMonitorStatus((prev: any) => ({ ...prev, running: data.running }));
+            }
+        } catch (err) {
+            console.error(`Failed to ${action} monitor`, err);
+        }
+    };
+
+    const updateScanInterval = async (val: string) => {
+        setScanInterval(val);
+        try {
+            await fetch(`${API_BASE_URL}/api/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ network_monitor_interval: val })
+            });
+        } catch (err) {
+            console.error('Failed to update scan interval', err);
+        }
+    };
+
     return (
         <div className="max-w-5xl mx-auto p-8 animate-fade-in">
             <div className="flex items-center gap-3 mb-8">
@@ -212,6 +260,11 @@ export default function Settings() {
                         onClick={() => setActiveTab('api_keys')}
                         className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all ${activeTab === 'api_keys' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-textMuted hover:text-white hover:bg-surfaceHighlight'}`}>
                         <Key className="w-5 h-5" /> Observer Keys
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('budgets')}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg font-medium transition-all ${activeTab === 'budgets' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-textMuted hover:text-white hover:bg-surfaceHighlight'}`}>
+                        <Target className="w-5 h-5" /> Budgets & Alerts
                     </button>
                     <button
                         onClick={() => setActiveTab('security')}
@@ -238,57 +291,107 @@ export default function Settings() {
                                 <div className="space-y-6">
                                     <div>
                                         <label className="block text-sm font-medium text-textMuted mb-2">OpenAI API Key</label>
-                                        <input
-                                            type="password"
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                            placeholder="sk-..."
-                                            value={openAiKey}
-                                            onChange={e => setOpenAiKey(e.target.value)}
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type={showOpenAiKey ? "text" : "password"}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors pr-12"
+                                                placeholder="sk-..."
+                                                value={openAiKey}
+                                                onChange={e => setOpenAiKey(e.target.value)}
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setShowOpenAiKey(!showOpenAiKey)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white transition-colors p-1"
+                                                title={showOpenAiKey ? "Hide API Key" : "Show API Key"}
+                                            >
+                                                {showOpenAiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div>
                                         <label className="block text-sm font-medium text-textMuted mb-2">Anthropic API Key</label>
-                                        <input
-                                            type="password"
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                            placeholder="sk-ant-..."
-                                            value={anthropicKey}
-                                            onChange={e => setAnthropicKey(e.target.value)}
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type={showAnthropicKey ? "text" : "password"}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors pr-12"
+                                                placeholder="sk-ant-..."
+                                                value={anthropicKey}
+                                                onChange={e => setAnthropicKey(e.target.value)}
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setShowAnthropicKey(!showAnthropicKey)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white transition-colors p-1"
+                                                title={showAnthropicKey ? "Hide API Key" : "Show API Key"}
+                                            >
+                                                {showAnthropicKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div>
                                         <label className="block text-sm font-medium text-textMuted mb-2">Google API Key</label>
-                                        <input
-                                            type="password"
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                            placeholder="AIza..."
-                                            value={googleKey}
-                                            onChange={e => setGoogleKey(e.target.value)}
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type={showGoogleKey ? "text" : "password"}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors pr-12"
+                                                placeholder="AIza..."
+                                                value={googleKey}
+                                                onChange={e => setGoogleKey(e.target.value)}
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setShowGoogleKey(!showGoogleKey)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white transition-colors p-1"
+                                                title={showGoogleKey ? "Hide API Key" : "Show API Key"}
+                                            >
+                                                {showGoogleKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div>
                                         <label className="block text-sm font-medium text-textMuted mb-2">Mistral API Key</label>
-                                        <input
-                                            type="password"
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                            placeholder="..."
-                                            value={mistralKey}
-                                            onChange={e => setMistralKey(e.target.value)}
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type={showMistralKey ? "text" : "password"}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors pr-12"
+                                                placeholder="..."
+                                                value={mistralKey}
+                                                onChange={e => setMistralKey(e.target.value)}
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setShowMistralKey(!showMistralKey)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white transition-colors p-1"
+                                                title={showMistralKey ? "Hide API Key" : "Show API Key"}
+                                            >
+                                                {showMistralKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div>
                                         <label className="block text-sm font-medium text-textMuted mb-2">Groq API Key</label>
-                                        <input
-                                            type="password"
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
-                                            placeholder="gsk_..."
-                                            value={groqKey}
-                                            onChange={e => setGroqKey(e.target.value)}
-                                        />
+                                        <div className="relative">
+                                            <input
+                                                type={showGroqKey ? "text" : "password"}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors pr-12"
+                                                placeholder="gsk_..."
+                                                value={groqKey}
+                                                onChange={e => setGroqKey(e.target.value)}
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setShowGroqKey(!showGroqKey)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white transition-colors p-1"
+                                                title={showGroqKey ? "Hide API Key" : "Show API Key"}
+                                            >
+                                                {showGroqKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="pt-6 mt-6 border-t border-border flex items-center justify-end gap-4">
@@ -312,6 +415,8 @@ export default function Settings() {
                             </div>
                         </div>
                     )}
+
+                    {activeTab === 'budgets' && <BudgetsTab />}
 
                     {activeTab === 'api_keys' && (
                         <div className="space-y-6">
@@ -392,10 +497,79 @@ export default function Settings() {
                     )}
 
                     {activeTab === 'security' && (
-                        <div className="card text-center py-20">
-                            <ShieldCheck className="w-16 h-16 text-textMuted mx-auto mb-4 opacity-20" />
-                            <h2 className="text-xl font-bold text-white mb-2">Security Settings</h2>
-                            <p className="text-textMuted max-w-sm mx-auto">Enterprise security features including SSO, IP Whitelisting, and Data Masking are coming soon.</p>
+                        <div className="space-y-6">
+                            <div className="card">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white mb-2">Network Monitor</h2>
+                                        <p className="text-sm text-textMuted">Attribute AI spending to specific applications by monitoring network connections.</p>
+                                    </div>
+                                    <button 
+                                        onClick={toggleMonitor}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${monitorStatus?.running ? 'bg-primary' : 'bg-background border border-border'}`}
+                                    >
+                                        <span
+                                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${monitorStatus?.running ? 'translate-x-6' : 'translate-x-1'}`}
+                                        />
+                                    </button>
+                                </div>
+
+                                <div className="p-4 bg-primary/5 rounded-xl border border-primary/20 border-dashed flex items-start gap-4 mb-6">
+                                    <ShieldCheck className="w-6 h-6 text-primary shrink-0" />
+                                    <div>
+                                        <h4 className="text-white font-semibold text-sm">Privacy-First Tracking</h4>
+                                        <p className="text-xs text-textMuted mt-1 leading-relaxed">
+                                            The monitor only records the process name and destination IP. 
+                                            It does <strong>not</strong> inspect packet contents or read any sensitive data.
+                                            All data remains on your local machine.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {monitorStatus?.running && (
+                                    <div className="space-y-4 animate-in fade-in duration-500 pt-4 border-t border-border">
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-textMuted font-medium">Scan Interval</span>
+                                            <select 
+                                                value={scanInterval}
+                                                onChange={(e) => updateScanInterval(e.target.value)}
+                                                className="bg-background border border-border rounded px-3 py-1.5 text-white text-xs focus:outline-none focus:border-primary"
+                                            >
+                                                <option value="5000">5 seconds (Fastest)</option>
+                                                <option value="10000">10 seconds</option>
+                                                <option value="30000">30 seconds (Eco)</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-textMuted font-medium">Known AI IPs</span>
+                                            <span className="text-white font-mono text-xs">{monitorStatus.knownIps} endpoints</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-textMuted font-medium">Platform</span>
+                                            <span className="text-white text-xs uppercase">{monitorStatus.platform}</span>
+                                        </div>
+                                        <div className="pt-4 border-t border-border flex justify-end">
+                                            <button 
+                                                onClick={async () => {
+                                                    if (confirm('Clear all recorded network connection history? This cannot be undone.')) {
+                                                        const res = await fetch(`${API_BASE_URL}/api/network/history`, { method: 'DELETE' });
+                                                        if (res.ok) alert('History cleared.');
+                                                    }
+                                                }}
+                                                className="text-[10px] font-black uppercase tracking-widest text-danger hover:underline"
+                                            >
+                                                Clear Network History
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="card text-center py-12 opacity-50">
+                                <KeyRound className="w-12 h-12 text-textMuted mx-auto mb-4 opacity-20" />
+                                <h2 className="text-lg font-bold text-white mb-2">Advanced Security</h2>
+                                <p className="text-xs text-textMuted max-w-sm mx-auto">SSO, IP Whitelisting, and Data Masking are available for Enterprise customers.</p>
+                            </div>
                         </div>
                     )}
 

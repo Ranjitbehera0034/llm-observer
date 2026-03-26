@@ -11,9 +11,11 @@ export class AnthropicProvider implements IProvider {
     getAuthHeader(req: Request) {
         let apiKey = [req.headers['x-api-key']].flat().filter(Boolean)[0] as string | undefined;
 
-        // Fallback to global setting
-        if (!apiKey) {
+        // Fallback to global setting if no header provided or if it's an observer key
+        const isObserverKey = apiKey?.startsWith('llmo_');
+        if (!apiKey || isObserverKey) {
             apiKey = getSetting('anthropic_api_key') || undefined;
+            if (isObserverKey && !apiKey) apiKey = undefined;
         }
 
         const headers: Record<string, string> = {};

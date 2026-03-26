@@ -1,112 +1,460 @@
-import { useState, useEffect } from 'react';
-import { SpendCounter } from '../components/SpendCounter';
-import { StatCards } from '../components/StatCards';
-import { CostChart } from '../components/CostChart';
-import { ModelBreakdown } from '../components/ModelBreakdown';
-import { Sparkles, AlertCircle, LayoutDashboard } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { 
+    LayoutDashboard, 
+    CreditCard, 
+    TrendingUp, 
+    Plus, 
+    Trash2, 
+    Info, 
+    ChevronRight,
+    Search,
+    Target,
+    MonitorSmartphone
+} from 'lucide-react';
+import {
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts';
+import { Link } from 'react-router-dom';
+import { SUBSCRIPTION_PRESETS } from '../data/subscriptionPresets';
 import { API_BASE_URL } from '../config';
 
-export default function Overview() {
-    const [unknownCount, setUnknownCount] = useState<number>(0);
+interface SubscriptionRecord {
+    id: number;
+    service_name: string;
+    provider?: string;
+    monthly_cost_usd: number;
+    billing_cycle: 'monthly' | 'yearly';
+    is_active: number;
+    start_date: string;
+    end_date?: string;
+    notes?: string;
+}
 
-    useEffect(() => {
-        fetch(`${API_BASE_URL}/api/stats/unknown-pricing`)
-            .then(res => res.json())
-            .then(data => setUnknownCount(data.count))
-            .catch(console.error);
+interface OverviewData {
+    period: 'today' | 'week' | 'month';
+    total_usd: number;
+    tracked_api: {
+        total_usd: number;
+        providers: Record<string, { total_usd: number; source: 'sync' | 'proxy' }>;
+    };
+    subscriptions: {
+        total_monthly_commitment_usd: number;
+        period_cost_usd: number;
+        active_count: number;
+        active: SubscriptionRecord[];
+    };
+}
+
+interface TimelinePoint {
+    date: string;
+    tracked_api_usd: number;
+    subscriptions_daily_usd: number;
+    total_usd: number;
+}
+
+interface Budget {
+    id: number;
+    name: string;
+    scope: string;
+    scope_value?: string;
+    limit_usd: number;
+    safety_buffer_usd: number;
+    current_spend?: number;
+    period: string;
+}
+
+export default function Overview() {
+    const [todayData, setTodayData] = useState<OverviewData | null>(null);
+    const [weekData, setWeekData] = useState<OverviewData | null>(null);
+    const [monthData, setMonthData] = useState<OverviewData | null>(null);
+    const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
+    const [budgets, setBudgets] = useState<Budget[]>([]);
+    const [topApps, setTopApps] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [showAddSub, setShowAddSub] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeTab, setActiveTab] = useState<'today' | 'week' | 'month'>('today');
+
+    const fetchData = useCallback(async () => {
+        try {
+            const [todayRes, weekRes, monthRes, timelineRes, budgetsRes, appsRes] = await Promise.all([
+                fetch(`${API_BASE_URL}/api/overview?period=today`),
+                fetch(`${API_BASE_URL}/api/overview?period=week`),
+                fetch(`${API_BASE_URL}/api/overview?period=month`),
+                fetch(`${API_BASE_URL}/api/overview/timeline?days=30`),
+                fetch(`${API_BASE_URL}/api/budgets`),
+                fetch(`${API_BASE_URL}/api/apps?period=today`)
+            ]);
+            
+            if (todayRes.ok) setTodayData(await todayRes.json());
+            if (weekRes.ok) setWeekData(await weekRes.json());
+            if (monthRes.ok) setMonthData(await monthRes.json());
+            if (timelineRes.ok) setTimeline(await timelineRes.json());
+            if (budgetsRes.ok) setBudgets(await budgetsRes.json());
+            if (appsRes.ok) {
+                const appsData = await appsRes.json();
+                setTopApps(appsData.apps.slice(0, 3));
+            }
+        } catch (err) {
+            console.error('Failed to fetch overview data', err);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
+    useEffect(() => {
+        fetchData();
+        const interval = setInterval(fetchData, 60_000);
+        return () => clearInterval(interval);
+    }, [fetchData]);
+
+    const handleAddSub = async (preset: Partial<SubscriptionRecord>) => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/subscriptions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(preset)
+            });
+            if (res.ok) {
+                setShowAddSub(false);
+                fetchData();
+            }
+        } catch (err) {
+            console.error('Failed to add subscription', err);
+        }
+    };
+
+    const handleDeleteSub = async (id: number) => {
+        if (!confirm('Remove this subscription?')) return;
+        try {
+            await fetch(`${API_BASE_URL}/api/subscriptions/${id}`, { method: 'DELETE' });
+            fetchData();
+        } catch (err) {
+            console.error('Failed to delete subscription', err);
+        }
+    };
+
+    if (loading) return (
+        <div className="flex items-center justify-center h-[80vh]">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+        </div>
+    );
+
+    const data = activeTab === 'today' ? todayData : (activeTab === 'week' ? weekData : monthData);
+
+    const filteredPresets = SUBSCRIPTION_PRESETS.filter(p => 
+        p.service_name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
-        <div className="max-w-7xl mx-auto space-y-10 animate-fade-in py-10 px-6">
-            {/* Header Section */}
+        <div className="max-w-7xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-700 py-10 px-6">
+            {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <div className="space-y-1">
+                <div>
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-primary/20 rounded-lg">
-                            <LayoutDashboard className="w-6 h-6 text-primary" />
+                        <div className="p-2 bg-indigo-500/20 rounded-lg">
+                            <LayoutDashboard className="w-6 h-6 text-indigo-400" />
                         </div>
-                        <h1 className="text-4xl font-black text-white tracking-tight">
-                            Control Room
-                        </h1>
+                        <h1 className="text-4xl font-black text-white tracking-tight">Control Room</h1>
                     </div>
-                    <p className="text-textMuted text-lg font-medium pl-12">
-                        Real-time intelligence for your LLM infrastructure.
-                    </p>
+                    <p className="text-slate-400 text-lg font-medium mt-1">Unified view of your AI spending.</p>
                 </div>
 
-                <div className="flex items-center gap-4 bg-surfaceHighlight/50 border border-white/5 rounded-2xl p-4 backdrop-blur-sm self-end md:self-auto">
-                    <div className="text-right">
-                        <p className="text-[10px] uppercase tracking-widest text-textMuted font-bold">Active Project</p>
-                        <p className="text-white font-black">Default Node</p>
+                <div className="flex items-center gap-4">
+                    <div className="bg-slate-900 p-1 rounded-xl border border-slate-800 flex gap-1">
+                        {(['today', 'week', 'month'] as const).map(tab => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab)}
+                                className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                                    activeTab === tab 
+                                    ? 'bg-white text-black shadow-lg' 
+                                    : 'text-slate-500 hover:text-slate-300'
+                                }`}
+                            >
+                                {tab}
+                            </button>
+                        ))}
                     </div>
-                    <div className="w-3 h-3 rounded-full bg-success animate-pulse shadow-[0_0_12px_rgba(16,185,129,0.5)]" />
+                    <button 
+                        onClick={() => setShowAddSub(true)}
+                        className="flex items-center gap-2 bg-white text-black font-bold px-6 py-2.5 rounded-xl hover:bg-slate-200 transition-all active:scale-95 shadow-xl shadow-white/5"
+                    >
+                        <Plus className="w-4 h-4" />
+                        Add Subscription
+                    </button>
                 </div>
             </div>
 
-            {/* Warning Banner */}
-            {unknownCount > 0 && (
-                <div className="bg-warning/5 border border-warning/20 rounded-2xl p-6 flex items-start gap-4 animate-slide-up group">
-                    <div className="p-3 bg-warning/10 rounded-xl group-hover:scale-110 transition-transform">
-                        <AlertCircle className="w-6 h-6 text-warning" />
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden group col-span-1 md:col-span-2 lg:col-span-1">
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <TrendingUp className="w-10 h-10 text-emerald-400" />
                     </div>
+                    <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500 mb-1">
+                        {activeTab === 'today' ? "Today's Burn" : (activeTab === 'week' ? "This Week" : "This Month")}
+                    </h3>
+                    <div className="text-4xl font-black text-white">${data?.total_usd.toFixed(2) || '0.00'}</div>
+                    <div className="flex flex-wrap gap-2 mt-4">
+                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold">
+                            API: ${data?.tracked_api?.total_usd?.toFixed(2) || '0.00'}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <CreditCard className="w-10 h-10 text-indigo-400" />
+                    </div>
+                    <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500 mb-1">Subscriptions</h3>
+                    <div className="text-4xl font-black text-white">${data?.subscriptions?.period_cost_usd?.toFixed(0) || '0'}</div>
+                    <p className="text-[10px] text-slate-500 mt-2 font-bold uppercase tracking-wider">{data?.subscriptions?.active_count || 0} active</p>
+                </div>
+
+                {/* Data Sources */}
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500">Sources</h3>
+                        <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[8px] font-bold text-emerald-500 uppercase">Live</span>
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        {Object.entries(data?.tracked_api?.providers || {}).map(([id, p]: [string, any]) => (
+                            <div key={id} className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-1.5 h-1.5 rounded-full ${p.source === 'sync' ? 'bg-indigo-400' : 'bg-slate-500'}`} />
+                                    <span className="text-[10px] font-bold text-white uppercase">{id}</span>
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-400">${p.total_usd?.toFixed(2)}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Budget Status Card (v1.4.0) */}
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col group hover:border-indigo-500/30 transition-all">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500">Active Budgets</h3>
+                        <Link to="/settings#budgets" className="text-[8px] font-black text-indigo-400 uppercase hover:underline">Manage</Link>
+                    </div>
+                    <div className="space-y-4 flex-1 overflow-y-auto pr-1 custom-scrollbar">
+                        {budgets.length === 0 ? (
+                            <div className="h-full flex items-center justify-center opacity-40">
+                                <Target className="w-8 h-8 text-slate-700" />
+                            </div>
+                        ) : (
+                            budgets.slice(0, 3).map(budget => {
+                                let current = 0;
+                                if (budget.scope === 'global') current = data?.tracked_api?.total_usd || 0;
+                                else if (budget.scope === 'provider') current = data?.tracked_api?.providers[budget.scope_value || '']?.total_usd || 0;
+
+                                const pct = Math.min((current / budget.limit_usd) * 100, 100);
+                                const bufferPct = (budget.safety_buffer_usd / budget.limit_usd) * 100;
+                                const isInBufferZone = pct >= (100 - bufferPct) && pct < 100;
+
+                                return (
+                                    <div key={budget.id} className="space-y-1.5">
+                                        <div className="flex justify-between items-end text-[8px] font-black uppercase tracking-tighter">
+                                            <span className="text-white truncate pr-2">{budget.name}</span>
+                                            <div className="flex items-center gap-2">
+                                                {isInBufferZone && <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />}
+                                                <span className="text-slate-500">${current.toFixed(0)}/${budget.limit_usd.toFixed(0)}</span>
+                                            </div>
+                                        </div>
+                                        <div className="h-1 bg-slate-800 rounded-full overflow-hidden relative">
+                                            {bufferPct > 0 && (
+                                                <div 
+                                                    className="absolute right-0 top-0 h-full bg-red-500/30"
+                                                    style={{ width: `${bufferPct}%` }}
+                                                />
+                                            )}
+                                            <div 
+                                                className={`h-full transition-all duration-1000 ${pct >= 100 ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : isInBufferZone ? 'bg-amber-500' : pct > 75 ? 'bg-amber-400' : 'bg-indigo-500'}`}
+                                                style={{ width: `${pct}%` }} 
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+
+                {/* Top Apps (v1.5.0) */}
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col group hover:border-indigo-500/30 transition-all">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500">Top Apps Today</h3>
+                        <Link to="/apps" className="text-[8px] font-black text-indigo-400 uppercase hover:underline">See All</Link>
+                    </div>
+                    <div className="space-y-4 flex-1">
+                        {topApps.length === 0 ? (
+                            <div className="h-full flex items-center justify-center opacity-40">
+                                <MonitorSmartphone className="w-8 h-8 text-slate-700" />
+                            </div>
+                        ) : (
+                            topApps.map(app => (
+                                <div key={app.process_name} className="flex items-center justify-between">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-bold text-white uppercase">{app.display_name}</span>
+                                        <span className="text-[8px] text-slate-500 font-mono">{app.connection_count} conns</span>
+                                    </div>
+                                    <span className="text-[10px] font-black text-white">${app.estimated_cost_usd.toFixed(2)}</span>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Main Chart Section */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-10">
+                <div className="flex items-center justify-between mb-10">
                     <div>
-                        <h3 className="font-bold text-warning text-lg">Unrecognized Models Detected</h3>
-                        <p className="text-warning/70 mt-1 max-w-2xl">
-                            {unknownCount} request(s) used models with unknown pricing. We've defaulted their cost to $0.00.
-                            Add custom pricing via the CLI to maintain accurate billing.
-                        </p>
-                        <div className="mt-4 flex items-center gap-2">
-                            <code className="bg-warning/20 px-3 py-1.5 rounded-lg text-xs font-mono text-warning border border-warning/20">
-                                npx llm-observer pricing add
-                            </code>
+                        <h3 className="text-2xl font-bold text-white tracking-tight">Spending Trajectory</h3>
+                        <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-black">Daily tracked API costs vs. Subscription overhead</p>
+                    </div>
+                    <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-indigo-500" />
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Tracked API</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-slate-700" />
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Subscriptions</span>
+                        </div>
+                    </div>
+                </div>
+                <div className="h-[400px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={timeline} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
+                            <XAxis 
+                                dataKey="date" 
+                                stroke="#475569" fontSize={10} tickLine={false} axisLine={false} 
+                                tickFormatter={d => {
+                                    const date = new Date(d);
+                                    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                                }}
+                            />
+                            <YAxis stroke="#475569" fontSize={10} tickLine={false} axisLine={false} tickFormatter={v => `$${v}`} />
+                            <Tooltip 
+                                contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '16px', padding: '12px' }}
+                                labelStyle={{ color: '#94a3b8', fontWeight: 'bold', marginBottom: '8px' }}
+                                cursor={{ fill: '#ffffff05' }}
+                            />
+                            <Bar dataKey="tracked_api_usd" stackId="a" fill="#6366f1" radius={[0, 0, 0, 0]} barSize={32} />
+                            <Bar dataKey="subscriptions_daily_usd" stackId="a" fill="#334155" radius={[4, 4, 0, 0]} barSize={32} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
+
+            {/* Subscriptions Grid */}
+            <div>
+                <div className="flex items-center justify-between mb-8">
+                    <h3 className="text-xl font-bold text-white tracking-tight">Active Subscriptions</h3>
+                </div>
+                {data?.subscriptions.active.length === 0 ? (
+                    <div className="bg-slate-900/50 border-2 border-dashed border-slate-800 rounded-3xl p-12 text-center group cursor-pointer hover:border-indigo-500/50 transition-all" onClick={() => setShowAddSub(true)}>
+                        <div className="w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+                            <Plus className="w-8 h-8 text-slate-500 group-hover:text-indigo-400" />
+                        </div>
+                        <h4 className="text-white font-bold text-lg">No active subscriptions</h4>
+                        <p className="text-slate-500 text-sm mt-1">Track fixed costs like Cursor Pro or ChatGPT Plus here.</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {data?.subscriptions.active.map(sub => (
+                            <div key={sub.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 group hover:border-indigo-500/30 transition-all">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center text-lg font-bold text-indigo-400">
+                                        {sub.service_name.charAt(0)}
+                                    </div>
+                                    <button onClick={() => handleDeleteSub(sub.id)} className="p-1.5 text-slate-600 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all opacity-0 group-hover:opacity-100">
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <h4 className="font-bold text-white text-lg">{sub.service_name}</h4>
+                                <div className="flex items-baseline gap-1 mt-1">
+                                    <span className="text-2xl font-black text-white">${sub.monthly_cost_usd}</span>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">/ month</span>
+                                </div>
+                                {sub.notes && <p className="text-xs text-slate-600 mt-3 line-clamp-1">{sub.notes}</p>}
+                            </div>
+                        ))}
+                        <button 
+                            onClick={() => setShowAddSub(true)}
+                            className="bg-slate-900/50 border border-dashed border-slate-800 rounded-2xl p-6 flex flex-col items-center justify-center hover:border-indigo-500/50 group transition-all"
+                        >
+                            <Plus className="w-6 h-6 text-slate-600 group-hover:text-indigo-400 mb-2" />
+                            <span className="text-xs font-bold text-slate-600 group-hover:text-indigo-400 uppercase tracking-widest">Add New</span>
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Add Subscription Modal */}
+            {showAddSub && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-6 backdrop-blur-md bg-black/60">
+                    <div className="bg-slate-900 border border-slate-800 w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="p-10">
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <h2 className="text-3xl font-black text-white tracking-tight">Add Subscription</h2>
+                                    <p className="text-slate-400 font-medium">Select a service to start tracking its cost.</p>
+                                </div>
+                                <button onClick={() => setShowAddSub(false)} className="bg-slate-800 p-2 rounded-xl text-slate-400 hover:text-white transition-all">
+                                    <Info className="w-6 h-6 rotate-45" />
+                                </button>
+                            </div>
+
+                            <div className="relative mb-8">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                                <input 
+                                    type="text" 
+                                    placeholder="Search services (Cursor, Copilot, OpenAI...)"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    autoFocus
+                                    className="w-full bg-black border border-slate-800 rounded-2xl py-4 pl-12 pr-6 text-white text-lg focus:outline-none focus:border-indigo-500 transition-all placeholder:text-slate-600"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                {filteredPresets.map(preset => {
+                                    const isDuplicate = todayData?.subscriptions.active.some(s => s.service_name === preset.service_name);
+
+                                    return (
+                                        <button 
+                                            key={preset.service_name} 
+                                            onClick={() => {
+                                                if (isDuplicate) {
+                                                    alert(`You already have an active ${preset.service_name} subscription.`);
+                                                    return;
+                                                }
+                                                handleAddSub(preset);
+                                            }}
+                                            className={`bg-black/40 border p-6 rounded-2xl text-left transition-all flex items-center justify-between group ${
+                                                isDuplicate ? 'opacity-50 border-slate-800 grayscale cursor-not-allowed' : 'border-slate-800 hover:border-indigo-500/50 hover:bg-black'
+                                            }`}
+                                        >
+                                            <div>
+                                                <h4 className="font-bold text-white mb-1">{preset.service_name}</h4>
+                                                <span className="text-lg font-black text-indigo-400">${preset.monthly_cost_usd} <span className="text-[10px] text-slate-600 uppercase">/ mo</span></span>
+                                                {isDuplicate && <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Already Tracking</p>}
+                                            </div>
+                                            {!isDuplicate && <ChevronRight className="w-5 h-5 text-slate-800 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
-
-            {/* Main Metrics */}
-            <div className="space-y-8">
-                <section>
-                    <SpendCounter />
-                </section>
-
-                <section>
-                    <StatCards />
-                </section>
-            </div>
-
-            {/* Charts Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                <div className="lg:col-span-8">
-                    <div className="card h-[450px]">
-                        <div className="flex items-center justify-between mb-8">
-                            <div>
-                                <h3 className="text-xl font-bold text-white tracking-tight">Cost Trajectory</h3>
-                                <p className="text-xs text-textMuted mt-1 uppercase tracking-widest font-bold">Daily spend over last 7 days</p>
-                            </div>
-                            <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-full">
-                                <Sparkles className="w-3 h-3 text-primary" />
-                                <span className="text-[10px] font-bold text-primary uppercase">Calculated in USD</span>
-                            </div>
-                        </div>
-                        <div className="h-[320px]">
-                            <CostChart />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="lg:col-span-4">
-                    <div className="card h-[450px]">
-                        <div className="mb-8">
-                            <h3 className="text-xl font-bold text-white tracking-tight">Model Mix</h3>
-                            <p className="text-xs text-textMuted mt-1 uppercase tracking-widest font-bold">Budget distribution by LLM</p>
-                        </div>
-                        <div className="h-[320px]">
-                            <ModelBreakdown />
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
     );
 }

@@ -23,8 +23,15 @@ async function runCleanup() {
 
         const result = deleteStmt.run(retentionDays);
 
-        if (result.changes > 0) {
-            console.log(chalk.yellow(`[RETENTION] Purged ${result.changes} expired requests (Retention: ${retentionDays} days)`));
+        // Also purge app connections (fixed 30 day window)
+        const appDeleteStmt = db.prepare(`
+            DELETE FROM app_connections 
+            WHERE timestamp < datetime('now', '-30 days')
+        `);
+        const appResult = appDeleteStmt.run();
+
+        if (result.changes > 0 || appResult.changes > 0) {
+            console.log(chalk.yellow(`[RETENTION] Purged ${result.changes} requests and ${appResult.changes} app connections.`));
         }
     } catch (err) {
         console.error('Retention Cleanup Error:', err);

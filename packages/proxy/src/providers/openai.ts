@@ -11,11 +11,14 @@ export class OpenAIProvider implements IProvider {
     getAuthHeader(req: Request): Record<string, string> {
         let auth = [req.headers['authorization']].flat().filter(Boolean)[0] as string | undefined;
 
-        // Fallback to global setting if no header provided
-        if (!auth) {
+        // Fallback to global setting if no header provided or if it's an observer key
+        const isObserverKey = auth?.includes('llmo_');
+        if (!auth || isObserverKey) {
             const globalKey = getSetting('openai_api_key');
             if (globalKey) {
                 auth = `Bearer ${globalKey}`;
+            } else if (isObserverKey) {
+                auth = undefined; // Don't forward llmo_ key
             }
         }
 

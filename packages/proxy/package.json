@@ -1,9 +1,9 @@
 {
     "name": "@llm-observer/proxy",
-    "version": "1.0.0",
+    "version": "1.7.0",
     "main": "dist/index.js",
     "scripts": {
-        "build": "tsup && mkdir -p dist/dashboard && cp -r ../dashboard/dist/* dist/dashboard/ 2>/dev/null && cp ../database/src/*.sql dist/ 2>/dev/null || true",
+        "build": "tsup && mkdir -p dist/dashboard && cp -r ../dashboard/dist/* dist/dashboard/ 2>/dev/null && mkdir -p dist/migrations && cp -r ../database/src/migrations/* dist/migrations/ 2>/dev/null || true",
         "dev": "ts-node -r tsconfig-paths/register src/server.ts",
         "test": "jest --forceExit --testTimeout=30000",
         "test:coverage": "jest --coverage --forceExit --testTimeout=30000",

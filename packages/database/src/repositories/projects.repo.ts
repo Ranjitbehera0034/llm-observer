@@ -11,6 +11,8 @@ export interface ProjectRecord {
     monthly_budget?: number;
     alert_threshold?: number;
     kill_switch?: boolean;
+    safety_buffer?: number;
+    estimate_multiplier?: number;
     webhook_url?: string;
     saved_filters?: string;
     created_at?: string;
@@ -24,9 +26,9 @@ export const createProject = (project: Omit<ProjectRecord, 'id'>): string => {
     const stmt = db.prepare(`
     INSERT INTO projects(
         id, name, api_key, organization_id, daily_budget, weekly_budget, monthly_budget,
-        alert_threshold, kill_switch, webhook_url
+        alert_threshold, kill_switch, safety_buffer, estimate_multiplier, webhook_url
     ) VALUES(
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     )
   `);
 
@@ -35,6 +37,8 @@ export const createProject = (project: Omit<ProjectRecord, 'id'>): string => {
         project.daily_budget || null,
         project.weekly_budget || null, project.monthly_budget || null,
         project.alert_threshold ?? 0.8, project.kill_switch === false ? 0 : 1,
+        project.safety_buffer ?? 0.05,
+        project.estimate_multiplier ?? 3.0,
         project.webhook_url || null
     );
 

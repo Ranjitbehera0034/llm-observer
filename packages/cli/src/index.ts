@@ -16,6 +16,7 @@ import { setupBillingCommands } from './commands/billing';
 import { setupTeamCommands } from './commands/team';
 import { setupStressCommands } from './commands/stress';
 import { setupActivateCommands } from './commands/activate';
+import { setupResetCommands } from './commands/reset';
 //import { setupUpgradeCommands } from './commands/upgrade';
 import { initDb } from '@llm-observer/database';
 import { version } from '../package.json';
@@ -56,6 +57,7 @@ setupBillingCommands(program);
 setupTeamCommands(program);
 setupStressCommands(program);
 setupActivateCommands(program);
+setupResetCommands(program);
 //setupUpgradeCommands(program);
 
 // Handle unknown commands

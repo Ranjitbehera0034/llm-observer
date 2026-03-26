@@ -12,85 +12,89 @@ export const getDbPath = () => {
     return path.join(dbDir, 'data.db');
 };
 
+const migrateLegacyDb = (newPath: string) => {
+    // Check common legacy locations
+    const legacyPaths = [
+        path.join(process.cwd(), 'data.db'),
+        path.join(__dirname, '..', 'data.db'), // e.g. packages/proxy/data.db or dist/../data.db
+        path.join(__dirname, 'data.db')
+    ];
+
+    for (const oldPath of legacyPaths) {
+        if (fs.existsSync(oldPath) && oldPath !== newPath) {
+            // Only migrate if the new DB doesn't exist or is very small (just initialized)
+            const newExists = fs.existsSync(newPath);
+            const legacySize = fs.statSync(oldPath).size;
+            
+            // basic check: only migrate if legacy exists and has data
+            if (legacySize > 0) {
+                if (newExists && fs.statSync(newPath).size > legacySize) {
+                    console.log(`[MIGRATION] Legacy database found at ${oldPath}, but newer database already has more data. Skipping auto-migration.`);
+                    continue;
+                }
+
+                console.log(`[MIGRATION] Found legacy database at ${oldPath}. Moving to ${newPath}...`);
+                try {
+                    const newDir = path.dirname(newPath);
+                    if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
+                    
+                    // Close any handles? Not yet opened.
+                    fs.copyFileSync(oldPath, newPath);
+                    fs.renameSync(oldPath, `${oldPath}.legacy.bak`); // Keep a backup of the old one
+                    console.log(`[MIGRATION] Successfully moved database. Old file renamed to .legacy.bak`);
+                    return; 
+                } catch (err) {
+                    console.error(`[MIGRATION] Failed to move legacy database:`, err);
+                }
+            }
+        }
+    }
+};
+
 let db: Database.Database | null = null;
 
 export const initDb = (dbPath?: string): Database.Database => {
     if (db) return db;
     const targetPath = dbPath || getDbPath();
+    
+    // Auto-migrate from old locations if needed
+    if (!dbPath) {
+        migrateLegacyDb(targetPath);
+    }
+
     db = new Database(targetPath);
 
     db.pragma('journal_mode = WAL');
 
-    // Run initial migrations
-    const migrationPath = path.join(__dirname, '001_initial.sql');
-    if (fs.existsSync(migrationPath)) {
-        const migration = fs.readFileSync(migrationPath, 'utf8');
-        db.exec(migration);
-    } else {
-        console.warn(`Migration file not found at ${migrationPath}`);
-    }
-
-    const authSchemaPath = path.join(__dirname, '002_auth.sql');
-    const authSchemaSql = fs.readFileSync(authSchemaPath, 'utf-8');
-    db.exec(authSchemaSql);
-
-    // Apply Alerts Rules schema
-    const alertsSchemaPath = path.join(__dirname, '003_alerts.sql');
-    const alertsSchemaSql = fs.readFileSync(alertsSchemaPath, 'utf-8');
-    db.exec(alertsSchemaSql);
-
-    // --- Versioned migration system ---
-    // Track applied migrations in a _schema_version table to avoid re-running
-    db.exec(`CREATE TABLE IF NOT EXISTS _schema_version (
-        version INTEGER PRIMARY KEY,
-        description TEXT NOT NULL,
-        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+    // --- Versioned migration system v2 ---
+    db.exec(`CREATE TABLE IF NOT EXISTS _schema_version_v2 (
+        name TEXT PRIMARY KEY,
+        applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );`);
 
-    const getSchemaVersion = (): number => {
-        const row = db!.prepare('SELECT MAX(version) as v FROM _schema_version').get() as any;
-        return row?.v || 0;
-    };
+    const migrationsDir = path.join(__dirname, 'migrations');
+    if (fs.existsSync(migrationsDir)) {
+        const files = fs.readdirSync(migrationsDir)
+            .filter(f => f.endsWith('.sql'))
+            .sort();
 
-    const applyMigration = (version: number, description: string, sql: string) => {
-        if (getSchemaVersion() >= version) return; // Already applied
-        try {
-            db!.exec(sql);
-            db!.prepare('INSERT INTO _schema_version (version, description) VALUES (?, ?)').run(version, description);
-            console.log(`Migration ${version} applied: ${description}`);
-        } catch (err: any) {
-            // Handle "duplicate column" gracefully for idempotency
-            if (err?.message?.includes('duplicate column')) {
-                db!.prepare('INSERT OR IGNORE INTO _schema_version (version, description) VALUES (?, ?)').run(version, description);
-            } else {
-                throw err;
+        for (const file of files) {
+            const row = db.prepare('SELECT 1 FROM _schema_version_v2 WHERE name = ?').get(file) as any;
+            if (!row) {
+                const migrationPath = path.join(migrationsDir, file);
+                const sql = fs.readFileSync(migrationPath, 'utf8');
+                try {
+                    db.exec(sql);
+                    db.prepare('INSERT INTO _schema_version_v2 (name) VALUES (?)').run(file);
+                    console.log(`Migration applied: ${file}`);
+                } catch (err: any) {
+                    console.error(`Failed to apply migration ${file}:`, err);
+                    throw err; // Stop on failure to prevent corruption
+                }
             }
         }
-    };
-
-    try {
-        applyMigration(1, 'Add pricing_unknown to requests',
-            'ALTER TABLE requests ADD COLUMN pricing_unknown BOOLEAN DEFAULT 0;');
-
-        applyMigration(2, 'Add is_custom to model_pricing',
-            'ALTER TABLE model_pricing ADD COLUMN is_custom BOOLEAN DEFAULT 0;');
-
-        applyMigration(3, 'Add organization_id to projects',
-            'ALTER TABLE projects ADD COLUMN organization_id TEXT REFERENCES organizations(id);');
-
-        applyMigration(4, 'Add prompt_hash to requests',
-            'ALTER TABLE requests ADD COLUMN prompt_hash TEXT;');
-
-        applyMigration(5, 'Add saved_filters to projects',
-            'ALTER TABLE projects ADD COLUMN saved_filters TEXT DEFAULT "[]";');
-
-        applyMigration(6, 'Add synced_at to daily_stats',
-            'ALTER TABLE daily_stats ADD COLUMN synced_at DATETIME;');
-
-        applyMigration(7, 'Add metadata to requests',
-            'ALTER TABLE requests ADD COLUMN metadata TEXT DEFAULT "{}";');
-    } catch (err) {
-        console.error('Migration checks failed:', err);
+    } else {
+        console.warn(`Migrations directory not found at ${migrationsDir}`);
     }
 
     return db;

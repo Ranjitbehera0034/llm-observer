@@ -1,6 +1,6 @@
 {
     "name": "@llm-observer/database",
-    "version": "1.0.0",
+    "version": "1.7.0",
     "main": "./dist/index.js",
     "module": "./dist/index.mjs",
     "types": "./dist/index.d.ts",
@@ -12,12 +12,13 @@
         }
     },
     "scripts": {
-        "build": "tsup src/index.ts --format cjs,esm --dts --clean && cp src/*.sql dist/",
+        "build": "tsup src/index.ts --format cjs,esm --dts --clean",
         "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
         "clean": "rm -rf dist"
     },
     "dependencies": {
-        "better-sqlite3": "^11.5.0"
+        "better-sqlite3": "^11.5.0",
+        "node-machine-id": "^1.1.12"
     },
     "devDependencies": {
         "@types/better-sqlite3": "^7.6.11",
