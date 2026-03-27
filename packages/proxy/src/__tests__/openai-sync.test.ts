@@ -5,10 +5,11 @@
 // ── Database mock ────────────────────────────────────────────────────────────
 jest.mock('@llm-observer/database', () => {
     const { createTestDb } = require('./helpers/testDb');
-    const { database } = createTestDb();
+    const { database, getBudgetLimits } = createTestDb();
     return {
         getDb: () => database,
         initDb: () => database,
+        getBudgetLimits,
         encrypt: (v: string) => `enc:${v}`,
         decrypt: (v: string) => v.replace('enc:', ''),
         validateApiKey: () => ({ project_id: 'default' }),

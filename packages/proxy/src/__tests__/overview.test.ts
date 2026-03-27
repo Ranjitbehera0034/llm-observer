@@ -2,11 +2,13 @@
 // ── Database mock ────────────────────────────────────────────────────────────
 // We must mock the entire module BEFORE importing anything that uses it
 const { createTestDb } = require('./helpers/testDb');
-const { database } = createTestDb();
+const { database, getBudgetLimits } = createTestDb();
 
 jest.mock('@llm-observer/database', () => ({
     getDb: () => database,
     initDb: () => database,
+    getBudgetLimits,
+    createAlert: () => { },
     getSubscriptions: (onlyActive: boolean) => {
         let query = 'SELECT * FROM subscriptions';
         if (onlyActive) query += ' WHERE is_active = 1';

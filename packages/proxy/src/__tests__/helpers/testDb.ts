@@ -8,7 +8,11 @@ import fs from 'fs';
 import BetterSQLite3, { type Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 
-export function createTestDb(): { database: Database; bulkInsertRequests: (requests: any[]) => void } {
+export function createTestDb(): { 
+    database: Database; 
+    bulkInsertRequests: (requests: any[]) => void;
+    getBudgetLimits: (activeOnly?: boolean) => any[];
+} {
     const database = new BetterSQLite3(':memory:');
     const migrationDir = path.join(__dirname, '../../../../../packages/database/src/migrations');
 
@@ -67,5 +71,11 @@ export function createTestDb(): { database: Database; bulkInsertRequests: (reque
         }
     }
 
-    return { database, bulkInsertRequests };
+    function getBudgetLimits(activeOnly: boolean = false) {
+        let query = 'SELECT * FROM budgets';
+        if (activeOnly) query += ' WHERE is_active = 1';
+        return database.prepare(query).all();
+    }
+
+    return { database, bulkInsertRequests, getBudgetLimits };
 }
