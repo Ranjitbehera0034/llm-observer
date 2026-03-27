@@ -6,11 +6,13 @@ import { rateLimitGuard } from '../rateLimitGuard';
 
 jest.mock('@llm-observer/database', () => {
     const { createTestDb } = require('./helpers/testDb');
-    const { database, bulkInsertRequests } = createTestDb();
+    const { database, bulkInsertRequests, getBudgetLimits } = createTestDb();
     return {
         getDb: () => database,
         initDb: () => database,
         bulkInsertRequests,
+        getBudgetLimits,
+        createAlert: () => { },
         validateApiKey: () => ({ project_id: 'default' }),
         getSetting: () => null,
     };

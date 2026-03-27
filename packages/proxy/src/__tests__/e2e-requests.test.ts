@@ -6,18 +6,21 @@
 // MOCKS FIRST
 jest.mock('@llm-observer/database', () => {
     const { createTestDb } = require('./helpers/testDb');
-    const { database, bulkInsertRequests } = createTestDb();
+    const { database, bulkInsertRequests, getBudgetLimits } = createTestDb();
     return {
         getDb: () => database,
         initDb: () => database,
         bulkInsertRequests,
+        getBudgetLimits,
+        createAlert: () => { },
+        encrypt: (v: string) => `enc:${v}`,
+        decrypt: (v: string) => v.replace('enc:', ''),
         validateApiKey: () => ({ project_id: 'default' }),
         getSetting: () => null,
-        updateSetting: jest.fn(),
+        updateSetting: () => { },
         getAlertRules: () => [],
-        createAlert: jest.fn(),
-        seedPricing: jest.fn(),
-        seedDefaultApiKey: jest.fn(),
+        seedPricing: () => { },
+        seedDefaultApiKey: () => { },
         initPricingCache: jest.fn(),
     };
 });
