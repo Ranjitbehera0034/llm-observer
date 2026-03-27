@@ -11,6 +11,7 @@ export interface Budget {
     warning_pct_2: number;
     kill_switch: boolean;
     safety_buffer_usd: number;
+    estimate_multiplier: number;
     is_active: boolean;
     created_at?: string;
     updated_at?: string;
@@ -41,8 +42,8 @@ export const getBudgetLimitById = (id: number): Budget | undefined => {
 export const createBudgetLimit = (budget: Omit<Budget, 'id' | 'created_at' | 'updated_at'>): number => {
     const db = getDb();
     const stmt = db.prepare(`
-        INSERT INTO budgets (name, scope, scope_value, period, limit_usd, warning_pct_1, warning_pct_2, kill_switch, safety_buffer_usd, is_active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO budgets (name, scope, scope_value, period, limit_usd, warning_pct_1, warning_pct_2, kill_switch, safety_buffer_usd, estimate_multiplier, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
         budget.name,
@@ -54,6 +55,7 @@ export const createBudgetLimit = (budget: Omit<Budget, 'id' | 'created_at' | 'up
         budget.warning_pct_2,
         budget.kill_switch ? 1 : 0,
         budget.safety_buffer_usd,
+        budget.estimate_multiplier || 3.0,
         budget.is_active ? 1 : 0
     );
     return result.lastInsertRowid as number;

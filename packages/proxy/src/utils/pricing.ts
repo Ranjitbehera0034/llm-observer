@@ -50,10 +50,9 @@ const syncRemotePricing = async () => {
     }
 };
 
-export const calculateSharedCost = (provider: string, model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean } => {
+export const getPricingWithFuzzy = (provider: string, model: string): any | undefined => {
     let pricing = pricingCache.get(`${provider}:${model}`);
 
-    // Fallback: Fuzzy matching for models like gpt-4o-2024-08-06 -> gpt-4o
     if (!pricing) {
         for (const [key, val] of pricingCache.entries()) {
             if (val.provider === provider && model.startsWith(val.model)) {
@@ -63,6 +62,11 @@ export const calculateSharedCost = (provider: string, model: string, promptToken
             }
         }
     }
+    return pricing;
+};
+
+export const calculateSharedCost = (provider: string, model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean } => {
+    let pricing = getPricingWithFuzzy(provider, model);
 
     if (!pricing) return { costUsd: 0, unknown: true };
 

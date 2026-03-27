@@ -1,13 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
-import { getDb, validateApiKey, getPricingForModel } from '@llm-observer/database';
+import { getDb, validateApiKey } from '@llm-observer/database';
 import { randomUUID } from 'crypto';
 import { BudgetService } from './services/budget.service';
+import { estimateTokenCount, estimateRequestCost } from './services/costEstimator';
 import './types';
 
 interface ProjectCache {
   id: string;
   daily_budget: number | null;
   kill_switch: boolean;
+  safety_buffer: number;
+  estimate_multiplier: number;
   spent_today: number;
   last_sync: number;
 }
@@ -53,6 +56,8 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
       id: dbProject.id,
       daily_budget: dbProject.daily_budget,
       kill_switch: dbProject.kill_switch === 1,
+      safety_buffer: dbProject.safety_buffer ?? 0.05,
+      estimate_multiplier: dbProject.estimate_multiplier ?? 3.0,
       spent_today: getSpendFromDb(dbProject.id),
       last_sync: now
     };
@@ -62,47 +67,102 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
   req.projectId = project.id;
   req.cacheKey = cacheKey;
 
-  // 1. LEGACY: Project-level Budget Check (v1.0.x)
-  if (project.daily_budget != null && project.kill_switch && project.spent_today >= project.daily_budget) {
-      const errorMsg = `Project budget reached ($${project.daily_budget.toFixed(2)}). $${project.spent_today.toFixed(2)} spent today.`;
-      console.log(`[ALERT] PROJECT_BUDGET_EXCEEDED: ${errorMsg}`);
-      logBlockedRequest(db, project.id, req.path, errorMsg);
-      return res.status(429).json({ error: { message: errorMsg, type: 'budget_exceeded', scope: 'project', code: 429 } });
-  }
-
-  // 2. V1.4.0: Provider/Model Budgets + Kill Switch + Pre-estimation
   const provider = (req.headers['x-provider'] as string) || (req.body?.provider) || 'unknown';
   const model = (req.body?.model) || (req.headers['x-model'] as string) || 'unknown';
+  
+  // v1.7.0: Enhanced Token and Cost Estimation
+  const inputTokens = estimateTokenCount(req.body?.messages || []);
+  const estimatedCost = estimateRequestCost(provider, model, inputTokens, project.estimate_multiplier);
 
-  // Pre-estimation logic (v1.4.0 simplified)
-  let estimatedCost = 0;
-  if (provider !== 'unknown' && model !== 'unknown') {
-      const pricing = getPricingForModel(provider, model);
-      if (pricing) {
-          const bodyStr = JSON.stringify(req.body || {});
-          const approxTokens = bodyStr.length / 4;
-          // Safety factor of 3 to account for response tokens (as per plan)
-          estimatedCost = (approxTokens / 1_000_000) * pricing.input * 3;
+  // 1. LEGACY: Project-level Budget Check (v1.0.x)
+  if (project.daily_budget != null && project.kill_switch) {
+      const spent = project.spent_today;
+      const limit = project.daily_budget;
+      const buffer = project.safety_buffer;
+      const utilization = spent / limit;
+
+      // Layer 1: Exceeded
+      if (spent >= limit) {
+          const msg = `Project budget exceeded: $${spent.toFixed(2)} spent of $${limit.toFixed(2)} limit.`;
+          logBlockedRequest(db, project.id, req.path, msg, provider, model);
+          return res.status(429).json({ 
+              error: { 
+                  type: 'budget_exceeded', scope: 'project', message: msg, 
+                  spent_usd: spent, limit_usd: limit, 
+                  suggestion: "Budget resets at midnight. Switch to a cheaper model or wait."
+              } 
+          });
+      }
+
+      // Layer 2: Buffer
+      if (spent >= (limit - buffer)) {
+          const msg = `Project budget nearly exhausted. $${(limit - spent).toFixed(4)} remaining (buffer: $${buffer.toFixed(2)}).`;
+          logBlockedRequest(db, project.id, req.path, msg, provider, model);
+          return res.status(429).json({
+              error: {
+                  type: 'budget_buffer', scope: 'project', message: msg,
+                  spent_usd: spent, limit_usd: limit, remaining_usd: limit - spent, safety_buffer_usd: buffer,
+                  suggestion: "Remaining budget is within safety buffer. Reduce buffer in Settings to allow smaller requests."
+              }
+          });
+      }
+
+      // Layer 3: Pre-estimation (Threshold 60%)
+      if (utilization >= 0.60 && spent + estimatedCost >= limit) {
+          const msg = `Insufficient project budget. $${(limit - spent).toFixed(4)} remaining, estimated cost ~$${estimatedCost.toFixed(4)}.`;
+          logBlockedRequest(db, project.id, req.path, msg, provider, model);
+          return res.status(429).json({
+              error: {
+                  type: 'budget_insufficient', scope: 'project', message: msg,
+                  spent_usd: spent, limit_usd: limit, remaining_usd: limit - spent, estimated_cost_usd: estimatedCost,
+                  suggestion: "Try a shorter prompt or switch to a cheaper model."
+              }
+          });
       }
   }
 
-  const budgetCheck = await BudgetService.checkKillSwitch(provider, model, estimatedCost);
+  // 2. V1.7.0: Multi-layer Provider/Model Budgets
+  const budgetCheck = await BudgetService.checkKillSwitch(provider, model, inputTokens, estimatedCost);
   
   if (budgetCheck.blocked) {
       const details = budgetCheck.details;
-      const errorMsg = `${budgetCheck.reason}. Limit: $${details.limit.toFixed(2)}, Current: $${details.current.toFixed(2)}${details.estimated > 0 ? `, Estimated Request: $${details.estimated.toFixed(4)}` : ''}.`;
-      logBlockedRequest(db, project.id, req.path, errorMsg, provider, model);
+      logBlockedRequest(db, project.id, req.path, budgetCheck.reason || 'Blocked by budget', provider, model);
+
+      let suggestion = "Try a cheaper model or wait for reset.";
+      if (budgetCheck.type === 'budget_buffer') suggestion = "Remaining budget is within safety buffer. Reduce it in Settings.";
+      if (budgetCheck.type === 'budget_insufficient') suggestion = "Try a shorter prompt or a cheaper model.";
+
       return res.status(429).json({
           error: {
-              type: 'budget_exceeded',
+              type: budgetCheck.type,
               scope: details.scope,
-              message: errorMsg,
-              budget_limit: details.limit,
-              current_spend: details.current,
-              estimated_cost: details.estimated,
-              retry_after: details.retry_after
+              scope_value: details.scope_value,
+              message: budgetCheck.reason,
+              limit_usd: details.limit,
+              spent_usd: details.spent,
+              remaining_usd: details.remaining,
+              safety_buffer_usd: details.buffer,
+              estimated_cost_usd: details.estimated,
+              estimated_input_tokens: details.input_tokens,
+              estimated_output_tokens: details.output_tokens,
+              model: details.model,
+              resets_in_seconds: details.retry_after,
+              suggestion
           }
       });
+  }
+
+  // 3. Informational Warning Headers (Utilization > 80%)
+  try {
+      const status = await BudgetService.getBudgetStatus(provider, model);
+      if (status && status.percent >= 0.80) {
+          res.setHeader('X-Budget-Warning', `${status.name} spend at ${(status.percent * 100).toFixed(0)}% of daily budget ($${status.spent.toFixed(2)} / $${status.limit.toFixed(2)})`);
+          res.setHeader('X-Budget-Spent', status.spent.toFixed(2));
+          res.setHeader('X-Budget-Limit', status.limit.toFixed(2));
+          res.setHeader('X-Budget-Remaining', (status.limit - status.spent).toFixed(2));
+      }
+  } catch (err) {
+      console.warn('[BudgetGuard] Failed to set warning headers:', err);
   }
 
   next();

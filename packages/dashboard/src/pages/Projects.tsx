@@ -7,6 +7,8 @@ interface ProjectData {
     id: string;
     name: string;
     daily_budget: number;
+    safety_buffer: number;
+    estimate_multiplier: number;
     total_spend_today: number;
     total_requests_today: number;
 }
@@ -22,7 +24,12 @@ export default function Projects() {
     const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
 
     // Form States
-    const [formData, setFormData] = useState({ name: '', daily_budget: 0 });
+    const [formData, setFormData] = useState({ 
+        name: '', 
+        daily_budget: 0,
+        safety_buffer: 0.05,
+        estimate_multiplier: 3.0
+    });
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -45,14 +52,24 @@ export default function Projects() {
     }, []);
 
     const handleOpenCreate = () => {
-        setFormData({ name: '', daily_budget: 0 });
+        setFormData({ 
+            name: '', 
+            daily_budget: 0,
+            safety_buffer: 0.05,
+            estimate_multiplier: 3.0
+        });
         setError(null);
         setIsCreateModalOpen(true);
     };
 
     const handleOpenEdit = (project: ProjectData) => {
         setCurrentProject(project);
-        setFormData({ name: project.name, daily_budget: project.daily_budget });
+        setFormData({ 
+            name: project.name, 
+            daily_budget: project.daily_budget,
+            safety_buffer: project.safety_buffer || 0.05,
+            estimate_multiplier: project.estimate_multiplier || 3.0
+        });
         setError(null);
         setIsEditModalOpen(true);
     };
@@ -130,7 +147,7 @@ export default function Projects() {
     const ModalOverlay = ({ children, onClose }: { children: React.ReactNode, onClose: () => void }) => (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="absolute inset-0" onClick={onClose} />
-            <div className="relative bg-[#1A1A1A] border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="relative bg-[#1A1A1A] border border-border rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
                 {children}
             </div>
         </div>
@@ -186,18 +203,27 @@ export default function Projects() {
                         </div>
 
                         <div className="space-y-6">
-                            <BudgetMeter spent={project.total_spend_today} budget={project.daily_budget} />
+                            <BudgetMeter 
+                                spent={project.total_spend_today} 
+                                budget={project.daily_budget} 
+                                buffer={project.safety_buffer}
+                            />
 
                             <div className="flex justify-between items-center pt-4 border-t border-border border-dashed">
                                 <div className="text-sm">
-                                    <p className="text-textMuted">Requests Today</p>
+                                    <p className="text-textMuted text-[10px] uppercase font-bold tracking-wider">Requests Today</p>
                                     <p className="font-semibold text-white mt-0.5">{project.total_requests_today.toLocaleString()}</p>
                                 </div>
-                                <button 
-                                    onClick={() => handleOpenEdit(project)}
-                                    className="text-textMuted hover:text-white flex items-center gap-1.5 text-sm font-medium transition-colors">
-                                    <Settings className="w-4 h-4" /> Manage
-                                </button>
+                                <div className="flex items-center gap-3">
+                                     {project.safety_buffer > 0 && (
+                                         <div title={`V2 Shield Active: $${project.safety_buffer} Buffer`} className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.5)]" />
+                                     )}
+                                    <button 
+                                        onClick={() => handleOpenEdit(project)}
+                                        className="text-textMuted hover:text-white flex items-center gap-1.5 text-sm font-medium transition-colors">
+                                        <Settings className="w-4 h-4" /> Manage
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -214,111 +240,105 @@ export default function Projects() {
                 )}
             </div>
 
-            {/* Create Modal */}
-            {isCreateModalOpen && (
-                <ModalOverlay onClose={() => setIsCreateModalOpen(false)}>
-                    <div className="p-6">
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-white flex items-center gap-2"><Plus className="w-5 h-5 text-primary" /> Create Project</h2>
-                            <button onClick={() => setIsCreateModalOpen(false)} className="text-textMuted hover:text-white transition-colors">
-                                <X className="w-5 h-5" />
+            {/* Create/Edit Modal */}
+            {(isCreateModalOpen || (isEditModalOpen && currentProject)) && (
+                <ModalOverlay onClose={() => { setIsCreateModalOpen(false); setIsEditModalOpen(false); }}>
+                    <div className="p-8">
+                        <div className="flex justify-between items-center mb-8">
+                            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                                {isCreateModalOpen ? <Plus className="w-6 h-6 text-primary" /> : <Settings className="w-6 h-6 text-primary" />}
+                                {isCreateModalOpen ? 'Create Project' : 'Project Settings'}
+                            </h2>
+                            <button onClick={() => { setIsCreateModalOpen(false); setIsEditModalOpen(false); }} className="text-textMuted hover:text-white transition-colors">
+                                <X className="w-6 h-6" />
                             </button>
                         </div>
                         
                         {error && (
-                            <div className="mb-4 p-3 bg-danger/10 border border-danger/30 rounded-lg flex items-center gap-2 text-danger text-sm">
-                                <AlertTriangle className="w-4 h-4 shrink-0" />
+                            <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-lg flex items-center gap-3 text-danger text-sm font-medium">
+                                <AlertTriangle className="w-5 h-5 shrink-0" />
                                 <p>{error}</p>
                             </div>
                         )}
 
-                        <form onSubmit={handleCreateProject} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-textMuted mb-1.5">Project Name</label>
-                                <input
-                                    type="text"
-                                    required
-                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary transition-colors"
-                                    placeholder="e.g. Production Webapp"
-                                    value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                />
+                        <form onSubmit={isCreateModalOpen ? handleCreateProject : handleUpdateProject} className="space-y-6">
+                            <div className="space-y-4">
+                                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Basic Information</h4>
+                                <div>
+                                    <label className="block text-sm font-medium text-textMuted mb-2">Project Name</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary transition-colors"
+                                        placeholder="e.g. Production Webapp"
+                                        value={formData.name}
+                                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                    />
+                                </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-textMuted mb-1.5">Daily Budget Limit (USD)</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary transition-colors"
-                                    placeholder="0 for unlimited"
-                                    value={formData.daily_budget}
-                                    onChange={e => setFormData({ ...formData, daily_budget: parseFloat(e.target.value) || 0 })}
-                                />
-                            </div>
-                            <div className="pt-4 flex justify-end gap-3 border-t border-border mt-6">
-                                <button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-4 py-2 text-sm font-medium text-textMuted hover:text-white transition-colors">
-                                    Cancel
-                                </button>
-                                <button type="submit" disabled={isSubmitting || !formData.name} className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
-                                    <Save className="w-4 h-4" /> {isSubmitting ? 'Creating...' : 'Create Project'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </ModalOverlay>
-            )}
 
-            {/* Edit Modal */}
-            {isEditModalOpen && currentProject && (
-                <ModalOverlay onClose={() => setIsEditModalOpen(false)}>
-                    <div className="p-6">
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-white flex items-center gap-2"><Settings className="w-5 h-5 text-primary" /> Edit Project</h2>
-                            <button onClick={() => setIsEditModalOpen(false)} className="text-textMuted hover:text-white transition-colors">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        
-                        {error && (
-                            <div className="mb-4 p-3 bg-danger/10 border border-danger/30 rounded-lg flex items-center gap-2 text-danger text-sm">
-                                <AlertTriangle className="w-4 h-4 shrink-0" />
-                                <p>{error}</p>
+                            <div className="space-y-4 pt-4 border-t border-border/50">
+                                <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-4">Budget Guard v2 Settings</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-medium text-textMuted mb-2">Daily Budget ($)</label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary transition-colors font-mono"
+                                            placeholder="0 for unlimited"
+                                            value={formData.daily_budget}
+                                            onChange={e => setFormData({ ...formData, daily_budget: parseFloat(e.target.value) || 0 })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-textMuted mb-2 flex items-center justify-between">
+                                            Safety Buffer ($)
+                                            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20">PRECISE</span>
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary transition-colors font-mono"
+                                            value={formData.safety_buffer}
+                                            onChange={e => setFormData({ ...formData, safety_buffer: parseFloat(e.target.value) || 0 })}
+                                        />
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-sm font-medium text-textMuted mb-2 flex items-center justify-between">
+                                        Estimation Multiplier
+                                        <span className="text-[9px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/20">LAYER 3</span>
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        step="0.1"
+                                        className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary transition-colors font-mono"
+                                        value={formData.estimate_multiplier}
+                                        onChange={e => setFormData({ ...formData, estimate_multiplier: parseFloat(e.target.value) || 1 })}
+                                    />
+                                    <p className="text-[10px] text-textMuted mt-2 leading-relaxed">
+                                        Determines how much extra budget to "reserve" for response tokens. Recommended: 3.0
+                                    </p>
+                                </div>
                             </div>
-                        )}
 
-                        <form onSubmit={handleUpdateProject} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-textMuted mb-1.5">Project Name</label>
-                                <input
-                                    type="text"
-                                    required
-                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary transition-colors"
-                                    value={formData.name}
-                                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-textMuted mb-1.5">Daily Budget Limit (USD)</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary transition-colors"
-                                    value={formData.daily_budget}
-                                    onChange={e => setFormData({ ...formData, daily_budget: parseFloat(e.target.value) || 0 })}
-                                />
-                            </div>
-                            <div className="pt-4 flex justify-between items-center border-t border-border mt-6">
-                                <button type="button" onClick={() => handleOpenDelete(currentProject)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger/10 rounded-md transition-colors">
-                                    <Trash2 className="w-4 h-4" /> Delete Project
-                                </button>
+                            <div className="pt-6 flex justify-between items-center border-t border-border mt-8">
+                                {isEditModalOpen ? (
+                                    <button type="button" onClick={() => handleOpenDelete(currentProject!)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-danger hover:bg-danger/10 rounded-md transition-colors">
+                                        <Trash2 className="w-4 h-4" /> Delete Project
+                                    </button>
+                                ) : <div />}
                                 <div className="flex gap-3">
-                                    <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 text-sm font-medium text-textMuted hover:text-white transition-colors">
+                                    <button type="button" onClick={() => { setIsCreateModalOpen(false); setIsEditModalOpen(false); }} className="px-6 py-2.5 text-sm font-bold text-textMuted hover:text-white transition-colors">
                                         Cancel
                                     </button>
-                                    <button type="submit" disabled={isSubmitting || !formData.name} className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
-                                        <Save className="w-4 h-4" /> {isSubmitting ? 'Saving...' : 'Save Changes'}
+                                    <button type="submit" disabled={isSubmitting || !formData.name} className="flex items-center gap-2 px-8 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-bold transition-all active:scale-95 shadow-xl shadow-primary/20 disabled:opacity-50">
+                                        <Save className="w-4 h-4" /> {isSubmitting ? 'Processing...' : (isCreateModalOpen ? 'Create Project' : 'Save Changes')}
                                     </button>
                                 </div>
                             </div>

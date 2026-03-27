@@ -14,6 +14,8 @@ interface Budget {
     warning_pct_1: number;
     warning_pct_2: number;
     kill_switch: boolean;
+    safety_buffer_usd: number;
+    estimate_multiplier: number;
     is_active: boolean;
 }
 
@@ -32,6 +34,8 @@ export function BudgetsTab() {
     const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
     const [limit, setLimit] = useState('');
     const [killSwitch, setKillSwitch] = useState(false);
+    const [safetyBuffer, setSafetyBuffer] = useState('0.05');
+    const [estimateMultiplier, setEstimateMultiplier] = useState('3.0');
 
     const fetchBudgets = async () => {
         try {
@@ -73,6 +77,8 @@ export function BudgetsTab() {
             period,
             limit_usd: parseFloat(limit),
             kill_switch: killSwitch,
+            safety_buffer_usd: parseFloat(safetyBuffer),
+            estimate_multiplier: parseFloat(estimateMultiplier),
             warning_pct_1: 0.8,
             warning_pct_2: 0.9,
             is_active: true
@@ -126,6 +132,8 @@ export function BudgetsTab() {
         setPeriod('daily');
         setLimit('');
         setKillSwitch(false);
+        setSafetyBuffer('0.05');
+        setEstimateMultiplier('3.0');
     };
 
     const startEdit = (b: Budget) => {
@@ -136,6 +144,8 @@ export function BudgetsTab() {
         setPeriod(b.period);
         setLimit(b.limit_usd.toString());
         setKillSwitch(b.kill_switch);
+        setSafetyBuffer(b.safety_buffer_usd.toString());
+        setEstimateMultiplier(b.estimate_multiplier.toString());
         setShowAdd(true);
     };
 
@@ -168,6 +178,8 @@ export function BudgetsTab() {
         setPeriod(preset.period);
         setLimit(preset.limit_usd.toString());
         setKillSwitch(preset.kill_switch || false);
+        setSafetyBuffer(preset.safety_buffer_usd?.toString() || '0.05');
+        setEstimateMultiplier(preset.estimate_multiplier?.toString() || '3.0');
         setShowAdd(true);
     };
 
@@ -183,8 +195,8 @@ export function BudgetsTab() {
                         <div className="hidden lg:flex items-center gap-2 mr-4">
                             <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Quick Presets:</span>
                             {[
-                                { name: '$5/day Global', scope: 'global', period: 'daily', limit_usd: 5 },
-                                { name: '$3/day OpenAI', scope: 'provider', scope_value: 'openai', period: 'daily', limit_usd: 3 },
+                                { name: '$5/day Global', scope: 'global', period: 'daily', limit_usd: 5, safety_buffer_usd: 0.1, estimate_multiplier: 2.5 },
+                                { name: '$3/day OpenAI', scope: 'provider', scope_value: 'openai', period: 'daily', limit_usd: 3, safety_buffer_usd: 0.05, estimate_multiplier: 3.0 },
                             ].map((p, i) => (
                                 <button 
                                     key={i}
@@ -208,8 +220,9 @@ export function BudgetsTab() {
 
             {showAdd && (
                 <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 animate-in slide-in-from-top-4 duration-300 shadow-2xl">
-                    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
                         <div className="space-y-4">
+                             <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-2 px-1">Basic Settings</h4>
                             <div>
                                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Budget Name</label>
                                 <input 
@@ -218,7 +231,7 @@ export function BudgetsTab() {
                                     value={name}
                                     onChange={e => setName(e.target.value)}
                                     placeholder="e.g. GPT-4o Safety Limit"
-                                    className="w-full bg-black border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all"
+                                    className="w-full bg-black border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all font-medium"
                                 />
                             </div>
 
@@ -228,7 +241,7 @@ export function BudgetsTab() {
                                     <select 
                                         value={scope}
                                         onChange={e => setScope(e.target.value as any)}
-                                        className="w-full bg-black border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all"
+                                        className="w-full bg-black border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all font-medium appearance-none"
                                     >
                                         <option value="global">Global</option>
                                         <option value="provider">Provider</option>
@@ -246,7 +259,7 @@ export function BudgetsTab() {
                                             value={scopeValue}
                                             onChange={e => setScopeValue(e.target.value)}
                                             placeholder={scope === 'provider' ? 'openai, anthropic...' : 'gpt-4o, claude-3-5...'}
-                                            className="w-full bg-black border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono"
+                                            className="w-full bg-black border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm"
                                         />
                                     </div>
                                 )}
@@ -254,13 +267,14 @@ export function BudgetsTab() {
                         </div>
 
                         <div className="space-y-4">
+                            <h4 className="text-xs font-black text-amber-400 uppercase tracking-widest mb-2 px-1">Limits & Thresholds</h4>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Period</label>
                                     <select 
                                         value={period}
                                         onChange={e => setPeriod(e.target.value as any)}
-                                        className="w-full bg-black border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all"
+                                        className="w-full bg-black border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all font-medium appearance-none"
                                     >
                                         <option value="daily">Daily</option>
                                         <option value="weekly">Weekly</option>
@@ -268,7 +282,7 @@ export function BudgetsTab() {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Limit (USD)</label>
+                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Limit ($)</label>
                                     <input 
                                         type="number" 
                                         step="0.01"
@@ -276,7 +290,7 @@ export function BudgetsTab() {
                                         value={limit}
                                         onChange={e => setLimit(e.target.value)}
                                         placeholder="50.00"
-                                        className="w-full bg-black border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono"
+                                        className="w-full bg-black border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono font-bold"
                                     />
                                 </div>
                             </div>
@@ -295,29 +309,74 @@ export function BudgetsTab() {
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="text-sm font-bold text-white group-hover:text-red-400 transition-colors">Hard Block (Kill Switch)</span>
-                                        <span className="text-[10px] text-slate-500 font-medium">Auto-reject requests once limit is reached.</span>
-                                        <div className="mt-2 flex items-center gap-2 bg-red-500/5 border border-red-500/10 rounded-lg p-2">
-                                            <AlertTriangle className="w-3 h-3 text-red-400" />
-                                            <span className="text-[9px] font-bold text-red-400/80 leading-tight">
-                                                Note: Only blocks traffic passing through LLM Observer Proxy. Direct API calls (e.g. Claude Code) cannot be blocked.
-                                            </span>
-                                        </div>
+                                        <span className="text-[10px] text-slate-500 font-medium leading-tight">Block requests when limit is reached.</span>
                                     </div>
                                 </label>
                             </div>
+                        </div>
+
+                        {/* Budget Guard v2 Advanced Settings */}
+                        <div className="md:col-span-2 mt-4 p-6 bg-slate-800/30 rounded-[2rem] border border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-8">
+                             <div>
+                                <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                                    Advanced Protection (v2)
+                                </h5>
+                                <div className="space-y-6">
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Safety Buffer ($)</label>
+                                            <span className="text-[9px] bg-indigo-500/10 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/20">PREVENTS OVERSHOOT</span>
+                                        </div>
+                                        <input 
+                                            type="number" 
+                                            step="0.01"
+                                            value={safetyBuffer}
+                                            onChange={e => setSafetyBuffer(e.target.value)}
+                                            className="w-full bg-black border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm"
+                                        />
+                                        <p className="text-[9px] text-slate-500 mt-2 leading-relaxed">
+                                            Blocks new requests when budget remaining is less than this amount. 
+                                            Recommended: $0.05 for small budgets, $0.50 for large.
+                                        </p>
+                                    </div>
+                                </div>
+                             </div>
+
+                             <div className="pt-8 md:pt-0">
+                                <div className="space-y-6 mt-8 md:mt-0">
+                                    <div className="pt-0.5">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Estimation Multiplier</label>
+                                            <span className="text-[9px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/20">LAYER 3 SAFETY</span>
+                                        </div>
+                                        <input 
+                                            type="number" 
+                                            step="0.1"
+                                            value={estimateMultiplier}
+                                            onChange={e => setEstimateMultiplier(e.target.value)}
+                                            className="w-full bg-black border border-slate-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm"
+                                        />
+                                        <p className="text-[9px] text-slate-500 mt-2 leading-relaxed">
+                                            Estimated output tokens = Input tokens x Multiplier.
+                                            Increase if you use long Chain-of-Thought models (e.g. o1/o3). Default: 3.0
+                                        </p>
+                                    </div>
+                                </div>
+                             </div>
                         </div>
 
                         <div className="md:col-span-2 pt-6 border-t border-slate-800/50 flex items-center justify-end gap-3">
                             <button 
                                 type="button" 
                                 onClick={() => { setShowAdd(false); setEditing(null); }}
-                                className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:text-white transition-all"
+                                className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:text-white transition-all text-sm"
                             >
                                 Cancel
                             </button>
                             <button 
                                 type="submit"
-                                className="bg-white text-black font-black px-8 py-2.5 rounded-xl hover:bg-indigo-50 transition-all active:scale-95 shadow-xl shadow-white/5"
+                                className="bg-white text-black font-black px-10 py-3 rounded-xl hover:bg-slate-200 transition-all active:scale-95 shadow-xl shadow-white/5 text-sm"
                             >
                                 {editing ? 'Update Budget' : 'Create Budget'}
                             </button>
@@ -359,7 +418,7 @@ export function BudgetsTab() {
                                                     <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
                                                         budget.kill_switch ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'
                                                     }`}>
-                                                        {budget.kill_switch ? 'BLOCKING' : 'MONITOR ONLY'}
+                                                        {budget.kill_switch ? 'BLOCKING (v2)' : 'MONITOR ONLY'}
                                                     </span>
                                                 </h4>
                                                 <p className="text-xs text-slate-500 font-medium mt-0.5">
@@ -369,11 +428,21 @@ export function BudgetsTab() {
                                         </div>
 
                                         <div className="max-w-md">
-                                            <BudgetMeter spent={budget.current_spend || 0} budget={budget.limit_usd} />
+                                            <BudgetMeter spent={budget.current_spend || 0} budget={budget.limit_usd} buffer={budget.safety_buffer_usd} />
                                         </div>
                                     </div>
 
                                     <div className="flex items-center gap-8 ml-auto">
+                                        {/* New V2 Status Info */}
+                                        <div className="hidden xl:flex flex-col items-center gap-1 border-x border-slate-800/50 px-6">
+                                            <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest leading-none">V2 Protection</span>
+                                            <div className="flex gap-1.5 mt-1">
+                                                 <div title="Safety Buffer" className="w-2.5 h-2.5 rounded-full bg-emerald-500/40 border border-emerald-500/60" />
+                                                 <div title="Pre-estimation" className="w-2.5 h-2.5 rounded-full bg-indigo-500/40 border border-indigo-500/60" />
+                                                 <div title="Threshold Warnings" className="w-2.5 h-2.5 rounded-full bg-amber-500/40 border border-amber-500/60" />
+                                            </div>
+                                        </div>
+
                                         <div className="flex items-center gap-3 pr-6 border-r border-slate-800/50">
                                             <div className="flex flex-col items-end mr-1">
                                                 <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Enforce</span>

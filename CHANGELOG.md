@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-03-26
+
+### Added
+- **Budget Guard V2** — Three-layer protection system (Hard Limit, Safety Buffer, and Pre-estimation) for maximum bill safety.
+- **Multi-layer Budgets** — Create global, provider-specific, or model-specific budgets with independent kill-switches.
+- **Enhanced Cost Estimation** — Real-time cost prediction using input tokens and configurable spend multipliers (useful for long CoT models like o1/o3).
+- **Informational Warning Headers** — Proxy now returns `X-Budget-Warning` and utilization stats when spend exceeds 80%.
+- **Automated Alerts** — Notifications triggered at 80%, 90%, and 100% of any active budget limit.
+
+### Fixed
+- Improved `BudgetService` to correctly aggregate spend from both Usage Sync and Proxy logs.
+- Standardized error responses when a budget is exceeded to include detailed scope and limit information.
+
+
 ## [1.5.0] - 2026-03-24
 
 ### Added

@@ -38,9 +38,14 @@ export class BudgetService {
 
     /**
      * Context B: Real-time kill switch check for proxy requests.
-     * Returns true if request should be blocked.
+     * Implements Budget Guard v2 with three layers of protection.
      */
-    static async checkKillSwitch(provider: string, model: string, additionalCost = 0): Promise<{ blocked: boolean, reason?: string, details?: any }> {
+    static async checkKillSwitch(
+        provider: string, 
+        model: string, 
+        inputTokens: number,
+        estimatedCost: number
+    ): Promise<{ blocked: boolean, type?: 'budget_exceeded' | 'budget_buffer' | 'budget_insufficient', reason?: string, details?: any }> {
         const budgets = getBudgetLimits(true).filter(b => b.kill_switch);
         
         for (const budget of budgets) {
@@ -51,23 +56,49 @@ export class BudgetService {
             
             if (!isMatch) continue;
 
-            const spend = await this.calculateCurrentSpend(budget.scope, budget.scope_value, budget.period);
-            const totalSpendWithEstimate = spend + additionalCost;
-            const remaining = budget.limit_usd - budget.safety_buffer_usd - totalSpendWithEstimate;
+            const spent = await this.calculateCurrentSpend(budget.scope, budget.scope_value, budget.period);
+            const limit = budget.limit_usd;
+            const buffer = budget.safety_buffer_usd || 0.05;
+            const effectiveLimit = limit - buffer;
+            const utilization = spent / limit;
 
-            if (remaining <= 0) {
+            // Layer 1: Already Exceeded
+            if (spent >= limit) {
                 return { 
                     blocked: true, 
-                    reason: `Budget Exceeded (${budget.scope}: ${budget.name})`,
-                    details: {
-                        limit: budget.limit_usd,
-                        current: spend,
-                        estimated: additionalCost,
-                        total_projected: totalSpendWithEstimate,
-                        scope: budget.scope,
-                        retry_after: this.getSecondsUntilPeriodReset(budget.period)
-                    }
+                    type: 'budget_exceeded',
+                    reason: `Daily budget exceeded: $${spent.toFixed(2)} spent of $${limit.toFixed(2)} limit.`,
+                    details: { limit, spent, scope: budget.scope, scope_value: budget.scope_value, retry_after: this.getSecondsUntilPeriodReset(budget.period) }
                 };
+            }
+
+            // Layer 2: Safety Buffer Check
+            if (spent >= effectiveLimit) {
+                return {
+                    blocked: true,
+                    type: 'budget_buffer',
+                    reason: `Budget nearly exhausted. $${(limit - spent).toFixed(2)} remaining (safety buffer: $${buffer.toFixed(2)}).`,
+                    details: { limit, spent, remaining: limit - spent, buffer, scope: budget.scope, scope_value: budget.scope_value, retry_after: this.getSecondsUntilPeriodReset(budget.period) }
+                };
+            }
+
+            // Layer 3: Pre-estimation Check
+            // Only runs if utilization > 60% (Estimation threshold)
+            if (utilization >= 0.60 && estimatedCost > 0) {
+                if (spent + estimatedCost >= limit) {
+                    return {
+                        blocked: true,
+                        type: 'budget_insufficient',
+                        reason: `Insufficient budget for this request. $${(limit - spent).toFixed(2)} remaining, estimated cost ~$${estimatedCost.toFixed(4)}.`,
+                        details: { 
+                            limit, spent, estimated: estimatedCost, 
+                            input_tokens: inputTokens, 
+                            output_tokens: inputTokens * (budget.estimate_multiplier || 3.0),
+                            model, scope: budget.scope, scope_value: budget.scope_value, 
+                            retry_after: this.getSecondsUntilPeriodReset(budget.period) 
+                        }
+                    };
+                }
             }
         }
 
@@ -95,7 +126,7 @@ export class BudgetService {
         const activeSyncProviders = db.prepare("SELECT id FROM usage_sync_configs WHERE status = 'active'").all().map((r: any) => r.id);
 
         // 3. Get Proxy costs in period (excluding sync-active providers)
-        let proxyQuery = `SELECT SUM(cost_usd) as total FROM requests WHERE created_at >= ?`;
+        let proxyQuery = `SELECT SUM(cost_usd) as total FROM requests WHERE datetime(created_at) >= datetime(?)`;
         const proxyParams: any[] = [start];
         
         if (activeSyncProviders.length > 0) {
@@ -110,6 +141,34 @@ export class BudgetService {
         const proxyTotal = proxyRows?.total || 0;
 
         return syncTotal + proxyTotal;
+    }
+
+    /**
+     * Returns the budget with the highest utilization for the given request context.
+     * Used for informational headers (X-Budget-Warning).
+     */
+    static async getBudgetStatus(provider: string, model: string): Promise<{ percent: number, spent: number, limit: number, name: string } | null> {
+        const budgets = getBudgetLimits(true);
+        let maxUtilization = -1;
+        let worstBudget: any = null;
+
+        for (const budget of budgets) {
+            const isMatch = (budget.scope === 'global') || 
+                            (budget.scope === 'provider' && budget.scope_value === provider) ||
+                            (budget.scope === 'model' && budget.scope_value === model);
+            
+            if (!isMatch) continue;
+
+            const spent = await this.calculateCurrentSpend(budget.scope, budget.scope_value, budget.period);
+            const utilization = spent / budget.limit_usd;
+            
+            if (utilization > maxUtilization) {
+                maxUtilization = utilization;
+                worstBudget = { percent: utilization, spent, limit: budget.limit_usd, name: budget.name };
+            }
+        }
+
+        return worstBudget;
     }
 
     private static getPeriodStart(period: string): string {
