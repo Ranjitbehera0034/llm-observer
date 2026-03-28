@@ -44,6 +44,7 @@ export function createTestDb(): {
     safeExec('ALTER TABLE requests ADD COLUMN metadata TEXT DEFAULT "{}";');
 
     // Seed mandatory defaults
+    database.prepare("INSERT OR IGNORE INTO organizations (id, name) VALUES ('default', 'Default Organization')").run();
     database.prepare('INSERT OR IGNORE INTO projects (id, name, daily_budget) VALUES (?, ?, ?)').run('default', 'Default Project', 100.0);
     database.prepare('INSERT OR IGNORE INTO model_pricing (provider, model, input_cost_per_1m, output_cost_per_1m) VALUES (?, ?, ?, ?)').run('openai', 'gpt-4', 30.0, 60.0);
 
