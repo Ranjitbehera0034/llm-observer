@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  buildExpected:
+  build:
     runs-on: ubuntu-latest
 
     steps:
