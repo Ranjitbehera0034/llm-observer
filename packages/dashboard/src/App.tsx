@@ -9,6 +9,7 @@ import Insights from './pages/Insights';
 import Settings from './pages/Settings';
 import SyncPage from './pages/SyncPage';
 import Apps from './pages/Apps';
+import Wrapped from './pages/Wrapped';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
             <Route path="/requests" element={<Requests />} />
             <Route path="/insights" element={<Insights />} />
             <Route path="/projects" element={<Projects />} />
+            <Route path="/wrapped" element={<Wrapped />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/sync" element={<SyncPage />} />

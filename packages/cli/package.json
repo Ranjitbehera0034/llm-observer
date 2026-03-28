@@ -1,10 +1,11 @@
 {
   "name": "llm-observer",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Privacy-first, local-only LLM cost tracker. Track OpenAI, Anthropic, Gemini costs without sending data to the cloud.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsup && cp -r ../database/src/migrations dist/ && cp ../proxy/dist/server.js dist/server.js && mkdir -p dist/dashboard && cp -r ../proxy/dist/dashboard/* dist/dashboard/ && chmod +x dist/index.js",
+    "test": "jest",
     "prepublishOnly": "npm run build"
   },
   "bin": {
