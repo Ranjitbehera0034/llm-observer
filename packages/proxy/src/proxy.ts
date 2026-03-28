@@ -60,7 +60,7 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
     const requestStartTime = Date.now();
 
     const MAX_DB_SIZE = 50 * 1024;
-    let requestBodyStr = JSON.stringify(req.body);
+    let requestBodyStr = JSON.stringify(req.body || {});
     if (requestBodyStr.length > MAX_DB_SIZE) {
         requestBodyStr = requestBodyStr.substring(0, MAX_DB_SIZE) + '... [TRUNCATED]';
     }
@@ -79,7 +79,7 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
     proxy.web(req, res, {
         target: targetUrl,
         headers: { ...authHeaders },
-        buffer: Readable.from([JSON.stringify(req.body)])
+        buffer: Readable.from([JSON.stringify(req.body || {})])
     }, (err) => {
         console.error('Proxy Error:', err);
         const errorRecord = {
@@ -188,6 +188,15 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
     } else {
         // STREAM OR NORMAL SUCCESS RESPONSE
         res.status(proxyRes.statusCode || 200);
+
+        // FIX S1-1.7: Explicitly set SSE headers and disable compression/buffering
+        const isSSE = proxyRes.headers['content-type'] === 'text/event-stream';
+        if (isSSE) {
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('Connection', 'keep-alive');
+            res.setHeader('X-Accel-Buffering', 'no'); // Disable Nginx buffering
+        }
+
         for (const k of Object.keys(copiedHeaders)) {
             res.setHeader(k, copiedHeaders[k]);
         }
@@ -195,6 +204,9 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
         proxyRes.on('data', (chunk: any) => {
             processChunkForLogs(chunk.toString('utf8'));
             res.write(chunk);
+            
+            // If it's a stream, we want to ensure it's sent immediately
+            if ((res as any).flush) (res as any).flush();
         });
 
         proxyRes.on('end', () => {

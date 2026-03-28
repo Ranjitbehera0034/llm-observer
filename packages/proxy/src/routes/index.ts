@@ -12,6 +12,7 @@ import budgetsRouter from './budgets.routes';
 import alertsRouter from './alerts.routes';
 import appsRouter from './apps.routes';
 import networkRouter from './network.routes';
+import wrappedRouter from './wrapped.routes';
 
 /**
  * Composes all dashboard API sub-routers into a single router.
@@ -56,6 +57,9 @@ export function createDashboardRouter(): Router {
     // Apps & Network
     router.use('/apps', appsRouter);
     router.use('/network', networkRouter);
+
+    // AI Wrapped (v1.8.0)
+    router.use('/wrapped', wrappedRouter);
 
     // SSE events (mounted at /events)ß
     router.get('/events', (req, res, next) => {

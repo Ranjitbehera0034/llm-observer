@@ -33,7 +33,7 @@ apps/tauri/src-tauri/target/
 *.db
 *.sqlite
 *.sqlite3
-data/
+/data/
 
 # OS/Editor
 .DS_Store

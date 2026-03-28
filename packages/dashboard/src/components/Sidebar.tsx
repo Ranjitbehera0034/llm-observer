@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Activity, FolderOpen, Bell, Settings as SettingsIcon, Lightbulb, RefreshCw, MonitorSmartphone } from 'lucide-react';
+import { LayoutDashboard, Activity, FolderOpen, Bell, Settings as SettingsIcon, Lightbulb, RefreshCw, MonitorSmartphone, Gift } from 'lucide-react';
 import clsx from 'clsx';
 
 const navItems = [
@@ -9,6 +9,7 @@ const navItems = [
     { name: 'Requests', path: '/requests', icon: Activity },
     { name: 'Insights', path: '/insights', icon: Lightbulb },
     { name: 'Projects', path: '/projects', icon: FolderOpen },
+    { name: 'AI Wrapped', path: '/wrapped', icon: Gift },
     { name: 'Alerts', path: '/alerts', icon: Bell },
     { name: 'Settings', path: '/settings', icon: SettingsIcon },
 ];
