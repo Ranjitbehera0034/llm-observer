@@ -3,6 +3,7 @@ import express from 'express';
 import { handleProxyRequest } from '../proxy';
 import { initDb, getDb } from '@llm-observer/database';
 import http from 'http';
+import { internalLogger } from '../internalLogger';
 
 // Mock the background tasks and managers to avoid side effects
 jest.mock('../budgetGuard', () => ({
@@ -42,8 +43,8 @@ describe('Proxy Core Integration', () => {
     let mockTarget: http.Server;
 
     beforeAll(async () => {
-        const db = initDb();
-        db.prepare('INSERT OR IGNORE INTO projects (id, name, daily_budget) VALUES (?, ?, ?)').run('default', 'Default Project', 100.0);
+        const db = initDb(':memory:');
+        db.prepare('INSERT INTO projects (id, name, daily_budget) VALUES (?, ?, ?)').run('default', 'Default Project', 100.0);
         mockTarget = http.createServer((req, res) => {
             if (req.url?.includes('streaming')) {
                 res.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -80,12 +81,17 @@ describe('Proxy Core Integration', () => {
                 if (err) return done(err);
                 expect(res.body.choices[0].message.content).toBe('Mock response');
                 
-                setTimeout(() => {
-                    const db = getDb();
-                    const log = db.prepare('SELECT * FROM requests WHERE is_streaming = 0 ORDER BY created_at DESC LIMIT 1').get() as any;
-                    expect(log).toBeDefined();
-                    expect(log.model).toBeDefined();
-                    done();
+                setTimeout(async () => {
+                    try {
+                        await internalLogger.flush();
+                        const db = getDb();
+                        const log = db.prepare('SELECT * FROM requests WHERE is_streaming = 0 ORDER BY created_at DESC LIMIT 1').get() as any;
+                        expect(log).toBeDefined();
+                        expect(log.model).toBeDefined();
+                        done();
+                    } catch (e) {
+                        done(e);
+                    }
                 }, 100);
             });
     });
@@ -104,12 +110,17 @@ describe('Proxy Core Integration', () => {
                 expect(res.text).toContain('Hello');
                 expect(res.text).toContain('World');
                 
-                setTimeout(() => {
-                    const db = getDb();
-                    const log = db.prepare('SELECT * FROM requests WHERE is_streaming = 1 ORDER BY created_at DESC LIMIT 1').get() as any;
-                    expect(log).toBeDefined();
-                    expect(log.total_tokens).toBe(10);
-                    done();
+                setTimeout(async () => {
+                    try {
+                        await internalLogger.flush();
+                        const db = getDb();
+                        const log = db.prepare('SELECT * FROM requests WHERE is_streaming = 1 ORDER BY created_at DESC LIMIT 1').get() as any;
+                        expect(log).toBeDefined();
+                        expect(log.total_tokens).toBe(10);
+                        done();
+                    } catch (e) {
+                        done(e);
+                    }
                 }, 100);
             });
     });

@@ -4,7 +4,7 @@ import { createBudgetLimit, getBudgetLimits, deleteBudgetLimit } from '../reposi
 
 describe('Database Layer Repositories', () => {
     beforeAll(() => {
-        initDb();
+        initDb(':memory:');
     });
 
     describe('Projects', () => {
@@ -46,6 +46,6 @@ describe('Database Layer Repositories', () => {
 
     it('verifies migration idempotency', () => {
         // Run initDb again should not fail
-        expect(() => initDb()).not.toThrow();
+        expect(() => initDb(':memory:')).not.toThrow();
     });
 });
