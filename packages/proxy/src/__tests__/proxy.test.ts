@@ -42,7 +42,8 @@ describe('Proxy Core Integration', () => {
     let mockTarget: http.Server;
 
     beforeAll(async () => {
-        initDb();
+        const db = initDb();
+        db.prepare('INSERT OR IGNORE INTO projects (id, name, daily_budget) VALUES (?, ?, ?)').run('default', 'Default Project', 100.0);
         mockTarget = http.createServer((req, res) => {
             if (req.url?.includes('streaming')) {
                 res.writeHead(200, { 'Content-Type': 'text/event-stream' });
