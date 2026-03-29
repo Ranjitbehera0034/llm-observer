@@ -9,7 +9,8 @@ import {
     ChevronRight,
     Search,
     Target,
-    MonitorSmartphone
+    MonitorSmartphone,
+    Database
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -70,6 +71,7 @@ export default function Overview() {
     const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
     const [budgets, setBudgets] = useState<Budget[]>([]);
     const [topApps, setTopApps] = useState<any[]>([]);
+    const [topSessions, setTopSessions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddSub, setShowAddSub] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -77,13 +79,14 @@ export default function Overview() {
 
     const fetchData = useCallback(async () => {
         try {
-            const [todayRes, weekRes, monthRes, timelineRes, budgetsRes, appsRes] = await Promise.all([
+            const [todayRes, weekRes, monthRes, timelineRes, budgetsRes, appsRes, sessionsRes] = await Promise.all([
                 fetch(`${API_BASE_URL}/api/overview?period=today`),
                 fetch(`${API_BASE_URL}/api/overview?period=week`),
                 fetch(`${API_BASE_URL}/api/overview?period=month`),
                 fetch(`${API_BASE_URL}/api/overview/timeline?days=30`),
                 fetch(`${API_BASE_URL}/api/budgets`),
-                fetch(`${API_BASE_URL}/api/apps?period=today`)
+                fetch(`${API_BASE_URL}/api/apps?period=today`),
+                fetch(`${API_BASE_URL}/api/sessions/expensive?limit=3`)
             ]);
             
             if (todayRes.ok) setTodayData(await todayRes.json());
@@ -95,6 +98,7 @@ export default function Overview() {
                 const appsData = await appsRes.json();
                 setTopApps(appsData.apps.slice(0, 3));
             }
+            if (sessionsRes.ok) setTopSessions(await sessionsRes.json());
         } catch (err) {
             console.error('Failed to fetch overview data', err);
         } finally {
@@ -187,8 +191,8 @@ export default function Overview() {
             </div>
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden group col-span-1 md:col-span-2 lg:col-span-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 relative overflow-hidden group col-span-1 md:col-span-2 xl:col-span-1">
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                         <TrendingUp className="w-10 h-10 text-emerald-400" />
                     </div>
@@ -302,6 +306,31 @@ export default function Overview() {
                                         <span className="text-[8px] text-slate-500 font-mono">{app.connection_count} conns</span>
                                     </div>
                                     <span className="text-[10px] font-black text-white">${app.estimated_cost_usd.toFixed(2)}</span>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                {/* Top Sessions (v1.9.0) */}
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col group hover:border-indigo-500/30 transition-all">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500">Expensive Sessions</h3>
+                        <Link to="/sessions" className="text-[8px] font-black text-indigo-400 uppercase hover:underline">See All</Link>
+                    </div>
+                    <div className="space-y-4 flex-1">
+                        {topSessions.length === 0 ? (
+                            <div className="h-full flex items-center justify-center opacity-40">
+                                <Database className="w-8 h-8 text-slate-700" />
+                            </div>
+                        ) : (
+                            topSessions.map(session => (
+                                <div key={session.id} className="flex items-center justify-between">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-bold text-white uppercase truncate max-w-[100px]">{session.project_name}</span>
+                                        <span className="text-[8px] text-slate-500 font-mono capitalize">{session.provider.replace('-', ' ')}</span>
+                                    </div>
+                                    <span className="text-[10px] font-black text-emerald-400">${(session.estimated_cost_usd || 0).toFixed(2)}</span>
                                 </div>
                             ))
                         )}

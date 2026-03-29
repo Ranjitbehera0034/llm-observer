@@ -1,11 +1,12 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Activity, FolderOpen, Bell, Settings as SettingsIcon, Lightbulb, RefreshCw, MonitorSmartphone, Gift } from 'lucide-react';
+import { LayoutDashboard, Activity, FolderOpen, Bell, Settings as SettingsIcon, Lightbulb, RefreshCw, MonitorSmartphone, Gift, Database } from 'lucide-react';
 import clsx from 'clsx';
 
 const navItems = [
     { name: 'Control Room', path: '/', icon: LayoutDashboard },
     { name: 'Apps', path: '/apps', icon: MonitorSmartphone },
     { name: 'API Sync', path: '/sync', icon: RefreshCw },
+    { name: 'Sessions', path: '/sessions', icon: Database },
     { name: 'Requests', path: '/requests', icon: Activity },
     { name: 'Insights', path: '/insights', icon: Lightbulb },
     { name: 'Projects', path: '/projects', icon: FolderOpen },

@@ -15,6 +15,7 @@ import { startStatsAggregation } from './utils/statsAggregator';
 import { syncManager } from './syncManager';
 import { usageSyncManager } from './sync';
 import { networkMonitor } from './services/networkMonitor';
+import { initParsers } from './parsers/manager';
 import './types';
 
 const app = express();
@@ -107,10 +108,12 @@ dashboardApp.use('/api', dashboardApi);
 import syncRoutes from './routes/sync.routes';
 import subscriptionRoutes from './routes/subscriptions.routes';
 import overviewRoutes from './routes/overview.routes';
+import sessionsRoutes from './routes/sessions.routes';
 
 dashboardApp.use('/api/sync', syncRoutes);
 dashboardApp.use('/api/subscriptions', subscriptionRoutes);
 dashboardApp.use('/api/overview', overviewRoutes);
+dashboardApp.use('/api/sessions', sessionsRoutes);
 
 // Fallback to static Dashboard build if not hitting API
 // In development: ../../dashboard/dist
@@ -163,6 +166,7 @@ async function bootstrap() {
         syncManager.start();
         usageSyncManager.start();
         networkMonitor.start();
+        initParsers();
 
     } catch (err) {
         console.error('Fatal Initialization Error:', err);
