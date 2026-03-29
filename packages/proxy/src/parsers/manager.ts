@@ -1,6 +1,7 @@
 import * as claudeParser from './claude';
 import * as cursorParser from './cursor';
 import * as aiderParser from './aider';
+import { aggregateToolUsage } from './toolAggregator';
 
 const STATE = {
     isRunning: false,
@@ -67,6 +68,14 @@ export const triggerParseCycle = async () => {
             });
             STATE.providers['aider'].status = 'success';
         }
+
+        // After all individual parsers finish, run cross-provider aggregation
+        try {
+            aggregateToolUsage();
+        } catch (e) {
+            console.error('[Parser Manager] Tool aggregation failed:', e);
+        }
+
     } finally {
         STATE.isRunning = false;
     }

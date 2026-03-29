@@ -47,6 +47,12 @@ export interface WrappedReport {
         provider: string;
         cost_usd: number;
     };
+    agent_stats: {
+        total_agents: number;
+        total_agent_cost: number;
+        avg_agents_per_day: number;
+        most_active_type: string;
+    };
 }
 
 export class WrappedService {
@@ -188,6 +194,21 @@ export class WrappedService {
             LIMIT 1
         `).get(start, end) as any;
 
+        // 8. Agent Stats
+        const agents = db.prepare(`
+            SELECT 
+                COUNT(*) as count,
+                SUM(estimated_cost_usd) as total_cost,
+                agent_type
+            FROM subagents
+            WHERE started_at >= ? AND started_at < ?
+            GROUP BY agent_type
+            ORDER BY count DESC
+        `).all(start, end) as any[];
+
+        const totalAgents = agents.reduce((sum, a) => sum + a.count, 0);
+        const totalAgentCost = agents.reduce((sum, a) => sum + a.total_cost, 0);
+
         return {
             period,
             type,
@@ -217,7 +238,13 @@ export class WrappedService {
                 project_name: topSession.project_name,
                 provider: topSession.provider,
                 cost_usd: topSession.estimated_cost_usd
-            } : undefined
+            } : undefined,
+            agent_stats: {
+                total_agents: totalAgents,
+                total_agent_cost: totalAgentCost,
+                avg_agents_per_day: usage?.days_active > 0 ? totalAgents / usage.days_active : 0,
+                most_active_type: agents[0]?.agent_type || 'None'
+            }
         };
     }
 
@@ -295,6 +322,25 @@ export class WrappedService {
                 type: 'budget_compliance',
                 title: 'Review Budget Limits',
                 description: `You exceeded your budget ${alertCount.count} times this period. Consider adjusting your limits to better match your workflow.`
+            });
+        }
+
+        // 5. Agentic Growth (v1.10.0)
+        const agentStats = db.prepare(`
+            SELECT COUNT(*) as total, agent_type
+            FROM subagents
+            WHERE started_at >= ? AND started_at < ?
+            GROUP BY agent_type
+            ORDER BY total DESC
+        `).all(start, end) as any[];
+
+        if (agentStats.length > 0) {
+            const total = agentStats.reduce((sum, a) => sum + a.total, 0);
+            const topType = agentStats[0].agent_type;
+            insights.push({
+                type: 'budget_compliance',
+                title: 'Agentic Growth',
+                description: `Your agents spawned ${total} subagents this period. ${topType.charAt(0).toUpperCase() + topType.slice(1)} agents were your most active type.`
             });
         }
 
