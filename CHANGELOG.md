@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-03-29 (Session Explorer)
+### Added
+- **Session Explorer**: New dashboard page for granular conversation tracking.
+- **Engine 4 (Parser)**: Zero-config tracking for Claude Code, Cursor, and Aider.
+- **Automated Detection**: Background scanning of local session files (~/.claude, ~/.aider, etc).
+- **Incremental Sync**: High-performance history scanning with modification tracking.
+- **Billing Integration**: Verification of local token counts against Usage API data.
+
+### Fixed
+- Dashboard module resolution error for the Sessions page.
+- impure React keys in list rendering.
+
+
 ## [1.8.0] - 2026-03-28 (Sprint 1)
 ### Added
 - **AI Wrapped**: Monthly/Yearly spending reports and efficiency insights.
