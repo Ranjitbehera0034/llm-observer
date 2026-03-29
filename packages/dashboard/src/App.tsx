@@ -7,10 +7,12 @@ import Projects from './pages/Projects';
 import Alerts from './pages/Alerts';
 import Insights from './pages/Insights';
 import Settings from './pages/Settings';
-import SyncPage from './pages/SyncPage';
+import Sync from './pages/Sync';
 import Apps from './pages/Apps';
 import Wrapped from './pages/Wrapped';
-import Sessions from './pages/SessionsPage';
+import Sessions from './pages/Sessions';
+import Agents from './pages/Agents';
+import Tools from './pages/Tools';
 
 function App() {
   return (
@@ -21,12 +23,14 @@ function App() {
             <Route path="/" element={<Overview />} />
             <Route path="/requests" element={<Requests />} />
             <Route path="/sessions" element={<Sessions />} />
+            <Route path="/agents" element={<Agents />} />
+            <Route path="/tools" element={<Tools />} />
             <Route path="/insights" element={<Insights />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/wrapped" element={<Wrapped />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/sync" element={<SyncPage />} />
+            <Route path="/sync" element={<Sync />} />
             <Route path="/apps" element={<Apps />} />
           </Routes>
         </ErrorBoundary>

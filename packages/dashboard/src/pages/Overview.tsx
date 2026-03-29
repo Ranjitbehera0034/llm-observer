@@ -10,7 +10,8 @@ import {
     Search,
     Target,
     MonitorSmartphone,
-    Database
+    Database,
+    Bot
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -334,6 +335,31 @@ export default function Overview() {
                                 </div>
                             ))
                         )}
+                    </div>
+                </div>
+
+                {/* Agent Activity (v1.10.0) */}
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col group hover:border-indigo-500/30 transition-all">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-[9px] uppercase tracking-[0.2em] font-black text-slate-500">Agent Activity</h3>
+                        <Link to="/agents" className="text-[8px] font-black text-indigo-400 uppercase hover:underline">Details</Link>
+                    </div>
+                    <div className="flex-1 flex flex-col justify-center">
+                        <div className="flex items-center gap-4 mb-4">
+                            <div className="p-3 bg-indigo-500/10 rounded-2xl">
+                                <Bot className="w-6 h-6 text-indigo-400" />
+                            </div>
+                            <div>
+                                <p className="text-2xl font-black text-white">{topSessions.reduce((sum:number, s:any) => sum + (s.subagent_count || 0), 0)}</p>
+                                <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Agents Spawned Today</p>
+                            </div>
+                        </div>
+                        <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-500 w-[65%]" />
+                        </div>
+                        <p className="text-[9px] text-slate-500 mt-2 font-bold uppercase tracking-wider">
+                            Total Agent Cost: ${topSessions.reduce((sum:number, s:any) => sum + (s.total_subagent_cost_usd || 0), 0).toFixed(2)}
+                        </p>
                     </div>
                 </div>
             </div>

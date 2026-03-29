@@ -5,7 +5,8 @@ import {
     getSessionSummary, 
     getSessionsByProject, 
     getSessionsByModel, 
-    getMostExpensiveSessions 
+    getMostExpensiveSessions,
+    getSubagentsBySession
 } from '@llm-observer/database';
 import { triggerParseCycle, getProviderStatus } from '../parsers/manager';
 
@@ -68,6 +69,22 @@ router.get('/:id', (req, res) => {
             return res.status(404).json({ error: 'Session not found' });
         }
         res.json(session);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+router.get('/:id/agents', (req, res) => {
+    try {
+        const session = getSessionById(req.params.id);
+        if (!session) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+        const agents = getSubagentsBySession(req.params.id);
+        res.json({
+            parent: session,
+            subagents: agents
+        });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }

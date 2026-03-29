@@ -1,6 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Database, Filter, Search, RotateCcw, Clock, Zap, Cpu, TerminalSquare, Activity, Info } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Database, Filter, Search, RotateCcw, Clock, Zap, Cpu, TerminalSquare, Activity, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import { API_BASE_URL } from '../config';
+import { AgentTree } from '../components/AgentTree';
+import { formatCurrency } from '../utils/format';
+import clsx from 'clsx';
 
 interface SessionRow {
     id: number;
@@ -27,6 +30,8 @@ export default function Sessions() {
     const [providers, setProviders] = useState<any>({});
     const [loading, setLoading] = useState(true);
     const [expandedRow, setExpandedRow] = useState<number | null>(null);
+    const [subagents, setSubagents] = useState<any[]>([]);
+    const [loadingSubagents, setLoadingSubagents] = useState(false);
     const [page, setPage] = useState(1);
 
     // Filters
@@ -95,6 +100,31 @@ export default function Sessions() {
         setTypeFilter('');
         setSearchParam('');
         setPage(1);
+    };
+
+    const toggleRow = (id: number) => {
+        if (expandedRow === id) {
+            setExpandedRow(null);
+            setSubagents([]);
+        } else {
+            setExpandedRow(id);
+            const session = sessions.find(s => s.id === id);
+            if (session?.has_subagents) {
+                setLoadingSubagents(true);
+                fetch(`${API_BASE_URL}/api/sessions/${id}/agents`)
+                    .then(res => res.json())
+                    .then(data => {
+                        setSubagents(data.subagents || []);
+                        setLoadingSubagents(false);
+                    })
+                    .catch(err => {
+                        console.error('Error fetching subagents:', err);
+                        setLoadingSubagents(false);
+                    });
+            } else {
+                setSubagents([]);
+            }
+        }
     };
 
     return (
@@ -232,10 +262,13 @@ export default function Sessions() {
                                     </td>
                                 </tr>
                             ) : sessions.map(session => (
+                                <React.Fragment key={session.id}>
                                 <tr 
-                                    key={session.id} 
-                                    onClick={() => setExpandedRow(expandedRow === session.id ? null : session.id)}
-                                    className="border-b border-white/[0.02] hover:bg-white/[0.02] transition-colors cursor-pointer group"
+                                    onClick={() => toggleRow(session.id)}
+                                    className={clsx(
+                                        "border-b border-white/[0.02] hover:bg-white/[0.02] transition-colors cursor-pointer group",
+                                        expandedRow === session.id && "bg-indigo-500/5 hover:bg-indigo-500/5 select-none"
+                                    )}
                                 >
                                     <td className="py-4 px-6 text-sm text-textMuted">
                                         <div className="flex flex-col">
@@ -255,15 +288,81 @@ export default function Sessions() {
                                         <span className="text-sm text-textMuted font-mono group-hover:text-indigo-400 transition-colors">{session.project_name}</span>
                                     </td>
                                     <td className="py-4 px-6 text-right font-mono text-sm font-medium text-emerald-400">
-                                        ${session.estimated_cost_usd.toFixed(4)}
+                                        {formatCurrency(session.estimated_cost_usd)}
                                     </td>
                                     <td className="py-4 px-6 text-right">
-                                        <span className="text-sm text-textMuted flex items-center justify-end gap-1">
-                                            <Clock className="w-3.5 h-3.5 opacity-50" />
-                                            {Math.floor((session.duration_seconds || 0) / 60)}m {(session.duration_seconds || 0) % 60}s
-                                        </span>
+                                        <div className="flex items-center justify-end gap-3 text-sm text-textMuted group-hover:text-white transition-colors">
+                                            <span className="flex items-center gap-1">
+                                                <Clock className="w-3.5 h-3.5 opacity-50" />
+                                                {Math.floor((session.duration_seconds || 0) / 60)}m {(session.duration_seconds || 0) % 60}s
+                                            </span>
+                                            {expandedRow === session.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                        </div>
                                     </td>
                                 </tr>
+                                {expandedRow === session.id && (
+                                    <tr className="bg-surfaceHighlight/10">
+                                        <td colSpan={5} className="py-8 px-8 border-b border-white/5">
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                                                <div>
+                                                    <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                                                        <Info className="w-4 h-4 text-primary" />
+                                                        Session Breakdown
+                                                    </h3>
+                                                    <div className="space-y-4">
+                                                        <div className="p-4 bg-surface rounded-xl border border-border">
+                                                            <div className="flex justify-between items-center mb-2">
+                                                                <span className="text-xs text-textMuted">Provider / Model</span>
+                                                                <span className="text-sm text-white font-medium">{session.provider} • {session.model_primary}</span>
+                                                            </div>
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-xs text-textMuted">Tokens (In / Out)</span>
+                                                                <span className="text-sm text-white font-medium font-mono">
+                                                                    {session.input_tokens.toLocaleString()} / {session.output_tokens.toLocaleString()}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {session.tool_calls_json !== '{}' && (
+                                                             <div className="p-4 bg-surface rounded-xl border border-border">
+                                                                <span className="text-xs text-textMuted block mb-3">Top Tool Calls</span>
+                                                                <div className="flex flex-wrap gap-2 text-xs font-mono">
+                                                                    {Object.entries(JSON.parse(session.tool_calls_json)).map(([name, count]: [string, any]) => (
+                                                                        <span key={name} className="px-2 py-1 rounded bg-surfaceHighlight text-indigo-300">
+                                                                            {name} ×{count}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                             </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                
+                                                {session.has_subagents ? (
+                                                    loadingSubagents ? (
+                                                        <div className="flex items-center justify-center p-12 text-textMuted animate-pulse space-x-2">
+                                                            <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                                            <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                                            <div className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"></div>
+                                                            <span className="ml-2">Parsing agent tree...</span>
+                                                        </div>
+                                                    ) : (
+                                                        <AgentTree parent={session} subagents={subagents} />
+                                                    )
+                                                ) : (
+                                                    <div className="flex flex-col items-center justify-center p-12 text-center bg-surfaceHighlight/10 rounded-2xl border border-border border-dashed">
+                                                        <Activity className="w-10 h-10 text-textMuted/30 mb-4" />
+                                                        <p className="text-sm text-textMuted italic font-medium tracking-tight">
+                                                            This was a direct {session.session_type} interaction.
+                                                            <br />No subagents were spawned.
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )}
+                            </React.Fragment>
                             ))}
                         </tbody>
                     </table>

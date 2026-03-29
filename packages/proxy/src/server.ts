@@ -109,11 +109,15 @@ import syncRoutes from './routes/sync.routes';
 import subscriptionRoutes from './routes/subscriptions.routes';
 import overviewRoutes from './routes/overview.routes';
 import sessionsRoutes from './routes/sessions.routes';
+import toolRoutes from './routes/tools.routes';
+import agentRoutes from './routes/agents.routes';
 
 dashboardApp.use('/api/sync', syncRoutes);
 dashboardApp.use('/api/subscriptions', subscriptionRoutes);
 dashboardApp.use('/api/overview', overviewRoutes);
 dashboardApp.use('/api/sessions', sessionsRoutes);
+dashboardApp.use('/api/tools', toolRoutes);
+dashboardApp.use('/api/agents', agentRoutes);
 
 // Fallback to static Dashboard build if not hitting API
 // In development: ../../dashboard/dist

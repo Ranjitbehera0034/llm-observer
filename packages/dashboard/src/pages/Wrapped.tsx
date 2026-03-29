@@ -11,7 +11,9 @@ import {
     Calendar,
     Share2,
     Eye,
-    EyeOff
+    EyeOff,
+    Bot,
+    Cpu
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -49,6 +51,12 @@ interface WrappedReport {
         project_name: string;
         provider: string;
         cost_usd: number;
+    };
+    agent_stats: {
+        total_agents: number;
+        total_agent_cost: number;
+        avg_agents_per_day: number;
+        most_active_type: string;
     };
 }
 
@@ -335,6 +343,50 @@ export default function Wrapped() {
                                 )}
                             </div>
                         </div>
+
+                        {/* Agentic Growth Section (v1.10.0) */}
+                        {report.agent_stats.total_agents > 0 && (
+                            <div className="lg:col-span-2 space-y-6">
+                                <h3 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
+                                    Agentic Growth
+                                    <Bot className="w-7 h-7 text-indigo-400" />
+                                </h3>
+                                <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-10 relative overflow-hidden">
+                                     <div className="absolute top-0 right-0 p-8 opacity-5">
+                                        <Cpu className="w-32 h-32 text-indigo-500" />
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12 relative z-10">
+                                        <div>
+                                            <p className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500 mb-4">Autonomous Capability</p>
+                                            <div className="text-6xl font-black text-white mb-2">{report.agent_stats.total_agents}</div>
+                                            <p className="text-slate-400 font-medium">Subagents spawned in this period. Your workflow is becoming increasingly agentic.</p>
+                                            
+                                            <div className="mt-8 space-y-4">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-bold text-slate-500 uppercase">Avg Daily Agents</span>
+                                                    <span className="text-sm font-black text-white">{report.agent_stats.avg_agents_per_day.toFixed(1)}</span>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-bold text-slate-500 uppercase">Dominant agent mode</span>
+                                                    <span className="text-sm font-black text-indigo-400 uppercase tracking-wider">{report.agent_stats.most_active_type}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="bg-black/40 border border-slate-800 rounded-3xl p-8 flex flex-col justify-center">
+                                            <p className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500 mb-2">Agent Contribution</p>
+                                            <div className="text-4xl font-black text-emerald-400 mb-4 shadow-emerald-500/20 shadow-xl">
+                                                ${report.agent_stats.total_agent_cost.toFixed(2)}
+                                            </div>
+                                            <p className="text-xs text-slate-400 leading-relaxed">
+                                                Subagents accounted for <strong className="text-white">{Math.round((report.agent_stats.total_agent_cost / report.stats.total_spend) * 100)}%</strong> of your total AI spend this period. 
+                                                High agency comes with high token density.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Per-App & Source Breakdown */}
                         <div className="space-y-6">
