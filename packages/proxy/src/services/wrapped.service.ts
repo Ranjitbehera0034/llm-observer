@@ -42,6 +42,11 @@ export interface WrappedReport {
         description: string;
         savings_usd?: number;
     }>;
+    top_session?: {
+        project_name: string;
+        provider: string;
+        cost_usd: number;
+    };
 }
 
 export class WrappedService {
@@ -174,6 +179,15 @@ export class WrappedService {
         // 6. Insights
         const insights = this.generateInsights(db, start, end, totalApiSpend, totalSubSpend, apps);
 
+        // 7. Top Session
+        const topSession = db.prepare(`
+            SELECT project_name, provider, estimated_cost_usd 
+            FROM sessions 
+            WHERE started_at >= ? AND started_at < ?
+            ORDER BY estimated_cost_usd DESC 
+            LIMIT 1
+        `).get(start, end) as any;
+
         return {
             period,
             type,
@@ -199,6 +213,11 @@ export class WrappedService {
             },
             app_breakdown: apps,
             insights,
+            top_session: topSession ? {
+                project_name: topSession.project_name,
+                provider: topSession.provider,
+                cost_usd: topSession.estimated_cost_usd
+            } : undefined
         };
     }
 

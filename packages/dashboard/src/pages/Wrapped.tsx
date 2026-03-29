@@ -45,6 +45,11 @@ interface WrappedReport {
         description: string;
         savings_usd?: number;
     }>;
+    top_session?: {
+        project_name: string;
+        provider: string;
+        cost_usd: number;
+    };
 }
 
 interface WrappedPreferences {
@@ -306,7 +311,24 @@ export default function Wrapped() {
                                         </div>
                                     </div>
                                 ))}
-                                {report.insights.length === 0 && (
+                                {report.top_session && (
+                                    <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 flex gap-5 hover:border-indigo-500/30 transition-all group">
+                                        <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center shrink-0">
+                                            <Zap className="w-6 h-6 text-indigo-400" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-white text-lg group-hover:text-indigo-400 transition-colors">Most Expensive Session</h4>
+                                            <p className="text-slate-400 text-sm mt-1 leading-relaxed">
+                                                In this period, your most token-heavy AI tool session was working on <strong className="text-slate-300">{report.top_session.project_name}</strong> using {report.top_session.provider}.
+                                            </p>
+                                            <div className="mt-4 flex items-center gap-2 text-rose-400 text-sm font-black uppercase tracking-widest">
+                                                <TrendingUp className="w-4 h-4" />
+                                                Est. Cost: ${report.top_session.cost_usd.toFixed(2)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                {report.insights.length === 0 && !report.top_session && (
                                     <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-3xl p-10 text-center">
                                         <p className="text-slate-500 text-sm font-medium">No efficiency suggestions for this period. Great job!</p>
                                     </div>
