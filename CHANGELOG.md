@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-03-29 (Subagent Observability)
+### Added
+- **Subagent Observability**: New repository and migrations for tracking child process activity.
+- **Improved Parsing**: Granular file tracking and cost consistency checks in the Claude code parser.
+- **Dashboard Polish**: Refined empty states and integrated agent activity metrics in Overview and Wrapped pages.
+- **New Components**: `AgentTree` for visualizing complex task hierarchies.
+- **Automated Tool Tracking**: Aggregator for monitoring tool usage across sessions.
+
+### Changed
+- Standardized dashboard page naming: `SyncPage` -> `Sync`, `SessionsPage` -> `Sessions`.
+- Consolidated tool usage logic into a dedicated service.
+
 ## [1.9.0] - 2026-03-29 (Session Explorer)
 ### Added
 - **Session Explorer**: New dashboard page for granular conversation tracking.
