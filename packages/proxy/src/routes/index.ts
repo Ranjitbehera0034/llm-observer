@@ -58,7 +58,7 @@ export function createDashboardRouter(): Router {
     router.use('/apps', appsRouter);
     router.use('/network', networkRouter);
 
-    // AI Wrapped (v1.8.0)
+    // AI Wrapped (v1.9.0)
     router.use('/wrapped', wrappedRouter);
 
     // SSE events (mounted at /events)ß

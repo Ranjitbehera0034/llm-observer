@@ -173,7 +173,7 @@ export class WrappedService {
         const appSpend = await AppCorrelator.getAppSpend('custom', start);
         // Note: AppCorrelator.getAppSpend takes a 'period' literal, not a specific date. 
         // For Wrapped, we'd ideally want historical correlations. 
-        // For v1.8.0, we'll use current month if it's current, or note insufficient data for historical.
+        // For v1.9.0, we'll use current month if it's current, or note insufficient data for historical.
         const apps = appSpend.apps.map(a => ({ name: a.display_name, spend: a.estimated_cost_usd, connections: a.connection_count }));
 
         // 6. Insights

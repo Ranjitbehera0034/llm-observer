@@ -18,7 +18,7 @@ jest.mock('@llm-observer/database', () => ({
 import { WrappedService } from '../services/wrapped.service';
 import { getDb } from '@llm-observer/database';
 
-describe('WrappedService (v1.8.0)', () => {
+describe('WrappedService (v1.9.0)', () => {
     let db: any;
 
     beforeAll(() => {
