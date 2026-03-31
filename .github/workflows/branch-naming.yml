@@ -1,0 +1,21 @@
+name: Branch Naming Rules
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - 'release/**'
+
+jobs:
+  check-branch-name:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch naming convention
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          if [[ ! "$BRANCH_NAME" =~ ^(feature|fix|bugfix|hotfix|chore|docs|refactor|test)/[a-zA-Z0-9_-]+$ ]]; then
+            echo "Error: Branch '$BRANCH_NAME' does not follow conventions."
+            echo "Please use prefixes: feature/, fix/, bugfix/, hotfix/, chore/, docs/, refactor/, test/, or release/x.y.z"
+            exit 1
+          fi
+          echo "Branch name is valid."
