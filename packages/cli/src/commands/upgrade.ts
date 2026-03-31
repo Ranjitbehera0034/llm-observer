@@ -4,17 +4,15 @@ import chalk from 'chalk';
 export function setupUpgradeCommands(program: Command) {
     program
         .command('upgrade')
-        .description('Upgrade to Pro to unlock unlimited projects and longer retention')
+        .description('Upgrade to Pro (Coming Soon)')
         .action(() => {
-            const pricingUrl = 'https://llmobserver.com/pricing';
-            console.log(chalk.bold.blue('LLM Observer Upgrade\n'));
-            console.log('Unlock the full power of LLM Observer:');
-            console.log(`${chalk.green('✓')} Unlimited Projects (Free: 1)`);
-            console.log(`${chalk.green('✓')} 90-Day Log Retention (Free: 7 days)`);
-            console.log(`${chalk.green('✓')} Priority Support`);
-            console.log(`${chalk.green('✓')} Advanced Insights`);
-            console.log('\nReady to upgrade? Visit:');
-            console.log(chalk.underline.bold.cyan(pricingUrl));
-            console.log(`\nAfter purchasing, use ${chalk.yellow('llm-observer activate <key>')} to enable Pro features.`);
+            console.log(chalk.bold.blue('LLM Observer — Pro Plan\n'));
+            console.log(chalk.yellow('  Sprint 6 Milestone: Pro & Team plans are currently in development.'));
+            console.log('  Follow our progress on GitHub for the v2.0 launch!');
+            console.log('\n  Planned Features:');
+            console.log(`  ${chalk.green('✓')} Unlimited Projects`);
+            console.log(`  ${chalk.green('✓')} 90-Day Log Retention`);
+            console.log(`  ${chalk.green('✓')} Advanced Cost Optimization`);
+            console.log();
         });
 }

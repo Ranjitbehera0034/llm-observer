@@ -1,6 +1,4 @@
-import { getDb } from '@llm-observer/database';
-import { Budget, getBudgetLimits } from '../../../database/src/repositories/budgets.repo';
-import { createAlert } from '../../../database/src/repositories/alerts.repo';
+import { getDb, Budget, getBudgetLimits, createAlert } from '@llm-observer/database';
 
 export class BudgetService {
     

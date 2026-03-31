@@ -12,3 +12,7 @@ export * from './repositories/subscriptions.repo';
 export * from './repositories/budgets.repo';
 export * from './encryption';
 export { encrypt, decrypt } from './encryption';
+export * from './repositories/sessions.repo';
+export * from './repositories/parsed_files.repo';
+export * from './repositories/subagents.repo';
+export * from './repositories/tool_usage.repo';

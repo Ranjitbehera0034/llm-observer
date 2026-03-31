@@ -60,8 +60,14 @@ router.post('/providers/anthropic/key', async (req, res) => {
     const looksLikeStandardKey = adminKey.startsWith('sk-ant-api');
     const looksLikeAdminKey = adminKey.startsWith('sk-ant-admin');
 
+    if (looksLikeStandardKey) {
+        return res.status(400).json({ 
+            error: 'This is a regular API key (sk-ant-api-...). Only Admin API keys (sk-ant-admin-...) can access usage sync data.' 
+        });
+    }
+
     if (!looksLikeAdminKey && !adminKey.includes(':')) {
-        console.warn(`[Anthropic] Key prefix check: ${adminKey.substring(0, 10)}... does not look like an admin key.`);
+        return res.status(400).json({ error: 'This does not look like a valid Anthropic Admin API key. It should start with sk-ant-admin-...' });
     }
 
     try {
@@ -110,6 +116,12 @@ router.post('/providers/openai/key', async (req, res) => {
     // Soft prefix check for OpenAI
     const looksLikeProjectKey = adminKey.startsWith('sk-proj-');
     const looksLikeAdminKey = adminKey.startsWith('sk-admin-');
+
+    if (looksLikeProjectKey) {
+        return res.status(400).json({ 
+            error: 'This is a project API key (sk-proj-...). Only Organization Admin keys (sk-admin-...) can access usage sync data.' 
+        });
+    }
 
     if (adminKey.startsWith('sk-ant-')) {
         return res.status(400).json({

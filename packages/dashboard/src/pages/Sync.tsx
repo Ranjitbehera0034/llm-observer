@@ -110,7 +110,7 @@ const ProviderSetup: React.FC<ProviderSetupProps> = ({ config, onSave, onCancel,
     );
 };
 
-const SyncPage: React.FC = () => {
+const Sync: React.FC = () => {
     const [configs, setConfigs] = useState<SyncConfig[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'all' | 'anthropic' | 'openai'>('all');
@@ -396,4 +396,4 @@ const SyncPage: React.FC = () => {
     );
 };
 
-export default SyncPage;
+export default Sync;

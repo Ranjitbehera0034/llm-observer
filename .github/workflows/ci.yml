@@ -1,37 +1,28 @@
-# llm-observer CI
-
 name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, 'release/**' ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
 
 jobs:
-  build-matrix:
+  build:
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
 
     steps:
     - uses: actions/checkout@v4
     
-    - name: Use Node.js ${{ matrix.node-version }}
+    - name: Use Node.js 20.x
       uses: actions/setup-node@v4
       with:
-        node-version: ${{ matrix.node-version }}
+        node-version: 20
         
-    - run: npm install
-    - run: npm run build:ci --if-present
-    # Add testing here later
-    # - run: npm test
-
-  build:
-    needs: build-matrix
-    runs-on: ubuntu-latest
-    steps:
-      - name: Build complete
-        run: echo "Build successfully completed on all Node.js versions"
+    - name: Install dependencies
+      run: npm install
+      
+    - name: Build all packages
+      run: npm run build:ci
+      
+    - name: Run tests
+      run: npm test

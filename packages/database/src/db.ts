@@ -97,6 +97,9 @@ export const initDb = (dbPath?: string): Database.Database => {
         console.warn(`Migrations directory not found at ${migrationsDir}`);
     }
 
+    // Seed default organization to prevent foreign key errors if enforced
+    db.prepare("INSERT OR IGNORE INTO organizations (id, name) VALUES ('default', 'Default Organization')").run();
+
     return db;
 };
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Key, Save, Plus, Trash2, Copy, ShieldCheck, Globe, AlertTriangle, Settings as SettingsIcon, CreditCard, CheckCircle2, Zap, History, Layers, KeyRound, AlertCircle, Target, Eye, EyeOff } from 'lucide-react';
+import { Key, Save, Plus, Trash2, Copy, ShieldCheck, Globe, AlertTriangle, Settings as SettingsIcon, CreditCard, CheckCircle2, Zap, History, Layers, KeyRound, AlertCircle, Target, Eye, EyeOff, TerminalSquare, Database } from 'lucide-react';
 import { BudgetsTab } from '../components/BudgetsTab';
 import { API_BASE_URL } from '../config';
 
@@ -51,6 +51,9 @@ export default function Settings() {
     const [monitorStatus, setMonitorStatus] = useState<any>(null);
     const [scanInterval, setScanInterval] = useState('5000');
 
+    // Session Sources (v1.9.0)
+    const [sessionProviders, setSessionProviders] = useState<any>(null);
+
     useEffect(() => {
         const fetchSettings = async () => {
             try {
@@ -80,6 +83,17 @@ export default function Settings() {
             }
         };
         fetchMonitorStatus();
+
+        const fetchSessionProviders = async () => {
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/sessions/providers`);
+                const data = await res.json();
+                setSessionProviders(data);
+            } catch (err) {
+                console.error('Failed to fetch session providers:', err);
+            }
+        };
+        fetchSessionProviders();
 
         // Detect Country for Payments
         const detectCountry = async () => {
@@ -411,6 +425,45 @@ export default function Settings() {
                                         These keys are stored in the local database of your LLM Observer instance.
                                         Ensure your server environment is secure.
                                     </p>
+                                </div>
+                            </div>
+
+                            <div className="card mt-6">
+                                <h2 className="text-xl font-bold text-white mb-2">Local Session Sources</h2>
+                                <p className="text-sm text-textMuted mb-6">Automatically detect and parse local AI tool usage history without routing traffic through the proxy.</p>
+                                
+                                <div className="space-y-4">
+                                    {[
+                                        { id: 'claude-code', name: 'Claude Code', path: '~/.claude/projects/', icon: TerminalSquare },
+                                        { id: 'cursor', name: 'Cursor IDE', path: '~/.cursor/ai-tracking/', icon: Database },
+                                        { id: 'aider', name: 'Aider', path: '~/.aider/analytics.jsonl', icon: TerminalSquare }
+                                    ].map(tool => {
+                                        const statusObj = sessionProviders?.[tool.id];
+                                        const isDetected = statusObj && statusObj.status !== 'not found';
+                                        
+                                        return (
+                                            <div key={tool.id} className={`flex items-center justify-between p-4 bg-background border rounded-lg transition-colors ${isDetected ? 'border-primary/30 bg-primary/5' : 'border-border opacity-60'}`}>
+                                                <div className="flex items-center gap-3">
+                                                    <tool.icon className={`w-5 h-5 ${isDetected ? 'text-primary' : 'text-textMuted'}`} />
+                                                    <div>
+                                                        <h4 className="text-white font-medium text-sm">{tool.name}</h4>
+                                                        <p className="text-xs text-textMuted mt-0.5">{tool.path}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    {isDetected ? (
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-success bg-success/10 px-2 py-1 rounded-full border border-success/20">
+                                                            Detected ✓
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-textMuted">
+                                                            Not Found
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         </div>

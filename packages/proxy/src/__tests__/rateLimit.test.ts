@@ -12,6 +12,8 @@ jest.mock('@llm-observer/database', () => {
         validateApiKey: () => ({ project_id: 'default' }),
         getSetting: () => null,
         updateSetting: () => { },
+        getBudgetLimits: () => [],
+        createAlert: () => { },
     };
 });
 

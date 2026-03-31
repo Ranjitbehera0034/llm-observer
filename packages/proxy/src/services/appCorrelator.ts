@@ -14,17 +14,14 @@ export interface AppSpend {
  * Connects "which app" (from NetworkMonitor) to "how much" (from Usage Sync).
  */
 export class AppCorrelator {
-    /**
-     * Get per-app spending summary for a given period.
-     */
-    static async getAppSpend(period: 'today' | 'week' | 'month', providerFilter?: string): Promise<{
+    static async getAppSpend(period: 'today' | 'week' | 'month' | 'custom', customStart?: string, providerFilter?: string): Promise<{
         period: string;
         apps: AppSpend[];
         unattributed_usd: number;
         note: string;
     }> {
         const db = getDb();
-        const start = this.getPeriodStart(period);
+        const start = customStart || this.getPeriodStart(period as any);
         
         // 1. Get total sync cost in period (optionally filtered by provider)
         let syncQuery = `SELECT SUM(cost_usd) as total FROM usage_records WHERE bucket_start >= ?`;
