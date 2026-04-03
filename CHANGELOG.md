@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-04-02
+
+### Added
+- **Optimization Engine v2** — 20+ rules analyze your AI usage patterns and
+  produce specific, actionable recommendations with estimated dollar savings.
+- Optimization score (0-100) showing how well-optimized your usage is
+- Five rule categories: model selection (4 rules), context efficiency (5),
+  provider optimization (3), workflow efficiency (4), agent optimization (4)
+- Per-recommendation config snippets (copy-pasteable IDE settings)
+- Category and impact level filtering on the Optimize page
+- Savings-per-category breakdown chart
+- Optimization result caching (1-hour TTL, invalidated on new data)
+- Optimization score badge on Overview page
+- Optimization insights in AI Wrapped monthly reports
+- Tip indicators on Sessions page for sessions that trigger rules
+
+### Changed
+- Redundant pattern detection (from v1.10.0) consolidated into the
+  optimization engine as rule C3
+- Subscription value insight (from v1.8.0) consolidated as rule P2
+
+### Breaking changes
+- None
+
+
 ## [1.11.0] - 2026-03-30 (ROI Analysis & Forecasting)
 ### Added
 - **ROI Analysis**: Git correlation to link AI sessions to git commits.

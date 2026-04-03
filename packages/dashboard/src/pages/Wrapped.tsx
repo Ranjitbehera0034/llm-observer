@@ -13,11 +13,14 @@ import {
     Eye,
     EyeOff,
     Bot,
-    Cpu
+    Cpu,
+    ShieldCheck,
+    ArrowRight
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
+import { Link } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
 
 interface WrappedReport {
@@ -57,6 +60,14 @@ interface WrappedReport {
         total_agent_cost: number;
         avg_agents_per_day: number;
         most_active_type: string;
+    };
+    optimization?: {
+        score: number;
+        top_recommendation: {
+            title: string;
+            description: string;
+            savings_usd: number;
+        } | null;
     };
 }
 
@@ -382,6 +393,64 @@ export default function Wrapped() {
                                                 Subagents accounted for <strong className="text-white">{Math.round((report.agent_stats.total_agent_cost / report.stats.total_spend) * 100)}%</strong> of your total AI spend this period. 
                                                 High agency comes with high token density.
                                             </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Optimization Engine v2 Section */}
+                        {report.optimization && (
+                            <div className="lg:col-span-3 space-y-6">
+                                <h3 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
+                                    Efficiency & Health
+                                    <Zap className="w-7 h-7 text-emerald-400" />
+                                </h3>
+                                <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-10 relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:scale-110 transition-transform duration-500">
+                                        <ShieldCheck className="w-40 h-40 text-emerald-500" />
+                                    </div>
+                                    <div className="flex flex-col md:flex-row gap-12 items-center relative z-10">
+                                        <div className="shrink-0 flex flex-col items-center">
+                                            <div className="relative w-40 h-40 flex items-center justify-center mb-4">
+                                                <svg className="w-full h-full -rotate-90 scale-110">
+                                                    <circle cx="80" cy="80" r="72" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-800" />
+                                                    <circle 
+                                                        cx="80" cy="80" r="72" stroke="currentColor" strokeWidth="12" fill="transparent" 
+                                                        strokeDasharray={452.4}
+                                                        strokeDashoffset={452.4 - (452.4 * report.optimization.score) / 100}
+                                                        className={`transition-all duration-1000 ease-out ${report.optimization.score > 80 ? 'text-emerald-500' : 'text-amber-500'}`}
+                                                    />
+                                                </svg>
+                                                <span className="absolute text-5xl font-black text-white">{report.optimization.score}%</span>
+                                            </div>
+                                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Global Efficiency Score</p>
+                                        </div>
+
+                                        <div className="flex-1 space-y-4">
+                                            <div>
+                                                <p className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-500 mb-2">Top Recommendation</p>
+                                                {report.optimization.top_recommendation ? (
+                                                    <>
+                                                        <h4 className="text-3xl font-black text-white tracking-tight leading-tight">{report.optimization.top_recommendation.title}</h4>
+                                                        <p className="text-slate-400 text-lg mt-2 leading-relaxed max-w-2xl">{report.optimization.top_recommendation.description}</p>
+                                                        <div className="mt-6 flex items-center gap-3">
+                                                            <div className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl">
+                                                                <span className="text-xl font-black text-emerald-400">${report.optimization.top_recommendation.savings_usd.toFixed(2)} monthly potential savings</span>
+                                                            </div>
+                                                            <Link to="/optimize" className="px-6 py-3 bg-white text-black text-xs font-black uppercase tracking-widest rounded-2xl hover:bg-slate-200 transition-all flex items-center gap-2 group/btn">
+                                                                View Full Report
+                                                                <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+                                                            </Link>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <div className="flex items-center gap-3 text-emerald-400">
+                                                        <CheckCircle2 className="w-8 h-8" />
+                                                        <h4 className="text-2xl font-black tracking-tight">Your AI operations are peak-efficient!</h4>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
