@@ -1,5 +1,6 @@
 import { getDb, getSubscriptions } from '@llm-observer/database';
 import { AppCorrelator } from './appCorrelator';
+import { runOptimizationEngine } from '../optimization/engine';
 
 export interface WrappedPreferences {
     show_total_spend: boolean;
@@ -52,6 +53,14 @@ export interface WrappedReport {
         total_agent_cost: number;
         avg_agents_per_day: number;
         most_active_type: string;
+    };
+    optimization?: {
+        score: number;
+        top_recommendation: {
+            title: string;
+            description: string;
+            savings_usd: number;
+        } | null;
     };
 }
 
@@ -180,10 +189,10 @@ export class WrappedService {
         // Note: AppCorrelator.getAppSpend takes a 'period' literal, not a specific date. 
         // For Wrapped, we'd ideally want historical correlations. 
         // For v1.9.0, we'll use current month if it's current, or note insufficient data for historical.
-        const apps = appSpend.apps.map(a => ({ name: a.display_name, spend: a.estimated_cost_usd, connections: a.connection_count }));
+        const apps = appSpend.apps.map((a: any) => ({ name: a.display_name, spend: a.estimated_cost_usd, connections: a.connection_count }));
 
         // 6. Insights
-        const insights = this.generateInsights(db, start, end, totalApiSpend, totalSubSpend, apps);
+        const insights = await this.generateInsights(db, start, end, totalApiSpend, totalSubSpend, apps);
 
         // 7. Top Session
         const topSession = db.prepare(`
@@ -244,12 +253,45 @@ export class WrappedService {
                 total_agent_cost: totalAgentCost,
                 avg_agents_per_day: usage?.days_active > 0 ? totalAgents / usage.days_active : 0,
                 most_active_type: agents[0]?.agent_type || 'None'
-            }
+            },
+            optimization: await this.getOptimizationSummary()
         };
     }
 
-    private static generateInsights(db: any, start: string, end: string, apiSpend: number, subSpend: number, apps: any[]): WrappedReport['insights'] {
+    private static async getOptimizationSummary() {
+        try {
+            const opt = await runOptimizationEngine(30);
+            return {
+                score: opt.score,
+                top_recommendation: opt.results.length > 0 ? {
+                    title: opt.results[0].title,
+                    description: opt.results[0].description,
+                    savings_usd: opt.results[0].estimatedMonthlySavings
+                } : null
+            };
+        } catch (e) {
+            console.error('Failed to get optimization summary for Wrapped', e);
+            return undefined;
+        }
+    }
+
+    private static async generateInsights(db: any, start: string, end: string, apiSpend: number, subSpend: number, apps: any[]): Promise<WrappedReport['insights']> {
         const insights: any[] = [];
+        
+        // 0. Optimization Engine v2 Integration
+        try {
+            const optResult = await runOptimizationEngine();
+            if (optResult.totalSavingsUsd > 10) {
+                insights.push({
+                    type: 'model_optimization',
+                    title: 'Huge Savings Found!',
+                    description: `The new Optimization Engine identified $${optResult.totalSavingsUsd.toFixed(2)} in monthly savings. Visit the Optimize page to apply them.`,
+                    savings_usd: optResult.totalSavingsUsd
+                });
+            }
+        } catch (e) {
+            console.error('Failed to get optimization insights for Wrapped', e);
+        }
 
         // Thresholds: Need at least 7 days of data and 20 requests for meaningful insights
         const summary = db.prepare(`

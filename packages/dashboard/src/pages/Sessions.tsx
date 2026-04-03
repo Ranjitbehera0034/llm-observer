@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Database, Filter, Search, RotateCcw, Clock, Zap, Cpu, TerminalSquare, Activity, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { Database, Filter, Search, RotateCcw, Clock, Zap, Cpu, TerminalSquare, Activity, Info, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { API_BASE_URL } from '../config';
 import { AgentTree } from '../components/AgentTree';
 import { formatCurrency } from '../utils/format';
@@ -281,6 +282,17 @@ export default function Sessions() {
                                             <span className="text-sm text-white font-medium capitalize">{session.provider.replace('-', ' ')}</span>
                                             {session.session_type === 'agentic' && (
                                                 <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[10px] font-bold uppercase tracking-wider">Agent</span>
+                                            )}
+                                            {((session.estimated_cost_usd || 0) > 1.0 || (session.message_count || 0) > 30) && (
+                                                <Link
+                                                    to="/optimize"
+                                                    onClick={e => e.stopPropagation()}
+                                                    title="This session may be triggering optimization rules. Click to see recommendations."
+                                                    className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase tracking-wider border border-emerald-500/20 hover:bg-emerald-500/20 transition-all flex items-center gap-1"
+                                                >
+                                                    <Lightbulb className="w-2.5 h-2.5" />
+                                                    Tip
+                                                </Link>
                                             )}
                                         </div>
                                     </td>

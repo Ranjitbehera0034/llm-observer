@@ -11,7 +11,8 @@ import {
     Target,
     MonitorSmartphone,
     Database,
-    Bot
+    Bot,
+    Zap
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -77,17 +78,19 @@ export default function Overview() {
     const [showAddSub, setShowAddSub] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'today' | 'week' | 'month'>('today');
+    const [optScore, setOptScore] = useState<{ score: number; totalSavingsUsd: number } | null>(null);
 
     const fetchData = useCallback(async () => {
         try {
-            const [todayRes, weekRes, monthRes, timelineRes, budgetsRes, appsRes, sessionsRes] = await Promise.all([
+            const [todayRes, weekRes, monthRes, timelineRes, budgetsRes, appsRes, sessionsRes, scoreRes] = await Promise.all([
                 fetch(`${API_BASE_URL}/api/overview?period=today`),
                 fetch(`${API_BASE_URL}/api/overview?period=week`),
                 fetch(`${API_BASE_URL}/api/overview?period=month`),
                 fetch(`${API_BASE_URL}/api/overview/timeline?days=30`),
                 fetch(`${API_BASE_URL}/api/budgets`),
                 fetch(`${API_BASE_URL}/api/apps?period=today`),
-                fetch(`${API_BASE_URL}/api/sessions/expensive?limit=3`)
+                fetch(`${API_BASE_URL}/api/sessions/expensive?limit=3`),
+                fetch(`${API_BASE_URL}/api/optimize/score`),
             ]);
             
             if (todayRes.ok) setTodayData(await todayRes.json());
@@ -100,6 +103,7 @@ export default function Overview() {
                 setTopApps(appsData.apps.slice(0, 3));
             }
             if (sessionsRes.ok) setTopSessions(await sessionsRes.json());
+            if (scoreRes.ok) setOptScore(await scoreRes.json());
         } catch (err) {
             console.error('Failed to fetch overview data', err);
         } finally {
@@ -164,6 +168,33 @@ export default function Overview() {
                     </div>
                     <p className="text-slate-400 text-lg font-medium mt-1">Unified view of your AI spending.</p>
                 </div>
+
+                <Link to="/optimize" className="group">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl px-6 py-4 flex items-center gap-4 hover:border-emerald-500/30 transition-all">
+                        <div className="relative w-12 h-12 flex items-center justify-center">
+                            <svg className="w-full h-full -rotate-90">
+                                <circle cx="24" cy="24" r="21" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-800" />
+                                <circle 
+                                    cx="24" cy="24" r="21" stroke="currentColor" strokeWidth="4" fill="transparent" 
+                                    strokeDasharray={131.9}
+                                    strokeDashoffset={optScore ? 131.9 - (131.9 * optScore.score / 100) : 131.9}
+                                    className={optScore && optScore.score > 80 ? 'text-emerald-500' : optScore && optScore.score > 50 ? 'text-amber-500' : 'text-rose-500'}
+                                />
+                            </svg>
+                            <span className="absolute text-[10px] font-black text-white">
+                                {optScore ? `${optScore.score}%` : '—'}
+                            </span>
+                        </div>
+                        <div>
+                            <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Health Score</div>
+                            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                                <Zap className="w-3 h-3 text-emerald-400" />
+                                {optScore ? `$${optScore.totalSavingsUsd.toFixed(2)} potential savings` : 'Analyzing...'}
+                            </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-700 group-hover:text-white transition-all ml-2" />
+                    </div>
+                </Link>
 
                 <div className="flex items-center gap-4">
                     <div className="bg-slate-900 p-1 rounded-xl border border-slate-800 flex gap-1">
