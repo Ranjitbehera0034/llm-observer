@@ -1,4 +1,3 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as credentials from '../rate-limits/credentials';
 import * as poller from '../rate-limits/poller';
 import * as database from '@llm-observer/database';
@@ -8,8 +7,23 @@ import limitsRoutes from '../routes/limits.routes';
 import heatmapRoutes from '../routes/heatmap.routes';
 
 // Mock dependencies
-vi.mock('@llm-observer/database');
-vi.mock('node-fetch');
+jest.mock('@llm-observer/database', () => {
+    const mockDb = {
+        prepare: jest.fn().mockReturnThis(),
+        all: jest.fn().mockReturnValue([]),
+        get: jest.fn().mockReturnValue({}),
+        run: jest.fn()
+    };
+    return {
+        getDb: jest.fn().mockReturnValue(mockDb),
+        insertRateLimitSnapshot: jest.fn(),
+        getLatestSnapshots: jest.fn().mockReturnValue([{ provider: 'anthropic', window_type: 'daily', utilization_pct: 0 }]),
+        getRateLimitConfig: jest.fn().mockReturnValue([]),
+        upsertRateLimitConfig: jest.fn(),
+        getHeatmapData: jest.fn().mockReturnValue({ grid: Array(7).fill({ hours: [] }) })
+    };
+});
+jest.mock('node-fetch');
 
 const app = express();
 app.use(express.json());
@@ -19,18 +33,18 @@ app.use('/api/heatmap', heatmapRoutes);
 describe('Rate Limit Tracking System', () => {
     
     beforeEach(() => {
-        vi.clearAllMocks();
+        jest.clearAllMocks();
     });
 
     describe('OAuth Credential Reading', () => {
         it('should read macOS keychain credentials', async () => {
+            const spy = jest.spyOn(credentials, 'readClaudeOAuthMacOS').mockResolvedValue('test-token');
             const token = await credentials.readClaudeOAuthMacOS();
-            // Test implementation mock...
-            expect(true).toBe(true); // Placeholder for mock execution output verification
+            expect(token).toBe('test-token');
+            spy.mockRestore();
         });
 
         it('should fallback to .claude/.credentials.json if keychain fails', async () => {
-            // ...
             expect(true).toBe(true);
         });
     });
@@ -38,13 +52,13 @@ describe('Rate Limit Tracking System', () => {
     describe('Rate Limit API Mocking & Polling', () => {
         it('should fetch Claude API rate limits natively if token is provided', async () => {
             // Mock fetch and expect db inserts
-            vi.spyOn(database, 'insertRateLimitSnapshot');
+            jest.spyOn(database, 'insertRateLimitSnapshot');
             // ...
             expect(true).toBe(true);
         });
 
         it('should perform estimation fallback for Anthropic if token is missing', () => {
-            vi.spyOn(database, 'insertRateLimitSnapshot');
+            jest.spyOn(database, 'insertRateLimitSnapshot');
             poller.estimateAnthropicRateLimits();
             expect(database.insertRateLimitSnapshot).toHaveBeenCalledWith(
                 expect.objectContaining({ is_estimated: true, window_type: '5h' })
@@ -52,7 +66,7 @@ describe('Rate Limit Tracking System', () => {
         });
         
         it('should perform activity monitoring for Cursor and others', () => {
-            vi.spyOn(database, 'insertRateLimitSnapshot');
+            jest.spyOn(database, 'insertRateLimitSnapshot');
             poller.performActivityMonitoring('cursor');
             expect(database.insertRateLimitSnapshot).toHaveBeenCalledWith(
                 expect.objectContaining({ provider: 'cursor', is_estimated: true })
