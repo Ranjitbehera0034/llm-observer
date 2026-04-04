@@ -7,6 +7,7 @@ import Projects from './pages/Projects';
 import Alerts from './pages/Alerts';
 import Insights from './pages/Insights';
 import Settings from './pages/Settings';
+import Limits from './pages/Limits';
 import Sync from './pages/Sync';
 import Apps from './pages/Apps';
 import Wrapped from './pages/Wrapped';
@@ -26,6 +27,7 @@ function App() {
             <Route path="/requests" element={<Requests />} />
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/agents" element={<Agents />} />
+            <Route path="/limits" element={<Limits />} />
             <Route path="/tools" element={<Tools />} />
             <Route path="/insights" element={<Insights />} />
             <Route path="/projects" element={<Projects />} />
