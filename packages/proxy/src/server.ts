@@ -12,6 +12,7 @@ import { startAnomalyDetection } from './anomalyDetector';
 import { startRetentionCleanup } from './retentionManager';
 import { startCostOptimizer } from './costOptimizer';
 import { startStatsAggregation } from './utils/statsAggregator';
+import { startRateLimitPoller } from './rate-limits/poller';
 import { syncManager } from './syncManager';
 import { usageSyncManager } from './sync';
 import { networkMonitor } from './services/networkMonitor';
@@ -111,6 +112,8 @@ import overviewRoutes from './routes/overview.routes';
 import sessionsRoutes from './routes/sessions.routes';
 import toolRoutes from './routes/tools.routes';
 import agentRoutes from './routes/agents.routes';
+import limitRoutes from './routes/limits.routes';
+import heatmapRoutes from './routes/heatmap.routes';
 
 dashboardApp.use('/api/sync', syncRoutes);
 dashboardApp.use('/api/subscriptions', subscriptionRoutes);
@@ -118,6 +121,8 @@ dashboardApp.use('/api/overview', overviewRoutes);
 dashboardApp.use('/api/sessions', sessionsRoutes);
 dashboardApp.use('/api/tools', toolRoutes);
 dashboardApp.use('/api/agents', agentRoutes);
+dashboardApp.use('/api/limits', limitRoutes);
+dashboardApp.use('/api/heatmap', heatmapRoutes);
 
 // Fallback to static Dashboard build if not hitting API
 // In development: ../../dashboard/dist
@@ -167,6 +172,7 @@ async function bootstrap() {
         startRetentionCleanup();
         startCostOptimizer();
         startStatsAggregation();
+        startRateLimitPoller();
         syncManager.start();
         usageSyncManager.start();
         networkMonitor.start();

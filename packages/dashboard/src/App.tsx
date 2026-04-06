@@ -7,12 +7,14 @@ import Projects from './pages/Projects';
 import Alerts from './pages/Alerts';
 import Insights from './pages/Insights';
 import Settings from './pages/Settings';
+import Limits from './pages/Limits';
 import Sync from './pages/Sync';
 import Apps from './pages/Apps';
 import Wrapped from './pages/Wrapped';
 import Sessions from './pages/Sessions';
 import Agents from './pages/Agents';
 import Tools from './pages/Tools';
+import Optimize from './pages/Optimize';
 
 function App() {
   return (
@@ -21,9 +23,11 @@ function App() {
         <ErrorBoundary fallbackText="The dashboard failed to render this page. Error has been logged.">
           <Routes>
             <Route path="/" element={<Overview />} />
+            <Route path="/optimize" element={<Optimize />} />
             <Route path="/requests" element={<Requests />} />
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/agents" element={<Agents />} />
+            <Route path="/limits" element={<Limits />} />
             <Route path="/tools" element={<Tools />} />
             <Route path="/insights" element={<Insights />} />
             <Route path="/projects" element={<Projects />} />

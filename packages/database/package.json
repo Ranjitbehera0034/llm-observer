@@ -1,29 +1,30 @@
 {
-    "name": "@llm-observer/database",
-    "version": "1.11.0",
-    "main": "./dist/index.js",
-    "module": "./dist/index.mjs",
-    "types": "./dist/index.d.ts",
-    "exports": {
-        ".": {
-            "types": "./dist/index.d.ts",
-            "import": "./dist/index.mjs",
-            "require": "./dist/index.js"
-        }
-    },
-    "scripts": {
-        "build": "tsup src/index.ts --format cjs,esm --dts --clean",
-        "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
-        "test": "jest",
-        "clean": "rm -rf dist"
-    },
-    "dependencies": {
-        "better-sqlite3": "^11.5.0",
-        "node-machine-id": "^1.1.12"
-    },
-    "devDependencies": {
-        "@types/better-sqlite3": "^7.6.11",
-        "tsup": "^8.5.1",
-        "typescript": "^5.5.0"
+  "name": "@llm-observer/database",
+  "version": "1.13.0",
+  "description": "LLM Observer SQLite Database Layer",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
     }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "test": "jest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "node-machine-id": "^1.1.12"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "tsup": "^8.5.1",
+    "typescript": "^5.5.0"
+  }
 }
