@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/logo.svg" alt="LLM Observer" width="120" />
+  <img src="docs/logo.png" alt="LLM Observer" width="400" />
   <br />
   <strong>LLM Observer</strong>
   <br />
