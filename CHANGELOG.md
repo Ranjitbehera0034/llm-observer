@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-04-05 (Rate Limit Tracking & Activity Heatmap)
+### Added
+- **Rate Limit Tracking Engine**: Active background poller using OS Keychain (macOS `security`, Linux `secret-tool`) to directly fetch Claude tokens and poll Anthropic API safely without storing credentials.
+- **Provider Activity Monitor**: Estimates consumption tracking for providers like Cursor, OpenAI, and Aider where token fetching is not authorized.
+- **Deduplication Engine**: Limits tracking utilizing a 2% database tolerance threshold to prevent excessive snapshot bloating.
+- **Dashboard Heatmap**: Visualizes AI cost and sessions across a 24h-7d intensity matrix, empowering workload optimization.
+- **Limits Page**: Primary dashboard center displaying current quotas, 24-hr utilization trend charts, and real-time live-updating countdown timers.
+- **Alert Integrations**: Native notification bell tracking for approaching caps: `Warning` (custom threshold), `Critical` (95%), `Exceeded` (100%).
+- **Optimization Updates**: Included RL1 (approaching rate limitations) and W2 (off-peak workload routing algorithms dependent on heatmap peaks) into the cost-optimizer loop.
+
 ## [1.12.0] - 2026-04-02
 
 ### Added

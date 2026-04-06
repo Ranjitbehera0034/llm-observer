@@ -16,3 +16,4 @@ export * from './repositories/sessions.repo';
 export * from './repositories/parsed_files.repo';
 export * from './repositories/subagents.repo';
 export * from './repositories/tool_usage.repo';
+export * from './repositories/rateLimits.repo';

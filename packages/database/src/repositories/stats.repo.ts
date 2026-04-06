@@ -88,6 +88,48 @@ export const getCostOptimizationSuggestions = (projectId: string = 'default') =>
         });
     }
 
+    // Rule RL1: Fast approaching rate limit
+    const rl1Stmt = db.prepare(`
+        SELECT provider, window_type, utilization_pct, resets_at
+        FROM rate_limit_snapshots
+        WHERE utilization_pct > 0.85
+        GROUP BY provider, window_type
+        HAVING max(captured_at)
+    `);
+    try {
+        const rlWarnings = rl1Stmt.all() as any[];
+        for (const rl of rlWarnings) {
+            suggestions.push({
+                type: 'rate_limit_warning',
+                title: `Approaching ${rl.provider} Rate Limit`,
+                description: `You are at ${Math.round(rl.utilization_pct * 100)}% of your ${rl.window_type} limit. Consider routing non-critical tasks to a different model temporarily.`,
+                savings_usd: 100 // High priority
+            });
+        }
+    } catch { /* Table might not exist in old tests */ }
+
+    // Rule W2: Off-Peak Workloads (Use Heatmap Data)
+    const w2Stmt: any = db.prepare(`
+        SELECT CAST(strftime('%H', started_at) as INTEGER) as hour, sum(estimated_cost_usd) as total_cost
+        FROM sessions
+        WHERE started_at >= datetime('now', '-7 days')
+        GROUP BY hour
+        ORDER BY total_cost DESC
+        LIMIT 1
+    `);
+    
+    try {
+        const peakTime = w2Stmt.get() as any;
+        if (peakTime && peakTime.total_cost > 10) { 
+            suggestions.push({
+                type: 'off_peak_routing',
+                title: 'Off-Peak Workload Shifting',
+                description: `Your peak AI spend occurs around ${peakTime.hour}:00. Shifting non-interactive batch workloads to your quietest hours could dramatically reduce rate limit throttling risks.`,
+                savings_usd: peakTime.total_cost * 0.1 
+            });
+        }
+    } catch { /* Suppress on empty DB */ }
+
     return suggestions.sort((a, b) => b.savings_usd - a.savings_usd);
 };
 
