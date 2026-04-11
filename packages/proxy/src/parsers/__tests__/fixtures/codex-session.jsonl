@@ -1,0 +1,4 @@
+{"type":"message","role":"user","content":"Hi","timestamp":"2026-03-22T18:08:35Z"}
+{"type":"message","role":"assistant","content":"Hello","model":"codex-mini","usage":{"input_tokens":800,"output_tokens":350},"timestamp":"2026-03-22T18:08:40Z"}
+{"type":"tool_call","name":"shell","input":{"command":"ls -la"},"timestamp":"2026-03-22T18:08:42Z"}
+{"type":"tool_result","name":"shell","output":"...","timestamp":"2026-03-22T18:08:43Z"}

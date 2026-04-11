@@ -436,7 +436,11 @@ export default function Settings() {
                                     {[
                                         { id: 'claude-code', name: 'Claude Code', path: '~/.claude/projects/', icon: TerminalSquare },
                                         { id: 'cursor', name: 'Cursor IDE', path: '~/.cursor/ai-tracking/', icon: Database },
-                                        { id: 'aider', name: 'Aider', path: '~/.aider/analytics.jsonl', icon: TerminalSquare }
+                                        { id: 'aider', name: 'Aider', path: '~/.aider/analytics.jsonl', icon: TerminalSquare },
+                                        { id: 'copilot', name: 'GitHub Copilot', path: '~/.../github.copilot/', icon: Database },
+                                        { id: 'windsurf', name: 'Windsurf', path: '~/.../Windsurf/', icon: Database },
+                                        { id: 'cline', name: 'Cline', path: '~/.../globalStorage/', icon: TerminalSquare },
+                                        { id: 'codex', name: 'OpenAI Codex CLI', path: '~/.codex/sessions/', icon: TerminalSquare }
                                     ].map(tool => {
                                         const statusObj = sessionProviders?.[tool.id];
                                         const isDetected = statusObj && statusObj.status !== 'not found';
