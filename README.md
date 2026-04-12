@@ -14,8 +14,7 @@
 </p>
 
 <p align="center">
-  Free, open-source, local-first AI cost tracking and observability.<br />
-  See every dollar across Claude Code, Cursor, Aider, and more — without changing how you work.
+  See every dollar across 7 AI coding tools: Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI — without changing how you work.
 </p>
 
 <p align="center">
@@ -74,7 +73,7 @@ On first launch, LLM Observer automatically detects your installed AI tools, par
 
 ### Session Tracking (Zero Config)
 
-- **Auto-Detection** — Automatically finds Claude Code, Cursor, and Aider data on your machine
+- **Auto-Detection** — Automatically finds Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI data on your machine
 - **Session Explorer** — Browse every AI conversation with cost, duration, tokens, model, and project
 - **Incremental Parsing** — Only new/modified files are re-parsed on startup (fast after first run)
 - **Session Type Labels** — Automatically classifies sessions as "interactive" or "agentic"
@@ -226,6 +225,10 @@ llm-observer status             # Show tracking status
 | Claude Code | `~/.claude/projects/` | JSONL |
 | Cursor IDE | `~/.cursor/ai-tracking/ai-code-tracking.db` | SQLite |
 | Aider | `~/.aider/analytics.jsonl` | JSONL |
+| GitHub Copilot | `~/Library/.../github.copilot-chat/state.vscdb` | SQLite |
+| Windsurf | `~/Library/.../Windsurf/User/globalStorage/*/state.vscdb` | SQLite |
+| Cline / Roo Code | `~/Library/.../globalStorage/{extensionId}/tasks/*/api_conversation_history.json` | JSON |
+| OpenAI Codex CLI | `~/.codex/sessions/*.jsonl` | JSONL |
 
 All files are read in **read-only mode**. LLM Observer never modifies any AI tool's data.
 
@@ -316,7 +319,7 @@ npm test             # Run all tests
 |---------|---------|
 | v1.12.0 | Optimization engine (20+ rules) |
 | v1.13.0 | Rate limit tracking + activity heatmap |
-| v1.14.0 | Team dashboard + per-developer tracking |
+| v1.14.0 | 7-tool parser parity (Copilot, Windsurf, Cline, Codex) |
 | v2.0.0 | Desktop app (Tauri) + Homebrew + 7-tool parsers |
 | v2.1.0 | Enterprise (SSO, audit logging, cost allocation) |
 | v2.2.0 | Agent platform (per-customer attribution, guardrails) |
@@ -368,7 +371,7 @@ The parser handles format variations gracefully — malformed files are skipped,
 Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Help needed with:**
-- Session file parsers (Windsurf, Cline, Codex, Copilot)
+- Session file parsers (JetBrains AI, Continue, Gemini Code Assist)
 - Optimization rules
 - Dashboard UI improvements
 - Test coverage

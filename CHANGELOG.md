@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-04-11 (7-Tool Parser Parity)
+### Added
+- **GitHub Copilot parser** — Auto-detect and parse Copilot chat sessions from VS Code's extension storage. Token counts estimated from content length. Cost shown as API-equivalent for subscription value assessment.
+- **Windsurf parser** — Full session tracking with exact token counts, cache metrics (read + create), and tool call extraction.
+- **Cline / Roo Code parser** — Per-task session tracking from all three extension variants (claude-dev, roo-cline, roo-code). Full token counts, cache metrics, and tool call data per API request.
+- **OpenAI Codex CLI parser** — JSONL session parsing with token counts, model tracking, and tool call extraction.
+- Safe SQLite read-only access with `SQLITE_BUSY` concurrency fallback (copy-and-read).
+- "Estimated" indicator (~) for sessions without direct token counts.
+- 5 new app aliases for network monitor recognition.
+- Settings → Session Sources now fully displays all 7 integrated auto-detected sources securely.
+
+### Changed
+- Session parser scans expanded dramatically accommodating new directories and extensions globally.
+- Global spend aggregation properly unifies interactive and agentic tokens.
 ## [1.13.0] - 2026-04-05 (Rate Limit Tracking & Activity Heatmap)
 ### Added
 - **Rate Limit Tracking Engine**: Active background poller using OS Keychain (macOS `security`, Linux `secret-tool`) to directly fetch Claude tokens and poll Anthropic API safely without storing credentials.

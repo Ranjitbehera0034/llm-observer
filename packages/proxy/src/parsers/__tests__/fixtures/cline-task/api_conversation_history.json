@@ -1,0 +1,27 @@
+[
+  {
+    "role": "user",
+    "content": [
+      { "type": "text", "text": "Execute a script" }
+    ]
+  },
+  {
+    "role": "assistant",
+    "content": [
+      { "type": "text", "text": "Sure" }
+    ],
+    "usage": {
+      "input_tokens": 3200,
+      "output_tokens": 1100,
+      "cache_creation_input_tokens": 2000,
+      "cache_read_input_tokens": 1200
+    },
+    "model": "claude-sonnet-4-20250514",
+    "tool_use": [
+      {
+        "name": "write_to_file",
+        "input": { "path": "src/index.ts", "content": "..." }
+      }
+    ]
+  }
+]
