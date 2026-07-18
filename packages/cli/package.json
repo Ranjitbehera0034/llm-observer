@@ -54,11 +54,12 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "better-sqlite3": "^11.5.0",
     "chalk": "^4.1.2",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.3",
     "node-fetch": "^2.7.0",
-    "better-sqlite3": "^11.5.0"
+    "update-notifier": "^7.3.1"
   },
   "devDependencies": {
     "@llm-observer/database": "*",

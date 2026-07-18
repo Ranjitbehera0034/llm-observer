@@ -198,7 +198,7 @@ LLM_OBSERVER_PORT=4001 LLM_OBSERVER_PROXY_PORT=4000 npx llm-observer start
 - Free tier: 7-day automatic log retention
 - Pro tier: 90-day retention
 - To delete all data: `llm-observer reset --force` (or `rm ~/.llm-observer/data.db`)
-- Zero telemetry, zero analytics, zero outbound connections except: your configured LLM provider, and — only if you opt in — the AI Analyst (aggregated metadata only) and license validation (a license key, nothing else)
+- Zero telemetry, zero analytics, zero outbound connections except: your configured LLM provider, a background npm-registry check for newer versions (package name only, disable with `NO_UPDATE_NOTIFIER=1`), and — only if you opt in — the AI Analyst (aggregated metadata only) and license validation (a license key, nothing else)
 
 ---
 

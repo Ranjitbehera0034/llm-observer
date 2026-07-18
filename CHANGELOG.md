@@ -48,6 +48,12 @@ changes required to keep using what you already had.
   `packages/desktop/SIGNING.md`)
 - A proper post-payment `/thanks` page on the landing site for the Razorpay
   checkout callback
+- **Update notifications** — the CLI now checks the public npm registry in the
+  background and prints a short heads-up when a newer version is published, so
+  a global-install user actually discovers releases like this one instead of
+  silently staying on 1.14.0 forever. Opt out with `NO_UPDATE_NOTIFIER=1` or
+  `--no-update-notifier`; auto-skipped in CI. Sends nothing but the package
+  name — no telemetry, no usage data.
 
 ### Changed
 - Refreshed pricing across every supported provider (Anthropic, OpenAI, Google,
