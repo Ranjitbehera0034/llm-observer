@@ -42,8 +42,13 @@ export async function buildRuleContext(days: number = 30): Promise<RuleContext> 
     // Active subscriptions
     const subscriptions = getSubscriptions(true);
 
-    // ROI Data (placeholders for now if not fully implemented in DB)
-    const roiData: any[] = []; 
+    // ROI data: real daily spend series (reusing the query above rather than
+    // a placeholder) — the base signal rules and the dashboard need to reason
+    // about spend trends over time.
+    const roiData = dailyCosts.map((d: any) => ({
+        date: d.date,
+        spend_usd: d.cost || 0
+    }));
 
     return {
         days,

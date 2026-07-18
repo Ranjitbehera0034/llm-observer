@@ -7,6 +7,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-18
+
+**Upgrading from 1.14.0 is safe and automatic.** There are no breaking changes:
+`npm install -g llm-observer@latest` (or download the new desktop build), then run
+it as usual — the local SQLite schema migrates itself in place on next start (two
+new migrations, both additive: a `model_pricing` uniqueness fix and the new
+`response_drift_baselines` table), your existing sessions and settings are
+untouched, and `PROXY_PORT`/`DASHBOARD_PORT` env vars still work alongside the
+newer `LLM_OBSERVER_*` names. No manual migration step, no re-auth, no config
+changes required to keep using what you already had.
+
+### Added
+- **PII redaction** (opt-in, off by default) — regex + Luhn-validated detection for
+  email, phone, SSN, credit card, AWS keys, and API tokens on proxied traffic
+- **Response drift detection** (opt-in) — flags when a project's responses start
+  statistically diverging from their own historical baseline
+- **A/B comparison** (new **Compare** dashboard page) — statistically honest
+  comparison (two-sample/two-proportion z-tests) between models, projects, or time
+  windows, built from data you already have
+- **Reasoning-chain debugger** — step-by-step tool-call reconstruction for any
+  request in Request Detail, for both Anthropic- and OpenAI-shaped payloads
+- **Ollama as a first-class provider** — local models route through the proxy and
+  are always tracked at $0 cost, no API key required
+- **AI Analyst** (opt-in, bring-your-own-key) — Claude-generated plain-English
+  spend summary and recommendations, built only from aggregated metadata; your
+  prompts and responses are never sent
+- **Real ROI / plan-value** — the Health Score now shows an actual "×your $19/mo
+  plan cost" multiple instead of a placeholder
+- **Team auth backend** (Phase 1 of SSO, on `team-server`) — password + OIDC
+  login and team membership; API-only in this release, no dashboard UI yet
+- `scripts/verify-costs.js` — an independent script anyone can run to recompute
+  their own token counts/cost straight from raw session files and diff against
+  what the app stored, without trusting the app's own code to grade itself
+- `parser-format-drift` CI job — recorded fixtures of real Claude Code JSONL
+  formats (current and legacy), checked against a golden manifest on every push,
+  so an upstream editor format change is caught before it ships as a $0 session
+- Signed release infrastructure: `CHECKSUMS.txt` attached to every npm release;
+  desktop app signing scaffolding for the Tauri auto-updater (see
+  `packages/desktop/SIGNING.md`)
+- A proper post-payment `/thanks` page on the landing site for the Razorpay
+  checkout callback
+- **Update notifications** — the CLI now checks the public npm registry in the
+  background and prints a short heads-up when a newer version is published, so
+  a global-install user actually discovers releases like this one instead of
+  silently staying on 1.14.0 forever. Opt out with `NO_UPDATE_NOTIFIER=1` or
+  `--no-update-notifier`; auto-skipped in CI. Sends nothing but the package
+  name — no telemetry, no usage data.
+
+### Changed
+- Refreshed pricing across every supported provider (Anthropic, OpenAI, Google,
+  xAI, DeepSeek, Mistral) and added two new providers (Zhipu GLM, Moonshot Kimi)
+- Rewrote `README.md`, `packages/cli/README.md` (the npm registry page), and
+  `CONTRIBUTING.md` to match actual current behavior — corrected the CLI command
+  reference, the dashboard page list, and the repo structure
+
+### Fixed
+- **Claude Code parser was reading usage from a legacy top-level field shape only**
+  — the current Claude Code log format nests it under `message`, so real sessions
+  were silently showing $0. This was the most impactful fix in this release.
+- `publish.yml`'s npm auth token was wrapped in escaped `\$\{\{ \}\}` and would
+  never have resolved to the real secret
+- India pricing in `packages/cli/README.md` (₹1,499) didn't match what checkout
+  actually charges (₹1,599)
+- `packages/desktop/src-tauri/tauri.conf.json`'s version was stuck at `1.0.0`
+  while the rest of the monorepo had moved on, which would have mistagged
+  automated desktop releases
+
+### Removed
+- The dead, pre-restructure `apps/tauri/` duplicate of the desktop app (including
+  a 74MB compiled binary that shouldn't have been committed) — `packages/desktop`
+  is the only Tauri app in this repo now
+- `desktop-release.yml`, a broken CI workflow pointing at the removed path above
+
+## [1.14.0] - 2026-04-11 (7-Tool Parser Parity)
+### Added
+- **GitHub Copilot parser** — Auto-detect and parse Copilot chat sessions from VS Code's extension storage. Token counts estimated from content length. Cost shown as API-equivalent for subscription value assessment.
+- **Windsurf parser** — Full session tracking with exact token counts, cache metrics (read + create), and tool call extraction.
+- **Cline / Roo Code parser** — Per-task session tracking from all three extension variants (claude-dev, roo-cline, roo-code). Full token counts, cache metrics, and tool call data per API request.
+- **OpenAI Codex CLI parser** — JSONL session parsing with token counts, model tracking, and tool call extraction.
+- Safe SQLite read-only access with `SQLITE_BUSY` concurrency fallback (copy-and-read).
+- "Estimated" indicator (~) for sessions without direct token counts.
+- 5 new app aliases for network monitor recognition.
+- Settings → Session Sources now fully displays all 7 integrated auto-detected sources securely.
+
+### Changed
+- Session parser scans expanded dramatically accommodating new directories and extensions globally.
+- Global spend aggregation properly unifies interactive and agentic tokens.
 ## [1.13.0] - 2026-04-05 (Rate Limit Tracking & Activity Heatmap)
 ### Added
 - **Rate Limit Tracking Engine**: Active background poller using OS Keychain (macOS `security`, Linux `secret-tool`) to directly fetch Claude tokens and poll Anthropic API safely without storing credentials.

@@ -1,4 +1,4 @@
-import { isValidLicenseKeyFormat } from '../../src/keyGenerator.js';
+import { verifyLicenseKey } from '../../src/keyGenerator.js';
 
 /**
  * GET/POST /license/validate
@@ -49,24 +49,22 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     // ── Local PRO_ key validation (no DB needed) ──────────────────────────────
+    // verifyLicenseKey re-derives the HMAC fingerprint from the key's own
+    // components — a key that merely *looks* right but wasn't issued by this
+    // server (wrong fingerprint) is rejected.
     if (key.startsWith('PRO_')) {
-        const isValid = isValidLicenseKeyFormat(key);
-        if (isValid) {
-            // Re-derive the fingerprint from the key components to verify it wasn't tampered
-            // Format: PRO_{PROVIDER}_{8-CHAR-HMAC}_{SUBSCRIPTION_ID}
+        if (verifyLicenseKey(key)) {
             const parts = key.split('_');
-            if (parts.length >= 4) {
-                return new Response(JSON.stringify({
-                    valid: true,
-                    tier: 'pro',
-                    message: 'License verified. Enjoy Pro features!',
-                    provider: parts[1].toLowerCase(),
-                }), { status: 200, headers: corsHeaders });
-            }
+            return new Response(JSON.stringify({
+                valid: true,
+                tier: 'pro',
+                message: 'License verified. Enjoy Pro features!',
+                provider: parts[1].toLowerCase(),
+            }), { status: 200, headers: corsHeaders });
         }
         return new Response(JSON.stringify({
             valid: false,
-            error: 'Invalid license key format.'
+            error: 'Invalid or forged license key.'
         }), { status: 400, headers: corsHeaders });
     }
 

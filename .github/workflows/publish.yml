@@ -7,17 +7,33 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20.x'
           registry-url: 'https://registry.npmjs.org'
-          
+
       - run: npm install
       - run: npm run build --workspaces --if-present
+
+      - name: Checksum the package that will be published
+        working-directory: packages/cli
+        run: |
+          npm pack
+          sha256sum llm-observer-*.tgz > CHECKSUMS.txt
+          cat CHECKSUMS.txt
+
+      - name: Attach checksum to the GitHub release
+        working-directory: packages/cli
+        run: gh release upload "${{ github.event.release.tag_name }}" CHECKSUMS.txt --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - run: npm publish
         working-directory: packages/cli
         env:
-          NODE_AUTH_TOKEN: \$\{\{ secrets.NPM_TOKEN \}\}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

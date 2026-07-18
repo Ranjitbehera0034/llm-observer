@@ -1,6 +1,6 @@
 {
   "name": "@llm-observer/proxy",
-  "version": "1.13.0",
+  "version": "2.0.0",
   "description": "Local LLM Observability Proxy",
   "main": "dist/index.js",
   "scripts": {
@@ -13,6 +13,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
     "@llm-observer/database": "*",
     "chalk": "^4.1.2",
     "cors": "^2.8.5",

@@ -2,10 +2,10 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 
-// By default, store DB in ~/.llm-observer/data.db
+// DB lives in LLM_OBSERVER_DATA_DIR if set, otherwise ~/.llm-observer/data.db
 export const getDbPath = () => {
     const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-    const dbDir = path.join(homeDir, '.llm-observer');
+    const dbDir = process.env.LLM_OBSERVER_DATA_DIR || path.join(homeDir, '.llm-observer');
     if (!fs.existsSync(dbDir)) {
         fs.mkdirSync(dbDir, { recursive: true });
     }

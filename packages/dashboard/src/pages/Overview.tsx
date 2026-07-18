@@ -79,7 +79,7 @@ export default function Overview() {
     const [showAddSub, setShowAddSub] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'today' | 'week' | 'month'>('today');
-    const [optScore, setOptScore] = useState<{ score: number; totalSavingsUsd: number } | null>(null);
+    const [optScore, setOptScore] = useState<{ score: number; totalSavingsUsd: number; planValue?: { valueMultiple: number; planCostMonthlyUsd: number } } | null>(null);
     const [rateLimits, setRateLimits] = useState<any[]>([]);
 
     const fetchData = useCallback(async () => {
@@ -198,6 +198,11 @@ export default function Overview() {
                                 <Zap className="w-3 h-3 text-emerald-400" />
                                 {optScore ? `$${optScore.totalSavingsUsd.toFixed(2)} potential savings` : 'Analyzing...'}
                             </div>
+                            {optScore?.planValue && optScore.planValue.valueMultiple > 0 && (
+                                <div className="text-[10px] text-slate-500 mt-0.5">
+                                    {optScore.planValue.valueMultiple}× your ${optScore.planValue.planCostMonthlyUsd}/mo plan cost
+                                </div>
+                            )}
                         </div>
                         <ChevronRight className="w-4 h-4 text-slate-700 group-hover:text-white transition-all ml-2" />
                     </div>

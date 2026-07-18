@@ -19,9 +19,11 @@ import { setupActivateCommands } from './commands/activate';
 import { setupResetCommands } from './commands/reset';
 //import { setupUpgradeCommands } from './commands/upgrade';
 import { initDb } from '@llm-observer/database';
+import { checkForUpdate } from './updateNotice';
 import { version } from '../package.json';
 
 initDb();
+checkForUpdate('llm-observer', version);
 
 export const banner = `
 ${chalk.bold.blue('  _      _      __  __    ____  _                              ')}

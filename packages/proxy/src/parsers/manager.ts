@@ -1,6 +1,10 @@
 import * as claudeParser from './claude';
 import * as cursorParser from './cursor';
 import * as aiderParser from './aider';
+import * as codexParser from './codex';
+import * as clineParser from './cline';
+import * as windsurfParser from './windsurf';
+import * as copilotParser from './copilot';
 import { aggregateToolUsage } from './toolAggregator';
 
 const STATE = {
@@ -9,20 +13,23 @@ const STATE = {
     providers: {
         'claude-code': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
         'cursor': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
-        'aider': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } }
+        'aider': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
+        'codex': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
+        'cline': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
+        'windsurf': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
+        'copilot': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } }
     }
 };
 
 export const initParsers = () => {
     // 1. Detect available providers
-    const hasClaude = claudeParser.detector();
-    if (hasClaude) STATE.providers['claude-code'].status = 'found';
-    
-    const hasCursor = cursorParser.detector();
-    if (hasCursor) STATE.providers['cursor'].status = 'found';
-    
-    const hasAider = aiderParser.detector();
-    if (hasAider) STATE.providers['aider'].status = 'found';
+    if (claudeParser.detector()) STATE.providers['claude-code'].status = 'found';
+    if (cursorParser.detector()) STATE.providers['cursor'].status = 'found';
+    if (aiderParser.detector()) STATE.providers['aider'].status = 'found';
+    if (codexParser.detector()) STATE.providers['codex'].status = 'found';
+    if (clineParser.detector()) STATE.providers['cline'].status = 'found';
+    if (windsurfParser.detector()) STATE.providers['windsurf'].status = 'found';
+    if (copilotParser.detector()) STATE.providers['copilot'].status = 'found';
 
     // 2. Perform initial parse without blocking
     triggerParseCycle().catch(err => {
@@ -45,28 +52,30 @@ export const triggerParseCycle = async () => {
 
     STATE.isRunning = true;
     try {
-        if (STATE.providers['claude-code'].status !== 'not found') {
-            STATE.providers['claude-code'].status = 'parsing';
-            await claudeParser.parse((c, t) => {
-                STATE.providers['claude-code'].progress = { current: c, total: t };
-            });
-            STATE.providers['claude-code'].status = 'success';
-        }
+        const parsersInfo = [
+            { id: 'claude-code', mod: claudeParser },
+            { id: 'cursor', mod: cursorParser },
+            { id: 'aider', mod: aiderParser },
+            { id: 'codex', mod: codexParser },
+            { id: 'cline', mod: clineParser },
+            { id: 'windsurf', mod: windsurfParser },
+            { id: 'copilot', mod: copilotParser }
+        ];
 
-        if (STATE.providers['cursor'].status !== 'not found') {
-            STATE.providers['cursor'].status = 'parsing';
-            await cursorParser.parse((c, t) => {
-                STATE.providers['cursor'].progress = { current: c, total: t };
-            });
-            STATE.providers['cursor'].status = 'success';
-        }
-
-        if (STATE.providers['aider'].status !== 'not found') {
-            STATE.providers['aider'].status = 'parsing';
-            await aiderParser.parse((c, t) => {
-                STATE.providers['aider'].progress = { current: c, total: t };
-            });
-            STATE.providers['aider'].status = 'success';
+        for (const info of parsersInfo) {
+            const state = STATE.providers[info.id as keyof typeof STATE.providers];
+            if (state.status !== 'not found') {
+                state.status = 'parsing';
+                try {
+                    await info.mod.parse((c, t) => {
+                        state.progress = { current: c, total: t };
+                    });
+                    state.status = 'success';
+                } catch (e) {
+                    console.error(`[Parser Manager] Error parsing ${info.id}:`, e);
+                    state.status = 'error';
+                }
+            }
         }
 
         // After all individual parsers finish, run cross-provider aggregation

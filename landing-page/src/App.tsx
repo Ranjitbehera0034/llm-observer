@@ -1,8 +1,119 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Zap, Bell, CreditCard, Terminal, Download, ArrowRight, Check } from 'lucide-react';
+import { Shield, Zap, Bell, CreditCard, Terminal, Download, ArrowRight, Check, Mail } from 'lucide-react';
+
+const LEMONSQUEEZY_CHECKOUT_URL = import.meta.env.VITE_LEMONSQUEEZY_CHECKOUT_URL
+    || 'https://llmobserver.lemonsqueezy.com/checkout/buy/pro-monthly';
+const LICENSE_SERVER_URL = import.meta.env.VITE_LICENSE_SERVER_URL
+    || 'https://api.llmobserver.com';
+
+// Razorpay checkout: collect an email (the license key is delivered there),
+// ask the license server for a hosted Payment Link, then redirect.
+function RazorpayCheckout() {
+    const [open, setOpen] = useState(false);
+    const [email, setEmail] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const start = async () => {
+        setBusy(true); setError(null);
+        try {
+            const res = await fetch(`${LICENSE_SERVER_URL}/checkout/razorpay`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email.trim() }),
+            });
+            const data = await res.json();
+            if (!res.ok) { setError(data.error || 'Checkout failed.'); return; }
+            window.location.href = data.url;
+        } catch {
+            setError('Could not reach the checkout service. Please try again.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    if (!open) {
+        return (
+            <button onClick={() => setOpen(true)}
+                className="w-full h-12 rounded-2xl border border-white/15 text-white/80 font-semibold hover:bg-white/5 transition-all flex items-center justify-center gap-2 text-sm">
+                <CreditCard className="w-4 h-4" />
+                Pay via UPI / Razorpay (INR)
+            </button>
+        );
+    }
+    return (
+        <div className="w-full space-y-2">
+            <div className="flex gap-2">
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                    placeholder="you@company.com" autoFocus
+                    className="flex-1 h-12 rounded-2xl bg-white/5 border border-white/15 px-4 text-sm text-white outline-none focus:border-blue-500/50" />
+                <button onClick={start} disabled={busy || !email.trim()}
+                    className="px-5 h-12 rounded-2xl bg-blue-500 text-white font-bold text-sm hover:bg-blue-400 transition-colors disabled:opacity-50">
+                    {busy ? '…' : 'Pay'}
+                </button>
+            </div>
+            <p className="text-[11px] text-white/40">Your license key is emailed to this address after payment.</p>
+            {error && <p className="text-xs text-red-400">{error}</p>}
+        </div>
+    );
+}
+
+// Razorpay's payment link redirects here after checkout (see CHECKOUT_CALLBACK_URL /
+// callback_url in packages/license-server/api/checkout/razorpay.ts), appending its own
+// razorpay_payment_link_* query params. No router library is pulled in for one static
+// route — a plain pathname check is enough for a single post-payment confirmation page.
+const ThanksPage: React.FC = () => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('razorpay_payment_link_status');
+    const failed = status === 'cancelled' || status === 'expired';
+
+    return (
+        <div className="min-h-screen bg-[#0c0c0e] text-white flex items-center justify-center px-6">
+            <div className="max-w-lg w-full text-center">
+                <div className="w-16 h-16 accent-gradient rounded-2xl flex items-center justify-center mx-auto mb-8 glow">
+                    {failed ? <CreditCard className="w-8 h-8 text-white" /> : <Mail className="w-8 h-8 text-white" />}
+                </div>
+                {failed ? (
+                    <>
+                        <h1 className="text-3xl font-bold mb-4">Payment not completed</h1>
+                        <p className="text-white/60 mb-10 leading-relaxed">
+                            Your Razorpay checkout was cancelled or expired, so no charge was made. Head back to the
+                            pricing section to try again.
+                        </p>
+                    </>
+                ) : (
+                    <>
+                        <h1 className="text-3xl font-bold mb-4">Thanks — you're all set.</h1>
+                        <p className="text-white/60 mb-10 leading-relaxed">
+                            Your payment went through. Your Pro license key is on its way to your inbox — it's emailed
+                            automatically once Razorpay confirms the charge, which usually takes a few seconds and
+                            occasionally a couple of minutes.
+                        </p>
+                        <div className="glass rounded-2xl p-6 mb-10 text-left space-y-3">
+                            <p className="text-sm font-semibold text-white/80">Next steps</p>
+                            <p className="text-sm text-white/50">1. Check your email for the license key.</p>
+                            <p className="text-sm text-white/50">2. Run <code className="text-blue-400">npx llm-observer start</code> if you haven't already.</p>
+                            <p className="text-sm text-white/50">3. Activate with <code className="text-blue-400">llm-observer activate &lt;key&gt;</code>.</p>
+                        </div>
+                    </>
+                )}
+                <a href="/" className="inline-flex items-center gap-2 px-8 h-14 rounded-2xl bg-white text-black font-bold hover:bg-white/90 transition-all">
+                    <ArrowRight className="w-4 h-4 rotate-180" /> Back to LLM Observer
+                </a>
+                <p className="text-white/30 text-xs mt-8">
+                    License key not showing up after a few minutes? Email <a href="mailto:support@llm-observer.com" className="underline hover:text-white/60">support@llm-observer.com</a>.
+                </p>
+            </div>
+        </div>
+    );
+};
 
 const App: React.FC = () => {
+    if (window.location.pathname === '/thanks') {
+        return <ThanksPage />;
+    }
+
     return (
         <div className="min-h-screen bg-[#0c0c0e] text-white selection:bg-blue-500/30">
             {/* Navigation */}
@@ -145,13 +256,16 @@ const App: React.FC = () => {
                                     </li>
                                 ))}
                             </ul>
-                            <a
-                                href="https://llmobserver.lemonsqueezy.com/checkout/buy/pro-monthly"
-                                target="_blank" rel="noopener noreferrer"
-                                className="w-full h-14 rounded-2xl bg-white text-black font-bold hover:bg-white/90 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] flex items-center justify-center gap-2">
-                                <ArrowRight className="w-4 h-4" />
-                                Upgrade to Pro — $19/mo
-                            </a>
+                            <div className="space-y-3">
+                                <a
+                                    href={LEMONSQUEEZY_CHECKOUT_URL}
+                                    target="_blank" rel="noopener noreferrer"
+                                    className="w-full h-14 rounded-2xl bg-white text-black font-bold hover:bg-white/90 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] flex items-center justify-center gap-2">
+                                    <ArrowRight className="w-4 h-4" />
+                                    Upgrade to Pro — $19/mo
+                                </a>
+                                <RazorpayCheckout />
+                            </div>
                         </div>
                     </div>
                 </div>

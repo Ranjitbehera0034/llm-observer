@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, 'release/**' ]
+    branches: [ main, develop, 'release/**' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 jobs:
   build:
@@ -23,6 +23,31 @@ jobs:
       
     - name: Build all packages
       run: npm run build:ci
-      
+
     - name: Run tests
       run: npm test
+
+  parser-format-drift:
+    runs-on: ubuntu-latest
+    # Distinct, narrowly-scoped check: recomputes each recorded editor-log
+    # fixture against its golden expectation (packages/proxy/src/parsers/__tests__/fixtures/).
+    # A red X here means a parser's interpretation of a known log format has
+    # drifted — either an editor changed its format upstream, or a parser
+    # edit broke handling of an older format still on someone's disk — and
+    # is meant to be caught here before it ships as a user-facing $0 session.
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Install dependencies
+      run: npm install
+
+    - name: Build database package
+      run: npm run build --workspace=@llm-observer/database
+
+    - name: Run recorded-format matrix
+      run: npm test --workspace=@llm-observer/proxy -- formatMatrix

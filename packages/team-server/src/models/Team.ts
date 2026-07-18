@@ -1,5 +1,16 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
+export interface ISsoConfig {
+    enabled: boolean;
+    provider: 'oidc';
+    issuer: string;
+    client_id: string;
+    /** Never returned in API responses. */
+    client_secret: string;
+    /** When true, members must sign in via SSO — password login is disabled for this team. */
+    enforced: boolean;
+}
+
 export interface ITeam extends Document {
     name: string;
     slug: string;
@@ -11,8 +22,18 @@ export interface ITeam extends Document {
     team_monthly_budget?: number;
     alert_webhook_url?: string;
     stripe_subscription_id?: string;
+    sso_config?: ISsoConfig;
     created_at: Date;
 }
+
+const SsoConfigSchema = new Schema<ISsoConfig>({
+    enabled: { type: Boolean, default: false },
+    provider: { type: String, enum: ['oidc'], default: 'oidc' },
+    issuer: { type: String },
+    client_id: { type: String },
+    client_secret: { type: String, select: false },
+    enforced: { type: Boolean, default: false }
+}, { _id: false });
 
 const TeamSchema: Schema = new Schema({
     name: { type: String, required: true },
@@ -25,6 +46,7 @@ const TeamSchema: Schema = new Schema({
     team_monthly_budget: { type: Number },
     alert_webhook_url: { type: String },
     stripe_subscription_id: { type: String },
+    sso_config: { type: SsoConfigSchema },
     created_at: { type: Date, default: Date.now }
 });
 

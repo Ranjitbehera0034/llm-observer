@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Box, CheckCircle, Copy, Code, MessageSquare, Terminal } from 'lucide-react';
+import { ArrowLeft, Box, CheckCircle, Copy, Code, MessageSquare, Terminal, Wrench, AlertTriangle, GitBranch } from 'lucide-react';
 import { StatusBadge, formatTimeAgo } from '../components/StatusBadge';
 import { API_BASE_URL } from '../config';
 
@@ -8,10 +8,54 @@ interface RequestDetailProps {
     onBack: () => void;
 }
 
+const ROLE_COLOR: Record<string, string> = {
+    system: 'text-textMuted',
+    user: 'text-white',
+    assistant: 'text-primary',
+    tool: 'text-amber-400'
+};
+
+function ChainStepCard({ step }: { step: any }) {
+    if (step.type === 'tool_use') {
+        return (
+            <div className="flex gap-3 items-start">
+                <div className="p-1.5 rounded-lg bg-amber-400/10 shrink-0 mt-0.5"><Wrench className="w-3.5 h-3.5 text-amber-400" /></div>
+                <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-1">{step.role} called {step.toolName || 'tool'}</p>
+                    <pre className="text-xs font-mono text-white/80 bg-black/30 rounded-lg p-3 overflow-x-auto">{JSON.stringify(step.toolInput, null, 2)}</pre>
+                </div>
+            </div>
+        );
+    }
+    if (step.type === 'tool_result') {
+        return (
+            <div className="flex gap-3 items-start">
+                <div className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${step.isError ? 'bg-danger/10' : 'bg-white/5'}`}>
+                    {step.isError ? <AlertTriangle className="w-3.5 h-3.5 text-danger" /> : <Terminal className="w-3.5 h-3.5 text-textMuted" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${step.isError ? 'text-danger' : 'text-textMuted'}`}>Tool result{step.isError ? ' (error)' : ''}</p>
+                    <pre className="text-xs font-mono text-white/70 bg-black/30 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{step.text}</pre>
+                </div>
+            </div>
+        );
+    }
+    return (
+        <div className="flex gap-3 items-start">
+            <div className="p-1.5 rounded-lg bg-white/5 shrink-0 mt-0.5"><MessageSquare className={`w-3.5 h-3.5 ${ROLE_COLOR[step.role] || 'text-white'}`} /></div>
+            <div className="flex-1 min-w-0">
+                <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${ROLE_COLOR[step.role] || 'text-white'}`}>{step.role}</p>
+                <p className="text-sm text-white/80 whitespace-pre-wrap">{step.text}</p>
+            </div>
+        </div>
+    );
+}
+
 export function RequestDetail({ requestId, onBack }: RequestDetailProps) {
     const [detail, setDetail] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [copied, setCopied] = useState<string | null>(null);
+    const [view, setView] = useState<'chain' | 'raw'>('chain');
 
     useEffect(() => {
         fetch(`${API_BASE_URL}/api/requests/${requestId}`)
@@ -120,6 +164,49 @@ export function RequestDetail({ requestId, onBack }: RequestDetailProps) {
                 ))}
             </div>
 
+            <div className="flex items-center gap-2 mb-6">
+                <button
+                    onClick={() => setView('chain')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-colors ${view === 'chain' ? 'bg-primary text-white' : 'bg-surfaceHighlight text-textMuted hover:text-white'}`}
+                >
+                    <GitBranch className="w-3.5 h-3.5" /> Reasoning Chain
+                </button>
+                <button
+                    onClick={() => setView('raw')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-colors ${view === 'raw' ? 'bg-primary text-white' : 'bg-surfaceHighlight text-textMuted hover:text-white'}`}
+                >
+                    <Code className="w-3.5 h-3.5" /> Raw JSON
+                </button>
+            </div>
+
+            {view === 'chain' && (
+                <div className="glass-panel border-white/5 shadow-2xl p-8 mb-12">
+                    {!detail.reasoningChain?.responseParsed && (
+                        <div className="flex items-start gap-3 text-xs text-textMuted bg-white/5 rounded-xl p-4 mb-6">
+                            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                            <p>
+                                {detail.is_streaming
+                                    ? "This response was streamed, so its tool calls and text can't be reliably reconstructed step-by-step — only the request-side history below is shown. See Raw JSON for the full streamed payload."
+                                    : "The response body couldn't be structurally parsed (empty, malformed, or an unrecognized shape) — only the request-side history below is shown."}
+                            </p>
+                        </div>
+                    )}
+                    {detail.reasoningChain?.steps?.length > 0 ? (
+                        <div className="space-y-5">
+                            {detail.reasoningChain.steps.map((step: any, i: number) => (
+                                <div key={i}>
+                                    {i > 0 && <div className="h-4 w-px bg-white/10 ml-[15px] mb-5" />}
+                                    <ChainStepCard step={step} />
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-sm text-textMuted text-center py-12">No conversation steps could be parsed from this request.</p>
+                    )}
+                </div>
+            )}
+
+            {view === 'raw' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Request */}
                 <div className="flex flex-col h-full">
@@ -175,6 +262,7 @@ export function RequestDetail({ requestId, onBack }: RequestDetailProps) {
                     </div>
                 </div>
             </div>
+            )}
         </div>
     );
 }
