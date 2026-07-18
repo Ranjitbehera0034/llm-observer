@@ -4,7 +4,7 @@ import { syncPricingToDb, PricingRecord } from './repositories/pricing.repo';
 /**
  * LLM Model Pricing Data
  * All prices in USD per 1 Million tokens
- * Last verified: March 2026
+ * Last verified: July 2026
  * 
  * Sources:
  *   - OpenAI: https://platform.openai.com/docs/pricing
@@ -41,6 +41,18 @@ const initialPricing: PricingEntry[] = [
     { provider: 'openai', model: 'gpt-5-nano', input: 0.05, output: 0.40, cached: 0.025 },
 
     // GPT-5.1 Series (Nov 2025+)
+    // GPT-5.6 / 5.5 / 5.4 / 5.3 Series (2026)
+    { provider: 'openai', model: 'gpt-5.6-sol', input: 5.00, output: 30.00, cached: 0.50 },
+    { provider: 'openai', model: 'gpt-5.6-terra', input: 2.50, output: 15.00, cached: 0.25 },
+    { provider: 'openai', model: 'gpt-5.6-luna', input: 1.00, output: 6.00, cached: 0.10 },
+    { provider: 'openai', model: 'gpt-5.5', input: 5.00, output: 30.00, cached: 0.50 },
+    { provider: 'openai', model: 'gpt-5.5-pro', input: 30.00, output: 180.00, cached: null },
+    { provider: 'openai', model: 'gpt-5.4', input: 2.50, output: 15.00, cached: 0.25 },
+    { provider: 'openai', model: 'gpt-5.4-mini', input: 0.75, output: 4.50, cached: 0.075 },
+    { provider: 'openai', model: 'gpt-5.4-nano', input: 0.20, output: 1.25, cached: 0.02 },
+    { provider: 'openai', model: 'gpt-5.4-pro', input: 30.00, output: 180.00, cached: null },
+    { provider: 'openai', model: 'gpt-5.3-codex', input: 1.75, output: 14.00, cached: 0.175 },
+
     { provider: 'openai', model: 'gpt-5.1', input: 1.25, output: 10.00, cached: 0.625 },
     { provider: 'openai', model: 'gpt-5.1-mini', input: 0.25, output: 2.00, cached: 0.125 },
 
@@ -71,7 +83,14 @@ const initialPricing: PricingEntry[] = [
     // Anthropic (Claude)
     // ═══════════════════════════════════════
 
-    // Claude 4.6 Series (Current generation)
+    // Claude 5 / 4.8 Series (Current generation)
+    { provider: 'anthropic', model: 'claude-fable-5', input: 10.00, output: 50.00, cached: 1.00 },
+    { provider: 'anthropic', model: 'claude-opus-4-8', input: 5.00, output: 25.00, cached: 0.50 },
+    { provider: 'anthropic', model: 'claude-opus-4-7', input: 5.00, output: 25.00, cached: 0.50 },
+    { provider: 'anthropic', model: 'claude-sonnet-5', input: 3.00, output: 15.00, cached: 0.30 },
+    { provider: 'anthropic', model: 'claude-haiku-4-5', input: 1.00, output: 5.00, cached: 0.10 },
+
+    // Claude 4.6 Series
     { provider: 'anthropic', model: 'claude-opus-4-6', input: 5.00, output: 25.00, cached: 0.50 },
     { provider: 'anthropic', model: 'claude-sonnet-4-6', input: 3.00, output: 15.00, cached: 0.30 },
     { provider: 'anthropic', model: 'claude-haiku-4-6', input: 1.00, output: 5.00, cached: 0.10 },
@@ -100,6 +119,12 @@ const initialPricing: PricingEntry[] = [
     // Google (Gemini)
     // ═══════════════════════════════════════
 
+    // Gemini 3.5 / 3.1 Series (2026)
+    { provider: 'google', model: 'gemini-3.5-flash', input: 1.50, output: 9.00, cached: 0.15 },
+    { provider: 'google', model: 'gemini-3.1-flash-lite', input: 0.25, output: 1.50, cached: 0.025 },
+    { provider: 'google', model: 'gemini-3.1-pro-preview', input: 2.00, output: 12.00, cached: 0.20 },
+    { provider: 'google', model: 'gemini-3-flash-preview', input: 0.50, output: 3.00, cached: 0.05 },
+
     // Gemini 3 Series (Nov 2025+)
     { provider: 'google', model: 'gemini-3-pro', input: 2.00, output: 12.00, cached: 0.20 },
     { provider: 'google', model: 'gemini-3-flash', input: 0.50, output: 3.00, cached: 0.05 },
@@ -107,9 +132,9 @@ const initialPricing: PricingEntry[] = [
     { provider: 'google', model: 'gemini-3.1-flash', input: 0.50, output: 3.00, cached: 0.05 },
 
     // Gemini 2.5 Series
-    { provider: 'google', model: 'gemini-2.5-pro', input: 1.25, output: 10.00, cached: 0.3125 },
+    { provider: 'google', model: 'gemini-2.5-pro', input: 1.25, output: 10.00, cached: 0.125 },
     { provider: 'google', model: 'gemini-2.5-flash', input: 0.30, output: 2.50, cached: 0.03 },
-    { provider: 'google', model: 'gemini-2.5-flash-lite', input: 0.10, output: 0.40, cached: null },
+    { provider: 'google', model: 'gemini-2.5-flash-lite', input: 0.10, output: 0.40, cached: 0.01 },
 
     // Gemini 2.0 Series
     { provider: 'google', model: 'gemini-2.0-flash', input: 0.10, output: 0.40, cached: 0.025 },
@@ -152,6 +177,9 @@ const initialPricing: PricingEntry[] = [
     // xAI (Grok)
     // ═══════════════════════════════════════
 
+    { provider: 'xai', model: 'grok-4.5', input: 2.00, output: 6.00, cached: 0.50 },
+    { provider: 'xai', model: 'grok-4.3', input: 1.25, output: 2.50, cached: null },
+    { provider: 'xai', model: 'grok-4.1-fast', input: 0.20, output: 0.50, cached: null },
     { provider: 'xai', model: 'grok-4', input: 3.00, output: 15.00, cached: null },
     { provider: 'xai', model: 'grok-4-mini', input: 0.30, output: 1.50, cached: null },
     { provider: 'xai', model: 'grok-3', input: 3.00, output: 15.00, cached: null },
@@ -163,7 +191,9 @@ const initialPricing: PricingEntry[] = [
     // DeepSeek
     // ═══════════════════════════════════════
 
-    { provider: 'deepseek', model: 'deepseek-chat', input: 0.27, output: 1.10, cached: 0.07 },
+    { provider: 'deepseek', model: 'deepseek-v4', input: 0.30, output: 0.50, cached: null },
+    { provider: 'deepseek', model: 'deepseek-v4-flash', input: 0.14, output: 0.28, cached: 0.0028 },
+    { provider: 'deepseek', model: 'deepseek-chat', input: 0.28, output: 0.42, cached: 0.07 },
     { provider: 'deepseek', model: 'deepseek-reasoner', input: 0.55, output: 2.19, cached: 0.14 },
     { provider: 'deepseek', model: 'deepseek-coder', input: 0.14, output: 0.28, cached: null },
 
@@ -206,6 +236,13 @@ const initialPricing: PricingEntry[] = [
     { provider: 'qwen', model: 'qwen3-14b', input: 0.06, output: 0.24, cached: null },
     { provider: 'qwen', model: 'qwen3-8b', input: 0.05, output: 0.40, cached: null },
     { provider: 'qwen', model: 'qwen3-30b-a3b', input: 0.08, output: 0.28, cached: null },
+
+    // ═══════════════════════════════════════
+    // Zhipu (GLM) & Moonshot (Kimi) — added Jul 2026
+    // ═══════════════════════════════════════
+
+    { provider: 'zhipu', model: 'glm-5.2', input: 1.40, output: 4.40, cached: null },
+    { provider: 'moonshot', model: 'kimi-k2.6', input: 0.95, output: 4.00, cached: null },
 
 ];
 

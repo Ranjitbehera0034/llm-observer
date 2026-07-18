@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Lightbulb, Sparkles, TrendingDown, Clock, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Lightbulb, Sparkles, TrendingDown, Clock, ShieldCheck, ArrowRight, Bot, KeyRound, Trash2 } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 
 interface Insight {
@@ -10,6 +10,123 @@ interface Insight {
     model_impacted?: string;
     suggested_model?: string;
     occurrences?: number;
+}
+
+interface AnalystRecommendation {
+    title: string;
+    detail: string;
+    category: string;
+    estimated_monthly_savings_usd: number;
+}
+
+interface AnalystResult {
+    summary: string;
+    recommendations: AnalystRecommendation[];
+    model: string;
+    generated_at: string;
+}
+
+function AiAnalystPanel() {
+    const [configured, setConfigured] = useState<boolean | null>(null);
+    const [keyInput, setKeyInput] = useState('');
+    const [result, setResult] = useState<AnalystResult | null>(null);
+    const [running, setRunning] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        fetch(`${API_BASE_URL}/api/optimize/ai/key`).then(r => r.json()).then(d => setConfigured(d.configured)).catch(() => setConfigured(false));
+        fetch(`${API_BASE_URL}/api/optimize/ai/last`).then(r => r.json()).then(d => setResult(d.result)).catch(() => {});
+    }, []);
+
+    const saveKey = async () => {
+        setError(null);
+        const res = await fetch(`${API_BASE_URL}/api/optimize/ai/key`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiKey: keyInput.trim() })
+        });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error); return; }
+        setConfigured(true); setKeyInput('');
+    };
+
+    const removeKey = async () => {
+        await fetch(`${API_BASE_URL}/api/optimize/ai/key`, { method: 'DELETE' });
+        setConfigured(false);
+    };
+
+    const analyze = async () => {
+        setRunning(true); setError(null);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/optimize/ai/analyze`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) { setError(data.error); return; }
+            setResult(data.result);
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setRunning(false);
+        }
+    };
+
+    return (
+        <div className="card border-purple-500/20 bg-purple-500/5">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-2">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-500/20 rounded-lg"><Bot className="w-6 h-6 text-purple-400" /></div>
+                    <div>
+                        <h2 className="text-xl font-bold text-white">AI Analyst</h2>
+                        <p className="text-textMuted text-sm">Claude analyzes your aggregated spend — only totals leave this machine, never prompts or code.</p>
+                    </div>
+                </div>
+                {configured ? (
+                    <div className="flex items-center gap-2">
+                        <button onClick={analyze} disabled={running}
+                            className="px-4 py-2 rounded-xl bg-purple-500/20 text-purple-300 font-bold text-sm hover:bg-purple-500/30 transition-colors disabled:opacity-50">
+                            {running ? 'Analyzing…' : 'Run AI Analysis'}
+                        </button>
+                        <button onClick={removeKey} title="Remove API key"
+                            className="p-2 rounded-xl bg-white/5 text-textMuted hover:text-white transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    </div>
+                ) : configured === false ? (
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                        <div className="flex items-center gap-2 bg-white/5 rounded-xl px-3 py-2 flex-1 md:w-72">
+                            <KeyRound className="w-4 h-4 text-textMuted shrink-0" />
+                            <input type="password" value={keyInput} onChange={e => setKeyInput(e.target.value)}
+                                placeholder="Anthropic API key (sk-ant-…)"
+                                className="bg-transparent outline-none text-sm text-white w-full" />
+                        </div>
+                        <button onClick={saveKey} disabled={!keyInput.trim()}
+                            className="px-4 py-2 rounded-xl bg-purple-500/20 text-purple-300 font-bold text-sm hover:bg-purple-500/30 transition-colors disabled:opacity-50">
+                            Save
+                        </button>
+                    </div>
+                ) : null}
+            </div>
+            {error && <p className="text-sm text-red-400 mt-2">{error}</p>}
+            {result && (
+                <div className="mt-6 space-y-4">
+                    <p className="text-sm text-white/80 leading-relaxed max-w-3xl">{result.summary}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {result.recommendations.map((rec, i) => (
+                            <div key={i} className="rounded-2xl bg-white/5 border border-white/10 p-5">
+                                <div className="flex items-start justify-between gap-3 mb-2">
+                                    <h4 className="font-bold text-white text-sm">{rec.title}</h4>
+                                    {rec.estimated_monthly_savings_usd > 0 && (
+                                        <span className="text-xs font-black text-success whitespace-nowrap">~${rec.estimated_monthly_savings_usd.toFixed(2)}/mo</span>
+                                    )}
+                                </div>
+                                <p className="text-xs text-textMuted leading-relaxed">{rec.detail}</p>
+                                <span className="inline-block mt-3 text-[10px] uppercase tracking-widest font-bold text-purple-300/70 bg-purple-500/10 px-2 py-1 rounded-md">{rec.category}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <p className="text-[11px] text-textMuted">Generated {new Date(result.generated_at).toLocaleString()} by {result.model}</p>
+                </div>
+            )}
+        </div>
+    );
 }
 
 export default function Insights() {
@@ -61,6 +178,8 @@ export default function Insights() {
                     </div>
                 </div>
             </div>
+
+            <AiAnalystPanel />
 
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-20 space-y-4">

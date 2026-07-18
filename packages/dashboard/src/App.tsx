@@ -15,6 +15,7 @@ import Sessions from './pages/Sessions';
 import Agents from './pages/Agents';
 import Tools from './pages/Tools';
 import Optimize from './pages/Optimize';
+import Compare from './pages/Compare';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Overview />} />
             <Route path="/optimize" element={<Optimize />} />
+            <Route path="/compare" element={<Compare />} />
             <Route path="/requests" element={<Requests />} />
             <Route path="/sessions" element={<Sessions />} />
             <Route path="/agents" element={<Agents />} />

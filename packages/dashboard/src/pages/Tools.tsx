@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Wrench, PieChart, BarChart3, AlertTriangle, ArrowRight, FileText, Terminal, Layers, Search, PenTool } from 'lucide-react';
 import { formatCurrency } from '../utils/format';
+import { API_BASE_URL } from '../config';
 
 export default function Tools() {
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch(`${import.meta.env.VITE_API_BASE_URL}/api/tools/usage`)
+        fetch(`${API_BASE_URL}/api/tools/usage`)
             .then(res => res.json())
             .then(data => {
                 setStats(data);

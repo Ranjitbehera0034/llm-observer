@@ -2,6 +2,7 @@ import { Router } from 'express';
 import express from 'express';
 import { EventEmitter } from 'events';
 import { getDb, bulkInsertRequests } from '@llm-observer/database';
+import { buildReasoningChain } from '../analysis/reasoningChain';
 
 export const requestEventEmitter = new EventEmitter();
 requestEventEmitter.setMaxListeners(50);
@@ -128,8 +129,24 @@ requestsRouter.get('/:id', (req, res) => {
       FROM requests
       WHERE id = ?
     `);
-        const data = stmt.get(req.params.id);
+        const data = stmt.get(req.params.id) as any;
         if (!data) return res.status(404).json({ error: 'Request not found' });
+
+        // Reasoning-chain replay: normalizes the stored request/response bodies
+        // into a step-by-step timeline (text / tool_use / tool_result). See
+        // analysis/reasoningChain.ts for the parsing rules and its honest
+        // streaming-response limitation.
+        try {
+            const { steps, responseParsed } = buildReasoningChain(
+                data.request_body || '',
+                data.response_body || '',
+                !!data.is_streaming
+            );
+            data.reasoningChain = { steps, responseParsed };
+        } catch (chainErr) {
+            data.reasoningChain = { steps: [], responseParsed: false };
+        }
+
         res.json({ data });
     } catch (err) {
         console.error('[REQUEST DETAIL] Error:', err);

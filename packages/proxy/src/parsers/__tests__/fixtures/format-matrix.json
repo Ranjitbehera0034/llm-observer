@@ -1,0 +1,33 @@
+{
+  "_comment": "Golden-output manifest for the recorded-format regression matrix (see formatMatrix.test.ts). Each entry pairs a checked-in fixture file with the exact values the parser must produce for it. To extend to another editor's parser (Cursor/Aider/Cline/Codex), add a sibling top-level key here plus a matching adapter in formatMatrix.test.ts's ADAPTERS map.",
+  "claude": [
+    {
+      "fixture": "format-v1-legacy-top-level.jsonl",
+      "description": "pre-2025 format: model/usage/content at top level of the event, no message.id/requestId",
+      "expected": {
+        "primaryModel": "claude-3-5-sonnet-20241022",
+        "messageCount": 3,
+        "inputTokens": 100,
+        "outputTokens": 50,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "toolCalls": { "Read": 1 },
+        "sessionType": "agentic"
+      }
+    },
+    {
+      "fixture": "format-v2-current-nested.jsonl",
+      "description": "current format: payload nested under message, usage repeated per content-block line within one request and deduped by (message.id, requestId)",
+      "expected": {
+        "primaryModel": "claude-sonnet-5",
+        "messageCount": 3,
+        "inputTokens": 200,
+        "outputTokens": 80,
+        "cacheReadTokens": 500,
+        "cacheWriteTokens": 100,
+        "toolCalls": { "Write": 1 },
+        "sessionType": "agentic"
+      }
+    }
+  ]
+}

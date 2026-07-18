@@ -24,6 +24,8 @@ export interface RequestRecord {
   prompt_hash?: string;
   metadata?: string;
   created_at?: string;
+  drift_score?: number | null;
+  drift_flag?: boolean;
 }
 
 export const insertRequest = (req: Omit<RequestRecord, 'id'>): string => {
@@ -33,10 +35,11 @@ export const insertRequest = (req: Omit<RequestRecord, 'id'>): string => {
     INSERT INTO requests (
       id, project_id, provider, model, endpoint, prompt_tokens, 
       completion_tokens, total_tokens, cost_usd, latency_ms, status_code, 
-      status, is_streaming, has_tools, error_message, request_body, 
-      response_body, pricing_unknown, tags, prompt_hash, metadata
+      status, is_streaming, has_tools, error_message, request_body,
+      response_body, pricing_unknown, tags, prompt_hash, metadata,
+      drift_score, drift_flag
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     )
   `);
 
@@ -47,7 +50,8 @@ export const insertRequest = (req: Omit<RequestRecord, 'id'>): string => {
     req.status || 'success', req.is_streaming ? 1 : 0, req.has_tools ? 1 : 0,
     req.error_message || null, req.request_body || null, req.response_body || null,
     req.pricing_unknown ? 1 : 0, req.tags || null, req.prompt_hash || null,
-    req.metadata || "{}"
+    req.metadata || "{}",
+    req.drift_score ?? null, req.drift_flag ? 1 : 0
   );
 
   return id;
@@ -60,10 +64,11 @@ export const bulkInsertRequests = (requests: Omit<RequestRecord, 'id'>[]) => {
     INSERT INTO requests (
       id, project_id, provider, model, endpoint, prompt_tokens, 
       completion_tokens, total_tokens, cost_usd, latency_ms, status_code, 
-      status, is_streaming, has_tools, error_message, request_body, 
-      response_body, pricing_unknown, tags, prompt_hash, created_at, metadata
+      status, is_streaming, has_tools, error_message, request_body,
+      response_body, pricing_unknown, tags, prompt_hash, created_at, metadata,
+      drift_score, drift_flag
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     )
   `);
 
@@ -78,7 +83,8 @@ export const bulkInsertRequests = (requests: Omit<RequestRecord, 'id'>[]) => {
         req.error_message || null, req.request_body || null, req.response_body || null,
         req.pricing_unknown ? 1 : 0, req.tags || null, req.prompt_hash || null,
         req.created_at || new Date().toISOString(),
-        req.metadata || "{}"
+        req.metadata || "{}",
+        req.drift_score ?? null, req.drift_flag ? 1 : 0
       );
     }
   });

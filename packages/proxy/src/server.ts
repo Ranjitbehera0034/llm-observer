@@ -74,6 +74,14 @@ app.all('/v1/groq/*', (req, res) => {
     handleProxyRequest(req, res, 'groq');
 });
 
+// Ollama — first-class provider (dedicated route + parser, not the generic
+// custom fallback). Talks to Ollama's OpenAI-compatible surface; base URL
+// defaults to http://localhost:11434 and is overridable via Settings.
+app.all('/v1/ollama/*', (req, res) => {
+    req.url = req.url.replace('/v1/ollama', '/v1');
+    handleProxyRequest(req, res, 'ollama');
+});
+
 // Custom/Local provider route
 // Example: http://localhost:4000/v1/custom/http%3A%2F%2Flocalhost%3A11434/v1/chat/completions
 app.all('/v1/custom/:targetBaseUrl/*', (req, res) => {
@@ -93,8 +101,10 @@ app.all('/v1/custom/:targetBaseUrl/*', (req, res) => {
     }
 });
 
-const PORT = process.env.PROXY_PORT || 4000;
-const DASHBOARD_PORT = process.env.DASHBOARD_PORT || 4001;
+// LLM_OBSERVER_* are the documented names; PROXY_PORT/DASHBOARD_PORT kept for backward compatibility
+const PORT = process.env.LLM_OBSERVER_PROXY_PORT || process.env.PROXY_PORT || 4000;
+const DASHBOARD_PORT = process.env.LLM_OBSERVER_PORT || process.env.DASHBOARD_PORT || 4001;
+const HOST = process.env.LLM_OBSERVER_HOST || '127.0.0.1';
 
 import { dashboardApi } from './dashboardApi';
 
@@ -147,7 +157,7 @@ async function bootstrap() {
     try {
         // 1. Initialize DB and run migrations FIRST
         const db = initDb();
-        console.log('Database schema intialized successfully.');
+        console.log('Database schema initialized successfully.');
 
         // 2. Refresh bundled default pricing, Remote Registry & Auth
         seedPricing();
@@ -163,8 +173,8 @@ async function bootstrap() {
         }
 
         // 4. Start accepting Proxy Traffic
-        app.listen(Number(PORT), '127.0.0.1', () => {
-            console.log(`🚀 LLM Observer Proxy running on http://127.0.0.1:${PORT}`);
+        app.listen(Number(PORT), HOST, () => {
+            console.log(`🚀 LLM Observer Proxy running on http://${HOST}:${PORT}`);
         });
 
         // 5. Start background tasks
@@ -186,7 +196,7 @@ async function bootstrap() {
 
 bootstrap();
 
-// FIX SEC-03: Bind to 127.0.0.1 only — dashboard must not be reachable from LAN
-dashboardApp.listen(Number(DASHBOARD_PORT), '127.0.0.1', () => {
-    console.log(`📊 Dashboard API running on http://127.0.0.1:${DASHBOARD_PORT}`);
+// FIX SEC-03: Bind to 127.0.0.1 by default — dashboard must not be reachable from LAN unless LLM_OBSERVER_HOST is set explicitly
+dashboardApp.listen(Number(DASHBOARD_PORT), HOST, () => {
+    console.log(`📊 Dashboard API running on http://${HOST}:${DASHBOARD_PORT}`);
 });

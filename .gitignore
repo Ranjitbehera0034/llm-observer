@@ -13,9 +13,6 @@ out/
 # Vercel
 .vercel
 
-# Tauri
-apps/tauri/src-tauri/target/
-
 # Claude Desktop App
 .claude/
 *.app
@@ -45,6 +42,12 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Test artifacts
+test-results/
+tests/e2e/reports/
+test-pkg-install/
+playwright-report/
 
 # Logs
 npm-debug.log*

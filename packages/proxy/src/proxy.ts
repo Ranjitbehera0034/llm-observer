@@ -8,6 +8,10 @@ import { GoogleProvider } from './providers/google';
 import { MistralProvider } from './providers/mistral';
 import { GroqProvider } from './providers/groq';
 import { CustomProvider } from './providers/custom';
+import { OllamaProvider } from './providers/ollama';
+import { redactDeep } from './security/piiRedaction';
+import { computeDrift } from './analysis/responseDrift';
+import { getSetting, getDriftBaseline, saveDriftBaseline, createAlert } from '@llm-observer/database';
 import chalk from 'chalk';
 import { incrementSpendCache } from './budgetGuard';
 import { requestEventEmitter } from './dashboardApi';
@@ -29,6 +33,7 @@ const providers: Record<string, IProvider> = {
     mistral: new MistralProvider(),
     groq: new GroqProvider(),
     custom: new CustomProvider(),
+    ollama: new OllamaProvider(),
 };
 
 export const handleProxyRequest = async (req: Request, res: Response, providerName: string) => {
@@ -46,6 +51,18 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
 
     const projectId = req.projectId || 'default';
     const cacheKey = req.cacheKey || 'default';
+
+    // PII redaction — explicit opt-in only (settings toggle), since this
+    // mutates the user's actual prompt content before it reaches the
+    // provider. Runs before parseRequest/logging so masked values never
+    // reach provider, local log, or the truncated DB copy below.
+    if (req.body && getSetting('pii_redaction_enabled') === 'true') {
+        const { value, counts } = redactDeep(req.body);
+        req.body = value;
+        if (Object.keys(counts).length > 0) {
+            console.log(`[PII Redaction] Masked before sending to ${providerName}:`, counts);
+        }
+    }
 
     // Inject stream_options for OpenAI-compatible providers to get usage metrics in stream
     if ((providerName === 'openai' || providerName === 'groq') && req.body?.stream) {
@@ -260,6 +277,49 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
                 } catch {}
             }
 
+            // Response drift detection — opt-in, lexical/statistical (see analysis/responseDrift.ts).
+            let driftScore: number | null = null;
+            let driftFlag = false;
+            if (statusCode < 400 && dbResponseBody && getSetting('response_drift_detection_enabled') === 'true') {
+                try {
+                    const baselineRow = getDriftBaseline(providerName, requestInfo.model);
+                    const state = baselineRow
+                        ? {
+                            termFreq: JSON.parse(baselineRow.term_freq_json),
+                            sampleCount: baselineRow.sample_count,
+                            avgSimilarity: baselineRow.avg_similarity,
+                            varianceSimilarity: baselineRow.variance_similarity
+                        }
+                        : { termFreq: {}, sampleCount: 0, avgSimilarity: null, varianceSimilarity: null };
+
+                    const result = computeDrift(state, dbResponseBody);
+                    driftScore = result.driftScore;
+                    driftFlag = result.driftFlag;
+
+                    saveDriftBaseline({
+                        provider: providerName,
+                        model: requestInfo.model,
+                        term_freq_json: JSON.stringify(result.nextState.termFreq),
+                        sample_count: result.nextState.sampleCount,
+                        avg_similarity: result.nextState.avgSimilarity,
+                        variance_similarity: result.nextState.varianceSimilarity
+                    });
+
+                    if (driftFlag) {
+                        console.log(chalk.yellow(`[Response Drift] ${providerName}/${requestInfo.model} scored ${driftScore?.toFixed(3)} — statistical outlier vs its own baseline`));
+                        createAlert({
+                            project_id: projectId,
+                            type: 'response_drift',
+                            severity: 'warning',
+                            message: `${providerName}/${requestInfo.model} responses just shifted noticeably from their usual style (drift score ${driftScore?.toFixed(3)}). This is a lexical/statistical signal, not a correctness check.`,
+                            data: JSON.stringify({ provider: providerName, model: requestInfo.model, driftScore })
+                        });
+                    }
+                } catch (driftErr) {
+                    console.error('[Response Drift] computation failed:', driftErr);
+                }
+            }
+
             const reqRecord = {
                 project_id: projectId,
                 provider: providerName,
@@ -280,7 +340,9 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
                 response_body: dbResponseBody,
                 prompt_hash: promptHash || undefined,
                 metadata,
-                created_at: new Date().toISOString()
+                created_at: new Date().toISOString(),
+                drift_score: driftScore,
+                drift_flag: driftFlag
             };
 
             if (usage?.costUsd && usage.costUsd > 0) {
