@@ -44,8 +44,9 @@ changes required to keep using what you already had.
   formats (current and legacy), checked against a golden manifest on every push,
   so an upstream editor format change is caught before it ships as a $0 session
 - Signed release infrastructure: `CHECKSUMS.txt` attached to every npm release;
-  desktop app signing scaffolding for the Tauri auto-updater (see
-  `packages/desktop/SIGNING.md`)
+  a real Tauri updater signing keypair is now generated and stored (see
+  `packages/desktop/SIGNING.md`), so `release.yml` produces desktop builds
+  the in-app auto-updater can actually verify
 - A proper post-payment `/thanks` page on the landing site for the Razorpay
   checkout callback
 - **Update notifications** — the CLI now checks the public npm registry in the
