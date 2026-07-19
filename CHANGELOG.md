@@ -78,6 +78,21 @@ changes required to keep using what you already had.
   dependency, bundles libsoup2) instead of `libwebkit2gtk-4.1-dev` (Tauri v2's,
   bundles libsoup3) — this app is on Tauri v2, so the Linux desktop build had
   likely never actually succeeded
+- The desktop app's proxy "sidecar" was never actually buildable in CI: the
+  build script tried to snapshot the whole server (including better-sqlite3's
+  native binding) into a single file via `pkg`, whose embedded Node runtime
+  is capped at Node 18 and which doesn't reliably bundle native modules at
+  all — it silently baked in a reference to the build machine's absolute
+  filesystem path instead. A macOS ARM64 sidecar had been built locally once
+  and committed directly to git as a 69MB binary to paper over this, which
+  meant real desktop builds were silently running whatever proxy code
+  existed back then, missing everything since. Rewrote
+  `packages/proxy/scripts/build-sidecar.js` to bundle the real Node binary
+  that built it (guaranteed ABI match, no cross-version packaging) alongside
+  the built server and exactly the runtime dependencies actually
+  required — traced by really booting the server rather than a
+  hand-maintained list — removed the stale committed binaries, and wired the
+  build into `release.yml` for all three platforms
 
 ### Removed
 - The dead, pre-restructure `apps/tauri/` duplicate of the desktop app (including
