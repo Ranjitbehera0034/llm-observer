@@ -38,7 +38,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "REPLACE_WITH_REAL_UPDATER_PUBKEY_SEE_SIGNING_MD",
+      "pubkey": "RWSd7rCUtHSEuER5KoC0aJF+AgMWdPIX/GKJb24PMuH9x+kIAMVLv7va",
       "endpoints": [
         "https://github.com/Ranjitbehera0034/llm-observer/releases/latest/download/latest.json"
       ]
