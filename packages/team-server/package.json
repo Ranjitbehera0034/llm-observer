@@ -1,6 +1,6 @@
 {
   "name": "@llm-observer/team-server",
-  "version": "1.14.0",
+  "version": "2.0.0",
   "private": true,
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -8,20 +8,33 @@
     "dev": "tsup src/index.ts --watch --onSuccess \"node dist/index.js\"",
     "build": "tsup src/index.ts --clean --dts",
     "start": "node dist/index.js",
-    "lint": "eslint src/**/*.ts"
+    "lint": "eslint src/**/*.ts",
+    "test": "jest"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "mongoose": "^8.2.1",
-    "dotenv": "^16.4.5",
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
     "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^8.2.1",
+    "openid-client": "^6.8.4",
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
+    "@types/bcrypt": "^6.0.0",
+    "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.11.24",
+    "@types/supertest": "^7.2.1",
+    "jest": "^30.4.2",
+    "supertest": "^7.2.2",
+    "ts-jest": "^29.4.11",
     "tsup": "^8.0.2",
     "typescript": "^5.3.3"
   }

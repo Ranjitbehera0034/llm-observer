@@ -21,6 +21,11 @@ export default function Settings() {
     const [googleKey, setGoogleKey] = useState('');
     const [mistralKey, setMistralKey] = useState('');
     const [groqKey, setGroqKey] = useState('');
+    const [ollamaBaseUrl, setOllamaBaseUrl] = useState('');
+    const [piiRedactionEnabled, setPiiRedactionEnabled] = useState(false);
+    const [savingPiiToggle, setSavingPiiToggle] = useState(false);
+    const [driftDetectionEnabled, setDriftDetectionEnabled] = useState(false);
+    const [savingDriftToggle, setSavingDriftToggle] = useState(false);
     const [showOpenAiKey, setShowOpenAiKey] = useState(false);
     const [showAnthropicKey, setShowAnthropicKey] = useState(false);
     const [showGoogleKey, setShowGoogleKey] = useState(false);
@@ -65,6 +70,9 @@ export default function Settings() {
                     setGoogleKey(data.data.google_api_key || '');
                     setMistralKey(data.data.mistral_api_key || '');
                     setGroqKey(data.data.groq_api_key || '');
+                    setOllamaBaseUrl(data.data.ollama_base_url || '');
+                    setPiiRedactionEnabled(data.data.pii_redaction_enabled === 'true');
+                    setDriftDetectionEnabled(data.data.response_drift_detection_enabled === 'true');
                     setScanInterval(data.data.network_monitor_interval || '5000');
                 }
             } catch (err) {
@@ -217,6 +225,7 @@ export default function Settings() {
                     google_api_key: googleKey,
                     mistral_api_key: mistralKey,
                     groq_api_key: groqKey,
+                    ollama_base_url: ollamaBaseUrl,
                 })
             });
             setSaved(true);
@@ -236,6 +245,40 @@ export default function Settings() {
             }
         } catch (err) {
             console.error(`Failed to ${action} monitor`, err);
+        }
+    };
+
+    const togglePiiRedaction = async () => {
+        const next = !piiRedactionEnabled;
+        setSavingPiiToggle(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pii_redaction_enabled: String(next) })
+            });
+            if (res.ok) setPiiRedactionEnabled(next);
+        } catch (err) {
+            console.error('Failed to update PII redaction setting', err);
+        } finally {
+            setSavingPiiToggle(false);
+        }
+    };
+
+    const toggleDriftDetection = async () => {
+        const next = !driftDetectionEnabled;
+        setSavingDriftToggle(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ response_drift_detection_enabled: String(next) })
+            });
+            if (res.ok) setDriftDetectionEnabled(next);
+        } catch (err) {
+            console.error('Failed to update response drift detection setting', err);
+        } finally {
+            setSavingDriftToggle(false);
         }
     };
 
@@ -406,6 +449,18 @@ export default function Settings() {
                                                 {showGroqKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                             </button>
                                         </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-textMuted mb-2">Ollama Base URL <span className="text-xs opacity-60">(local, no key required)</span></label>
+                                        <input
+                                            type="text"
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary transition-colors"
+                                            placeholder="http://localhost:11434"
+                                            value={ollamaBaseUrl}
+                                            onChange={e => setOllamaBaseUrl(e.target.value)}
+                                        />
+                                        <p className="text-xs text-textMuted mt-2">Point your tool's baseURL at <code className="bg-background px-1 py-0.5 rounded">{`${API_BASE_URL || 'http://localhost:4001'}/v1/ollama`}</code> to track local inference — cost is always $0.</p>
                                     </div>
 
                                     <div className="pt-6 mt-6 border-t border-border flex items-center justify-end gap-4">
@@ -622,10 +677,64 @@ export default function Settings() {
                                 )}
                             </div>
 
+                            <div className="card">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white mb-2">PII Redaction</h2>
+                                        <p className="text-sm text-textMuted">Mask emails, phone numbers, SSNs, credit cards, and API keys in prompts before they reach a model provider.</p>
+                                    </div>
+                                    <button
+                                        onClick={togglePiiRedaction}
+                                        disabled={savingPiiToggle}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${piiRedactionEnabled ? 'bg-primary' : 'bg-background border border-border'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${piiRedactionEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+                                <div className="p-4 bg-amber-500/5 rounded-xl border border-amber-500/20 border-dashed flex items-start gap-4">
+                                    <ShieldCheck className="w-6 h-6 text-amber-500 shrink-0" />
+                                    <div>
+                                        <h4 className="text-white font-semibold text-sm">Off by default</h4>
+                                        <p className="text-xs text-textMuted mt-1 leading-relaxed">
+                                            This rewrites your actual prompt content before it's sent, so it's opt-in.
+                                            Pattern-based detection catches common formats — it is not a compliance-grade
+                                            DLP guarantee, and unusual formats may slip through.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="card">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white mb-2">Response Drift Detection</h2>
+                                        <p className="text-sm text-textMuted">Flag when a model's responses suddenly shift from their usual style for that model — e.g. after a silent provider-side model swap.</p>
+                                    </div>
+                                    <button
+                                        onClick={toggleDriftDetection}
+                                        disabled={savingDriftToggle}
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${driftDetectionEnabled ? 'bg-primary' : 'bg-background border border-border'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${driftDetectionEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+                                <div className="p-4 bg-amber-500/5 rounded-xl border border-amber-500/20 border-dashed flex items-start gap-4">
+                                    <ShieldCheck className="w-6 h-6 text-amber-500 shrink-0" />
+                                    <div>
+                                        <h4 className="text-white font-semibold text-sm">Statistical, not ground-truth</h4>
+                                        <p className="text-xs text-textMuted mt-1 leading-relaxed">
+                                            This is a lexical/statistical comparison against each model's own recent baseline,
+                                            not a check against a "correct" answer — there is no ground truth for arbitrary
+                                            prompts. It flags unusual shifts in style, not factual accuracy.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="card text-center py-12 opacity-50">
                                 <KeyRound className="w-12 h-12 text-textMuted mx-auto mb-4 opacity-20" />
                                 <h2 className="text-lg font-bold text-white mb-2">Advanced Security</h2>
-                                <p className="text-xs text-textMuted max-w-sm mx-auto">SSO, IP Whitelisting, and Data Masking are available for Enterprise customers.</p>
+                                <p className="text-xs text-textMuted max-w-sm mx-auto">SSO and IP Whitelisting are available for Enterprise customers.</p>
                             </div>
                         </div>
                     )}

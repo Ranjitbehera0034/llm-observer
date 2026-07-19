@@ -1,4 +1,4 @@
-import { fetchPricingFromDb, syncPricingToDb } from '@llm-observer/database';
+import { fetchPricingFromDb, refreshPricing } from '@llm-observer/database';
 import fetch from 'node-fetch';
 
 let pricingCache = new Map<string, any>();
@@ -42,7 +42,9 @@ const syncRemotePricing = async () => {
                 output: item.output ?? item.output_cost_per_1m ?? 0,
                 cached: item.cached ?? item.cached_input_cost_per_1m ?? null
             }));
-            syncPricingToDb(mappedData);
+            // Upsert instead of wipe-and-replace: models seeded locally but absent
+            // from the remote registry (e.g. newly released) must survive the sync
+            refreshPricing(mappedData);
             console.log(`Synced ${mappedData.length} pricing entries from remote registry.`);
         }
     } catch (e: any) {

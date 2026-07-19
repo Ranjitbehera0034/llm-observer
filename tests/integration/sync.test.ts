@@ -62,7 +62,7 @@ describe('Anthropic Usage Sync Tests', () => {
 
         const res = await request(app)
             .post('/api/sync/providers/anthropic/key')
-            .send({ adminKey: 'sk-ant-api-wrong-prefix' });
+            .send({ adminKey: 'sk-ant-admin-unauthorized' });
 
         expect(res.status).toBe(403);
         expect(res.body.error).toContain('Standard Anthropic API keys');
@@ -88,6 +88,18 @@ describe('Anthropic Usage Sync Tests', () => {
                     }
                 ],
                 has_more: false
+            })
+        }).mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                data: [
+                    {
+                        model: 'claude-sonnet-4',
+                        start_time: '2026-03-22T00:00:00Z',
+                        cost: 0.015,
+                        description: 'claude-sonnet-4'
+                    }
+                ]
             })
         });
 
@@ -143,6 +155,11 @@ describe('Anthropic Usage Sync Tests', () => {
                     data: [{ model: 'm2', bucket_start: '2026-01-02T00:00:00Z', input_tokens: 200 }],
                     has_more: false
                 })
+            }).mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    data: []
+                })
             });
 
         await request(app).post('/api/sync/providers/anthropic/key').send({ adminKey: 'sk-ant-admin-valid' });
@@ -168,6 +185,11 @@ describe('Anthropic Usage Sync Tests', () => {
                 json: async () => ({
                     data: [{ model: 'm2', bucket_start: '2026-01-02T00:00:00Z', input_tokens: 500 }],
                     has_more: false
+                })
+            }).mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    data: []
                 })
             });
 

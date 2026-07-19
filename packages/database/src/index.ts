@@ -17,3 +17,5 @@ export * from './repositories/parsed_files.repo';
 export * from './repositories/subagents.repo';
 export * from './repositories/tool_usage.repo';
 export * from './repositories/rateLimits.repo';
+export * from './repositories/responseDrift.repo';
+export * from './repositories/compare.repo';

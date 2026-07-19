@@ -22,6 +22,10 @@
         {
             "src": "/license/validate",
             "dest": "/api/license/validate.ts"
+        },
+        {
+            "src": "/checkout/razorpay",
+            "dest": "/api/checkout/razorpay.ts"
         }
     ]
 }

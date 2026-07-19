@@ -2,6 +2,7 @@ import { OptimizationRule, OptimizationResult, RuleContext } from './types';
 import { buildRuleContext } from './context';
 import { allRules } from './rules';
 import { computeOptimizationScore } from './score';
+import { computePlanValue, PlanValue } from './planValue';
 import { getDb } from '@llm-observer/database';
 
 export interface OptimizationRun {
@@ -10,11 +11,12 @@ export interface OptimizationRun {
     results: OptimizationResult[];
     computedAt: string;
     daysAnalyzed: number;
+    planValue: PlanValue;
 }
 
 export async function runOptimizationEngine(days: number = 30, useCache: boolean = true): Promise<OptimizationRun> {
     const db = getDb();
-    
+
     if (useCache) {
         const cached = db.prepare('SELECT * FROM optimization_cache WHERE expires_at > CURRENT_TIMESTAMP AND days_analyzed = ? ORDER BY computed_at DESC LIMIT 1').get(days) as any;
         if (cached) {
@@ -23,7 +25,10 @@ export async function runOptimizationEngine(days: number = 30, useCache: boolean
                 totalSavingsUsd: cached.total_savings_usd,
                 results: JSON.parse(cached.results_json),
                 computedAt: cached.computed_at,
-                daysAnalyzed: cached.days_analyzed
+                daysAnalyzed: cached.days_analyzed,
+                // Computed on read, not cached, so a plan-price change takes
+                // effect immediately instead of waiting for cache expiry.
+                planValue: computePlanValue(cached.total_savings_usd)
             };
         }
     }
@@ -58,7 +63,8 @@ export async function runOptimizationEngine(days: number = 30, useCache: boolean
         totalSavingsUsd: totalSavings,
         results,
         computedAt: new Date().toISOString(),
-        daysAnalyzed: days
+        daysAnalyzed: days,
+        planValue: computePlanValue(totalSavings)
     };
 
     // Save to cache

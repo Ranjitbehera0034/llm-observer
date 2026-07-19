@@ -1,8 +1,56 @@
 import { Router } from 'express';
 import { runOptimizationEngine } from '../optimization/engine';
 import { allRules } from '../optimization/rules';
+import { setAnalystKey, clearAnalystKey, hasAnalystKey, runAnalysis, getLastResult } from '../services/aiAnalyst';
 
 const router = Router();
+
+// ── AI Analyst (agentic analysis via the user's own Anthropic API key) ──────
+
+// GET /api/optimize/ai/key — is a key configured? (never returns the key)
+router.get('/ai/key', (_req, res) => {
+    res.json({ configured: hasAnalystKey() });
+});
+
+// POST /api/optimize/ai/key — store an Anthropic API key, encrypted at rest
+router.post('/ai/key', (req, res) => {
+    const { apiKey } = req.body || {};
+    if (!apiKey || typeof apiKey !== 'string') {
+        return res.status(400).json({ error: 'No key provided.' });
+    }
+    if (apiKey.startsWith('sk-ant-admin')) {
+        return res.status(400).json({ error: 'Admin keys cannot call the Messages API. Use a standard API key (sk-ant-api...).' });
+    }
+    if (!apiKey.startsWith('sk-ant-')) {
+        return res.status(400).json({ error: 'That does not look like an Anthropic API key (expected sk-ant-...).' });
+    }
+    setAnalystKey(apiKey);
+    res.json({ configured: true });
+});
+
+// DELETE /api/optimize/ai/key — remove the stored key
+router.delete('/ai/key', (_req, res) => {
+    clearAnalystKey();
+    res.json({ configured: false });
+});
+
+// GET /api/optimize/ai/last — last analysis result, if any
+router.get('/ai/last', (_req, res) => {
+    res.json({ result: getLastResult() });
+});
+
+// POST /api/optimize/ai/analyze — run a fresh analysis (sends aggregates only)
+router.post('/ai/analyze', async (_req, res) => {
+    try {
+        const result = await runAnalysis();
+        res.json({ result });
+    } catch (error: any) {
+        if (error.code === 'NO_KEY') {
+            return res.status(400).json({ error: 'Add an Anthropic API key first.' });
+        }
+        res.status(502).json({ error: error.message });
+    }
+});
 
 // GET /api/optimize?days=30 — Run optimization engine, return all results + score
 router.get('/', async (req, res) => {
@@ -22,7 +70,7 @@ router.get('/score', async (req, res) => {
     try {
         const days = parseInt(req.query.days as string) || 30;
         const result = await runOptimizationEngine(days, true);
-        res.json({ score: result.score, totalSavingsUsd: result.totalSavingsUsd });
+        res.json({ score: result.score, totalSavingsUsd: result.totalSavingsUsd, planValue: result.planValue });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

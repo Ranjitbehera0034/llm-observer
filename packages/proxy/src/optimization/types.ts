@@ -30,7 +30,7 @@ export interface RuleContext {
   subagents: SubagentRecord[];
   toolUsage: any[]; // Summary from tool_usage_daily
   usageRecords: RequestRecord[];
-  roiData: any[]; // To be implemented or fetched from stats
+  roiData: { date: string; spend_usd: number }[]; // Daily spend series for the analyzed period
   budgetAlerts: any[];
   dailyCosts: any[];
   subscriptions: SubscriptionRecord[];

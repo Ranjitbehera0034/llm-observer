@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Activity, FolderOpen, Bell, Settings as SettingsIcon, Lightbulb, RefreshCw, MonitorSmartphone, Gift, Database, Bot, Wrench, Zap, Clock } from 'lucide-react';
+import { LayoutDashboard, Activity, FolderOpen, Bell, Settings as SettingsIcon, Lightbulb, RefreshCw, MonitorSmartphone, Gift, Database, Bot, Wrench, Zap, Clock, GitCompare } from 'lucide-react';
 import clsx from 'clsx';
 
 const navItems = [
@@ -9,6 +9,7 @@ const navItems = [
     { name: 'Sessions', path: '/sessions', icon: Database },
     { name: 'Agents', path: '/agents', icon: Bot },
     { name: 'Optimize', path: '/optimize', icon: Zap },
+    { name: 'Compare', path: '/compare', icon: GitCompare },
     { name: 'Limits', path: '/limits', icon: Clock },
     { name: 'Tools', path: '/tools', icon: Wrench },
     { name: 'Requests', path: '/requests', icon: Activity },

@@ -37,6 +37,77 @@ const findFilesRecursive = (dir: string, pattern: RegExp): string[] => {
 };
 
 /* PRIVACY RULE: This parser extracts ONLY metadata (token counts, duration, tool counts). It MUST NOT extract or store prompt text or raw conversational content to preserve developer privacy. */
+
+interface UsageTotals {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    cacheWrite1h: number;
+}
+
+const emptyTotals = (): UsageTotals => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0 });
+
+// Current Claude Code JSONL nests the API message under `message`; legacy formats had usage/model top-level.
+const getEventMessage = (event: any): any | null =>
+    (event && event.message && typeof event.message === 'object') ? event.message : null;
+
+const extractModel = (event: any): string | undefined =>
+    getEventMessage(event)?.model || event.model;
+
+// One API response can span multiple JSONL lines (one per content block), each repeating
+// the same usage object. Summing naively over-counts ~2x; billing is per (message.id, requestId).
+const accumulateUsage = (event: any, totals: UsageTotals, seenRequests: Set<string>): void => {
+    const msg = getEventMessage(event);
+    const usage = msg?.usage || event.usage;
+    if (!usage) return;
+    const dedupeKey = `${msg?.id ?? ''}:${event.requestId ?? ''}`;
+    if (dedupeKey !== ':') {
+        if (seenRequests.has(dedupeKey)) return;
+        seenRequests.add(dedupeKey);
+    }
+    totals.input += usage.input_tokens || usage.prompt_tokens || 0;
+    totals.output += usage.output_tokens || usage.completion_tokens || 0;
+    totals.cacheRead += usage.cache_read_input_tokens || usage.cache_read_tokens || 0;
+    totals.cacheWrite += usage.cache_creation_input_tokens || usage.cache_creation_tokens || 0;
+    totals.cacheWrite1h += usage.cache_creation?.ephemeral_1h_input_tokens || 0;
+};
+
+const countToolUses = (event: any, toolCalls: Record<string, number>): void => {
+    if (event.type === 'tool_use' || (event.message && event.message.tool_calls)) {
+        const toolName = event.name || event.tool_name || 'unknown';
+        toolCalls[toolName] = (toolCalls[toolName] || 0) + 1;
+        return;
+    }
+    const content = getEventMessage(event)?.content || event.content;
+    if (Array.isArray(content)) {
+        for (const block of content) {
+            if (block && block.type === 'tool_use') {
+                const toolName = block.name || 'unknown';
+                toolCalls[toolName] = (toolCalls[toolName] || 0) + 1;
+            }
+        }
+    }
+};
+
+const resolvePricing = (model: string) => {
+    return getPricingForModel('anthropic', model)
+        || getPricingForModel('anthropic', model.replace(/-\d{8}$/, ''));
+};
+
+// Anthropic bills cache writes at 1.25x input (5-minute TTL) and 2x input (1-hour TTL).
+const computeCost = (model: string, totals: UsageTotals): number => {
+    if (!model) return 0;
+    const pricing = resolvePricing(model);
+    if (!pricing) return 0;
+    const cacheWrite5m = Math.max(0, totals.cacheWrite - totals.cacheWrite1h);
+    const inputCost = (totals.input / 1_000_000) * pricing.input;
+    const outputCost = (totals.output / 1_000_000) * pricing.output;
+    const cacheReadCost = pricing.cached ? (totals.cacheRead / 1_000_000) * pricing.cached : 0;
+    const cacheWriteCost = (cacheWrite5m / 1_000_000) * pricing.input * 1.25
+        + (totals.cacheWrite1h / 1_000_000) * pricing.input * 2;
+    return inputCost + outputCost + cacheReadCost + cacheWriteCost;
+};
 export const parse = async (onProgress?: (current: number, total: number) => void): Promise<void> => {
     const claudeDir = getClaudeDir();
     if (!fs.existsSync(claudeDir)) return;
@@ -88,11 +159,10 @@ const parseSessionFile = async (filePath: string) => {
     // Read the file line by line
     let started_at: string | null = null;
     let ended_at: string | null = null;
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let cacheReadTokens = 0;
-    let cacheWriteTokens = 0;
-    let messageCount = 0;
+    const totals = emptyTotals();
+    const seenRequests = new Set<string>();
+    let totalLines = 0;
+    let conversationMessages = 0;
     let toolCalls: Record<string, number> = {};
     const modelCounts: Record<string, number> = {};
 
@@ -101,12 +171,20 @@ const parseSessionFile = async (filePath: string) => {
         crlfDelay: Infinity
     });
 
+    let sidechainEvents = 0;
+
     for await (const line of rl) {
         if (!line.trim()) continue;
         try {
             const event = JSON.parse(line);
-            messageCount++;
-            
+            totalLines++;
+            if (event.type === 'user' || event.type === 'assistant') {
+                conversationMessages++;
+            }
+            if (event.isSidechain === true) {
+                sidechainEvents++;
+            }
+
             if (!started_at && event.timestamp) {
                 started_at = new Date(event.timestamp).toISOString();
             }
@@ -114,36 +192,25 @@ const parseSessionFile = async (filePath: string) => {
                 ended_at = new Date(event.timestamp).toISOString();
             }
 
-            if (event.model) {
-                modelCounts[event.model] = (modelCounts[event.model] || 0) + 1;
+            const model = extractModel(event);
+            if (model) {
+                modelCounts[model] = (modelCounts[model] || 0) + 1;
             }
 
-            // Usage extraction
-            if (event.usage) {
-                inputTokens += event.usage.input_tokens || event.usage.prompt_tokens || 0;
-                outputTokens += event.usage.output_tokens || event.usage.completion_tokens || 0;
-                cacheReadTokens += event.usage.cache_read_tokens || event.usage.cache_creation_input_tokens || 0; // fallback matching logic
-                cacheWriteTokens += event.usage.cache_creation_tokens || 0;
-            }
-
-            // Tool extraction
-            if (event.type === 'tool_use' || (event.message && event.message.tool_calls)) {
-                // If it's a direct tool_use event from Claude Code
-                const toolName = event.name || event.tool_name || 'unknown';
-                toolCalls[toolName] = (toolCalls[toolName] || 0) + 1;
-            } else if (event.content && Array.isArray(event.content)) {
-                 for (const block of event.content) {
-                     if (block.type === 'tool_use') {
-                         const toolName = block.name || 'unknown';
-                         toolCalls[toolName] = (toolCalls[toolName] || 0) + 1;
-                     }
-                 }
-            }
+            accumulateUsage(event, totals, seenRequests);
+            countToolUses(event, toolCalls);
 
         } catch (e) {
             // Skip malformed line
         }
     }
+
+    // Files with typed user/assistant lines get a true conversation count; legacy files fall back to line count
+    const messageCount = conversationMessages > 0 ? conversationMessages : totalLines;
+    const inputTokens = totals.input;
+    const outputTokens = totals.output;
+    const cacheReadTokens = totals.cacheRead;
+    const cacheWriteTokens = totals.cacheWrite;
 
     if (!started_at) started_at = new Date(stat.birthtimeMs).toISOString();
     
@@ -163,18 +230,8 @@ const parseSessionFile = async (filePath: string) => {
         }
     }
 
-    // Determine estimated cost
-    let estimatedCost = 0;
-    if (primaryModel) {
-        // We use 'anthropic' as provider since it's claude-code
-        const pricing = getPricingForModel('anthropic', primaryModel);
-        if (pricing) {
-            const inputCost = (inputTokens / 1_000_000) * pricing.input;
-            const outputCost = (outputTokens / 1_000_000) * pricing.output;
-            const cacheCost = pricing.cached ? (cacheReadTokens / 1_000_000) * pricing.cached : 0;
-            estimatedCost = inputCost + outputCost + cacheCost;
-        }
-    }
+    // Determine estimated cost ('anthropic' as provider since it's claude-code)
+    const estimatedCost = computeCost(primaryModel, totals);
 
     // Determine session type
     const toolCallCount = Object.values(toolCalls).reduce((a, b) => a + b, 0);
@@ -182,7 +239,9 @@ const parseSessionFile = async (filePath: string) => {
 
     const cacheHitRate = cacheReadTokens + inputTokens > 0 ? cacheReadTokens / (cacheReadTokens + inputTokens) : 0;
 
-    // Subagent counting
+    // Subagent counting. Legacy layout: separate files under subagents/.
+    // Current layout: subagent turns live inline in the parent file as
+    // isSidechain events, one spawn per Task tool call.
     let subagentCount = 0;
     let hasSubagents = false;
     if (!isSubagent) {
@@ -191,6 +250,13 @@ const parseSessionFile = async (filePath: string) => {
             const list = fs.readdirSync(subagentsDir).filter(f => f.endsWith('.jsonl'));
             subagentCount = list.length;
             hasSubagents = subagentCount > 0;
+        }
+        if (subagentCount === 0) {
+            const taskSpawns = toolCalls['Task'] || toolCalls['Agent'] || 0;
+            if (taskSpawns > 0 || sidechainEvents > 0) {
+                subagentCount = Math.max(taskSpawns, sidechainEvents > 0 ? 1 : 0);
+                hasSubagents = true;
+            }
         }
     }
 
@@ -267,11 +333,10 @@ const parseSubagentFile = async (filePath: string, parentId: number) => {
 
     let started_at: string | null = null;
     let ended_at: string | null = null;
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let cacheReadTokens = 0;
-    let cacheWriteTokens = 0;
-    let messageCount = 0;
+    const totals = emptyTotals();
+    const seenRequests = new Set<string>();
+    let totalLines = 0;
+    let conversationMessages = 0;
     let toolCalls: Record<string, number> = {};
     const modelCounts: Record<string, number> = {};
 
@@ -284,32 +349,25 @@ const parseSubagentFile = async (filePath: string, parentId: number) => {
         if (!line.trim()) continue;
         try {
             const event = JSON.parse(line);
-            messageCount++;
+            totalLines++;
+            if (event.type === 'user' || event.type === 'assistant') conversationMessages++;
             if (!started_at && event.timestamp) started_at = new Date(event.timestamp).toISOString();
             if (event.timestamp) ended_at = new Date(event.timestamp).toISOString();
-            if (event.model) modelCounts[event.model] = (modelCounts[event.model] || 0) + 1;
-            if (event.usage) {
-                inputTokens += event.usage.input_tokens || event.usage.prompt_tokens || 0;
-                outputTokens += event.usage.output_tokens || event.usage.completion_tokens || 0;
-                cacheReadTokens += event.usage.cache_read_tokens || 0;
-                cacheWriteTokens += event.usage.cache_creation_tokens || 0;
-            }
-            if (event.type === 'tool_use') {
-                const toolName = event.name || 'unknown';
-                toolCalls[toolName] = (toolCalls[toolName] || 0) + 1;
-            }
+            const model = extractModel(event);
+            if (model) modelCounts[model] = (modelCounts[model] || 0) + 1;
+            accumulateUsage(event, totals, seenRequests);
+            countToolUses(event, toolCalls);
         } catch (e) {}
     }
 
     if (!started_at) started_at = new Date(stat.birthtimeMs).toISOString();
+    const messageCount = conversationMessages > 0 ? conversationMessages : totalLines;
+    const inputTokens = totals.input;
+    const outputTokens = totals.output;
+    const cacheReadTokens = totals.cacheRead;
+    const cacheWriteTokens = totals.cacheWrite;
     let primaryModel = Object.entries(modelCounts).sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-    let agentCost = 0;
-    if (primaryModel) {
-        const pricing = getPricingForModel('anthropic', primaryModel);
-        if (pricing) {
-            agentCost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output;
-        }
-    }
+    const agentCost = computeCost(primaryModel, totals);
 
     insertSubagent({
         parent_session_id: parentId,

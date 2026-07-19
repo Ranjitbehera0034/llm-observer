@@ -14,6 +14,7 @@ import appsRouter from './apps.routes';
 import networkRouter from './network.routes';
 import wrappedRouter from './wrapped.routes';
 import optimizeRouter from './optimize.routes';
+import compareRouter from './compare.routes';
 
 /**
  * Composes all dashboard API sub-routers into a single router.
@@ -64,6 +65,9 @@ export function createDashboardRouter(): Router {
 
     // Optimization Engine (v1.12.0)
     router.use('/optimize', optimizeRouter);
+
+    // A/B Comparison
+    router.use('/compare', compareRouter);
 
     // SSE events (mounted at /events)ß
     router.get('/events', (req, res, next) => {

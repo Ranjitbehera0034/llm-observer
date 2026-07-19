@@ -103,13 +103,13 @@ export function performActivityMonitoring(provider: string): void {
     const now = new Date().toISOString();
 
     const dailyResp = db.prepare(`
-        SELECT COUNT(*) as count, SUM(total_tokens) as tokens 
+        SELECT COUNT(*) as count, SUM(input_tokens + output_tokens) as tokens 
         FROM sessions 
         WHERE provider = ? AND started_at >= datetime('now', 'start of day')
     `).get(provider) as any;
 
     const weeklyResp = db.prepare(`
-        SELECT COUNT(*) as count, SUM(total_tokens) as tokens 
+        SELECT COUNT(*) as count, SUM(input_tokens + output_tokens) as tokens 
         FROM sessions 
         WHERE provider = ? AND started_at >= datetime('now', '-7 days')
     `).get(provider) as any;
