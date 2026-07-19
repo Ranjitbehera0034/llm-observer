@@ -74,6 +74,10 @@ changes required to keep using what you already had.
 - `packages/desktop/src-tauri/tauri.conf.json`'s version was stuck at `1.0.0`
   while the rest of the monorepo had moved on, which would have mistagged
   automated desktop releases
+- `release.yml`'s Ubuntu build installed `libwebkit2gtk-4.0-dev` (Tauri v1's
+  dependency, bundles libsoup2) instead of `libwebkit2gtk-4.1-dev` (Tauri v2's,
+  bundles libsoup3) — this app is on Tauri v2, so the Linux desktop build had
+  likely never actually succeeded
 
 ### Removed
 - The dead, pre-restructure `apps/tauri/` duplicate of the desktop app (including
