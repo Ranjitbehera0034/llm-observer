@@ -60,10 +60,20 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Spawn proxy sidecar
+            // Spawn proxy sidecar. The sidecar binary is a plain copy of the
+            // Node runtime that built it (see packages/proxy/scripts/build-sidecar.js)
+            // rather than a `pkg`-snapshotted single file -- pkg's native-module
+            // handling doesn't work reliably for better-sqlite3. Because of that,
+            // it needs the actual server script passed as an argument, resolved
+            // to wherever this install's bundled resources actually landed.
+            let server_script = app.path()
+                .resolve("resources/proxy/server.js", tauri::path::BaseDirectory::Resource)
+                .expect("failed to resolve bundled proxy server.js");
+
             let sidecar = app.shell().sidecar("llm-observer-proxy")
-                .expect("failed to create sidecar");
-            
+                .expect("failed to create sidecar")
+                .args([server_script.to_string_lossy().to_string()]);
+
             let (mut rx, _child) = sidecar.spawn()
                 .expect("failed to spawn proxy sidecar");
             
