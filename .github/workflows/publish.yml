@@ -3,14 +3,23 @@ name: Publish Package to npmjs
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (for re-running after a fix, without cutting a new release)'
+        required: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: actions/setup-node@v4
         with:
@@ -18,7 +27,12 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - run: npm install
-      - run: npm run build --workspaces --if-present
+      # Not `npm run build --workspaces --if-present`: that has no
+      # dependency ordering, and packages/cli's build copies
+      # packages/proxy/dist/server.js -- it needs proxy built first.
+      # build:ci is the already-correctly-ordered variant (and skips the
+      # desktop Tauri build, irrelevant for an npm publish).
+      - run: npm run build:ci
 
       - name: Checksum the package that will be published
         working-directory: packages/cli
@@ -29,7 +43,7 @@ jobs:
 
       - name: Attach checksum to the GitHub release
         working-directory: packages/cli
-        run: gh release upload "${{ github.event.release.tag_name }}" CHECKSUMS.txt --clobber
+        run: gh release upload "${{ env.RELEASE_TAG }}" CHECKSUMS.txt --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

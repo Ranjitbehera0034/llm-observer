@@ -99,6 +99,14 @@ changes required to keep using what you already had.
   v2.0.0 Windows desktop build failed with a missing `dist/migrations`.
   Replaced both with small cross-platform Node scripts
   (`scripts/postbuild.js`) using `fs.cpSync`, no shell involved
+- `publish.yml` ran `npm run build --workspaces --if-present`, which has no
+  dependency ordering — `packages/cli`'s build copies
+  `packages/proxy/dist/server.js`, so it needs proxy built first. This
+  failed the actual v2.0.0 npm publish (`llm-observer` build ran before
+  `proxy`'s, ENOENT on the copy). Switched to the already-correctly-ordered
+  `npm run build:ci`, and added a `workflow_dispatch` trigger so this
+  workflow can be re-run against an already-published release without
+  cutting a new one
 
 ### Removed
 - The dead, pre-restructure `apps/tauri/` duplicate of the desktop app (including
