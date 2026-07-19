@@ -93,6 +93,12 @@ changes required to keep using what you already had.
   required — traced by really booting the server rather than a
   hand-maintained list — removed the stale committed binaries, and wired the
   build into `release.yml` for all three platforms
+- `packages/proxy` and `packages/cli`'s build scripts used POSIX-only shell
+  syntax (`mkdir -p`, `cp -r`, `2>/dev/null`), which fails outright on
+  Windows ("The syntax of the command is incorrect") — surfaced when the
+  v2.0.0 Windows desktop build failed with a missing `dist/migrations`.
+  Replaced both with small cross-platform Node scripts
+  (`scripts/postbuild.js`) using `fs.cpSync`, no shell involved
 
 ### Removed
 - The dead, pre-restructure `apps/tauri/` duplicate of the desktop app (including
