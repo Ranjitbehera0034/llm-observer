@@ -50,7 +50,7 @@ jobs:
 
       - name: Attach checksum to the GitHub release
         working-directory: packages/cli
-        run: gh release upload "${{ env.RELEASE_TAG }}" CHECKSUMS.txt --clobber
+        run: gh release upload "${{ env.RELEASE_TAG }}" CHECKSUMS.txt --clobber || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
