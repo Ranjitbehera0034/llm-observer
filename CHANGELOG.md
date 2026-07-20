@@ -114,6 +114,10 @@ changes required to keep using what you already had.
   `NPM_TOKEN`) with a trusted publisher configured for this repo/workflow
   on npmjs.com, and bumped the CI npm CLI to latest (trusted publishing
   needs npm >= 11.5.0; Node 20's bundled npm predates that)
+- That npm CLI bump then failed on its own: `npm install -g npm@latest`
+  pulled npm 12.0.1, which requires Node `^22.22.2 || ^24.15.0 || >=26` --
+  Node 20 satisfied neither the trusted-publishing floor nor npm 12's own
+  floor. Bumped `publish.yml`'s Node version to 22
 
 ### Removed
 - The dead, pre-restructure `apps/tauri/` duplicate of the desktop app (including
