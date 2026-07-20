@@ -107,6 +107,13 @@ changes required to keep using what you already had.
   `npm run build:ci`, and added a `workflow_dispatch` trigger so this
   workflow can be re-run against an already-published release without
   cutting a new one
+- Publishing also failed against a real granular npm token with `EOTP`
+  (npm's account-level 2FA required a one-time password that can't be
+  supplied in CI). Switched `publish.yml` to npm's OIDC trusted
+  publishing (`npm publish --provenance`, `id-token: write`, no
+  `NPM_TOKEN`) with a trusted publisher configured for this repo/workflow
+  on npmjs.com, and bumped the CI npm CLI to latest (trusted publishing
+  needs npm >= 11.5.0; Node 20's bundled npm predates that)
 
 ### Removed
 - The dead, pre-restructure `apps/tauri/` duplicate of the desktop app (including
