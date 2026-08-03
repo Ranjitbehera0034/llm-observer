@@ -72,6 +72,6 @@ export default async function handler(req: Request): Promise<Response> {
     // For now, reject unknown formats and guide users to buy
     return new Response(JSON.stringify({
         valid: false,
-        error: 'Unknown key format. Keys from this server start with PRO_. Please purchase at llmobserver.com/pricing',
+        error: 'Unknown key format. Keys from this server start with PRO_. Please purchase at llm-observer.com/pricing',
     }), { status: 400, headers: corsHeaders });
 }

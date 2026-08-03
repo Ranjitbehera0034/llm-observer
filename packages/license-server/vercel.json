@@ -1,11 +1,6 @@
 {
     "version": 2,
     "name": "llm-observer-license-server",
-    "functions": {
-        "api/**/*.ts": {
-            "runtime": "nodejs22.x"
-        }
-    },
     "routes": [
         {
             "src": "/health",
