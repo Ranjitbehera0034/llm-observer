@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = process.env.EMAIL_FROM || 'licenses@llmobserver.com';
+const FROM = process.env.EMAIL_FROM || 'licenses@llm-observer.com';
 
 export interface LicenseEmailPayload {
     to: string;
@@ -87,7 +87,7 @@ export async function sendLicenseEmail(payload: LicenseEmailPayload): Promise<vo
             </tr>
             <tr>
               <td style="padding-top:6px;">Questions? Reply to this email.</td>
-              <td style="text-align:right;padding-top:6px;"><a href="https://llmobserver.com" style="color:#7c3aed;text-decoration:none;">llmobserver.com</a></td>
+              <td style="text-align:right;padding-top:6px;"><a href="https://www.llm-observer.com" style="color:#7c3aed;text-decoration:none;">llm-observer.com</a></td>
             </tr>
           </table>
         </div>
