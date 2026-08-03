@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `packages/license-server`'s first real Vercel deploy attempt failed with
+  `Function Runtimes must have a valid version` -- `vercel.json`'s
+  `functions.runtime: "nodejs22.x"` was invalid syntax for that field
+  (it selects between runtime families like nodejs/edge, not a Node.js
+  version). Removed; not needed for anything else in this config.
+- Several places used `llmobserver.com` (no hyphen) instead of the real
+  `llm-observer.com` -- the wrong one resolves to an unrelated parked
+  domain. Fixed in the license-key error message, the license email's
+  "from" address fallback, and the email template's footer link.
+
 ## [2.0.0] - 2026-07-18
 
 **Upgrading from 1.14.0 is safe and automatic.** There are no breaking changes:
