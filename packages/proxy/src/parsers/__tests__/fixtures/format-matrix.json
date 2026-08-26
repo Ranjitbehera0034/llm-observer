@@ -29,5 +29,44 @@
         "sessionType": "agentic"
       }
     }
+  ],
+  "opencode": [
+    {
+      "fixture": "format-v1-current.vscdb",
+      "description": "current OpenCode SQLite session table: three rows covering an anthropic agentic root session with cache hits, a subagent child, and an interactive openai session",
+      "expected": {
+        "rootSession": {
+          "provider": "anthropic",
+          "primaryModel": "claude-sonnet-4-6 (default)",
+          "inputTokens": 1200,
+          "outputTokens": 900,
+          "cacheReadTokens": 4500,
+          "cacheWriteTokens": 200,
+          "sessionType": "agentic",
+          "hasSubagents": true,
+          "subagentCount": 1
+        },
+        "subagentSession": {
+          "provider": "anthropic",
+          "primaryModel": "claude-haiku-4-5",
+          "inputTokens": 400,
+          "outputTokens": 200,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0,
+          "sessionType": "interactive",
+          "hasSubagents": false
+        },
+        "interactiveSession": {
+          "provider": "openai",
+          "primaryModel": "gpt-5.1-mini",
+          "inputTokens": 50,
+          "outputTokens": 120,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0,
+          "sessionType": "interactive",
+          "hasSubagents": false
+        }
+      }
+    }
   ]
 }

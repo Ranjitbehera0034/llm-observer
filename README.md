@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  See every dollar across 7 AI coding tools: Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI — without changing how you work.
+  See every dollar across 8 AI coding tools: Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, OpenAI Codex CLI, and OpenCode — without changing how you work.
 </p>
 
 <p align="center">
@@ -60,7 +60,7 @@ On first launch, LLM Observer automatically detects your installed AI tools, par
 
 ### Session Tracking (Zero Config)
 
-- **Auto-Detection** — Automatically finds Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI data on your machine
+- **Auto-Detection** — Automatically finds Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, OpenAI Codex CLI, and OpenCode data on your machine
 - **Session Explorer** — Browse every AI conversation with cost, duration, tokens, model, and project
 - **Incremental Parsing** — Only new/modified files are re-parsed on startup (fast after first run)
 - **Session Type Labels** — Automatically classifies sessions as "interactive" or "agentic"
@@ -262,6 +262,7 @@ LLM_OBSERVER_PORT=3000 llm-observer start
 | Windsurf | `~/Library/.../Windsurf/User/globalStorage/*/state.vscdb` | SQLite |
 | Cline / Roo Code | `~/Library/.../globalStorage/{extensionId}/tasks/*/api_conversation_history.json` | JSON |
 | OpenAI Codex CLI | `~/.codex/sessions/*.jsonl` | JSONL |
+| OpenCode | `~/.local/share/opencode/opencode.db` | SQLite |
 
 All files are read in **read-only mode**. LLM Observer never modifies any AI tool's data.
 
