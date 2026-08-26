@@ -5,6 +5,7 @@ import * as codexParser from './codex';
 import * as clineParser from './cline';
 import * as windsurfParser from './windsurf';
 import * as copilotParser from './copilot';
+import * as opencodeParser from './opencode';
 import { aggregateToolUsage } from './toolAggregator';
 
 const STATE = {
@@ -17,7 +18,8 @@ const STATE = {
         'codex': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
         'cline': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
         'windsurf': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
-        'copilot': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } }
+        'copilot': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
+        'opencode': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } }
     }
 };
 
@@ -30,6 +32,7 @@ export const initParsers = () => {
     if (clineParser.detector()) STATE.providers['cline'].status = 'found';
     if (windsurfParser.detector()) STATE.providers['windsurf'].status = 'found';
     if (copilotParser.detector()) STATE.providers['copilot'].status = 'found';
+    if (opencodeParser.detector()) STATE.providers['opencode'].status = 'found';
 
     // 2. Perform initial parse without blocking
     triggerParseCycle().catch(err => {
@@ -59,7 +62,8 @@ export const triggerParseCycle = async () => {
             { id: 'codex', mod: codexParser },
             { id: 'cline', mod: clineParser },
             { id: 'windsurf', mod: windsurfParser },
-            { id: 'copilot', mod: copilotParser }
+            { id: 'copilot', mod: copilotParser },
+            { id: 'opencode', mod: opencodeParser }
         ];
 
         for (const info of parsersInfo) {
