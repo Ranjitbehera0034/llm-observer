@@ -103,20 +103,17 @@ export default function Settings() {
         };
         fetchSessionProviders();
 
-        // Detect Country for Payments
-        const detectCountry = async () => {
-            try {
-                const res = await fetch('https://ipapi.co/json/');
-                const data = await res.json();
-                setCountry(data.country_code);
-            } catch (err) {
-                console.error('Failed to detect country:', err);
-                setCountry('US'); // Fallback to Global
-            } finally {
-                setDetectingCountry(false);
-            }
-        };
-        detectCountry();
+        // Pick the payment provider from the browser's time zone instead of an
+        // IP-geolocation service, so opening Settings never sends the user's IP
+        // to a third party. India uses Razorpay (UPI); everyone else Lemon Squeezy.
+        try {
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            setCountry(tz === 'Asia/Kolkata' || tz === 'Asia/Calcutta' ? 'IN' : 'US');
+        } catch {
+            setCountry('US');
+        } finally {
+            setDetectingCountry(false);
+        }
     }, []);
 
     useEffect(() => {

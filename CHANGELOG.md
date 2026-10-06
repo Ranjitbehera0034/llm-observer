@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-06
+
+### Security / Privacy
+- **Removed Claude credential reading.** The rate-limit poller read Claude
+  Code's OAuth token from the OS keychain (`security` / `secret-tool`) or
+  `~/.claude/.credentials.json` every 5 minutes and sent it as a Bearer token
+  to an undocumented `api.claude.ai` endpoint. That contradicted the
+  "nothing leaves your machine" promise and is gone: Anthropic rate-limit
+  usage is now always estimated from locally parsed sessions.
+  (`packages/proxy/src/rate-limits/credentials.ts` deleted.)
+- **Removed IP geolocation.** Opening Settings called `ipapi.co`, sending the
+  user's IP to a third party just to choose a payment provider. It now uses
+  the browser's time zone, locally.
+- README now lists every outbound network request the app can make, when,
+  and what is sent.
+
 ### Fixed
 - `packages/license-server`'s first real Vercel deploy attempt failed with
   `Function Runtimes must have a valid version` -- `vercel.json`'s
