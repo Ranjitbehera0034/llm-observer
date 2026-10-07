@@ -3,6 +3,7 @@ import express from 'express';
 import { EventEmitter } from 'events';
 import { getDb, bulkInsertRequests } from '@llm-observer/database';
 import { buildReasoningChain } from '../analysis/reasoningChain';
+import { isRequestOriginOk } from '../security/localGuard';
 
 export const requestEventEmitter = new EventEmitter();
 requestEventEmitter.setMaxListeners(50);
@@ -90,8 +91,9 @@ requestsRouter.get('/events', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const origin = req.headers.origin || req.headers.host || '';
-    if (origin && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+    // Exact-match Origin (localGuard enforces the same on the apps; this keeps
+    // the route safe if it is ever mounted elsewhere).
+    if (!isRequestOriginOk(req)) {
         return res.status(403).end();
     }
 

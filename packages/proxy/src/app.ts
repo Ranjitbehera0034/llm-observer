@@ -7,6 +7,7 @@ import { budgetGuard } from './budgetGuard';
 import { rateLimitGuard } from './rateLimitGuard';
 import { resolveRequestContext } from './requestContext';
 import { dashboardApi } from './dashboardApi';
+import { localGuard } from './security/localGuard';
 import syncRoutes from './routes/sync.routes';
 import subscriptionRoutes from './routes/subscriptions.routes';
 import overviewRoutes from './routes/overview.routes';
@@ -31,6 +32,8 @@ const corsOptions = {
  */
 export function createApp(): express.Express {
     const app = express();
+    // First, so a rebinding/CSRF request is refused before anything else runs
+    app.use(localGuard);
     app.use(cors(corsOptions));
 
     // Health check
@@ -116,6 +119,7 @@ export function createApp(): express.Express {
  */
 export function createDashboardApp(): express.Express {
     const dashboardApp = express();
+    dashboardApp.use(localGuard);
     dashboardApp.use(cors(corsOptions));
     dashboardApp.use(express.json());
     // Mount the dashboard API router

@@ -67,9 +67,36 @@ export interface WrappedReport {
 export class WrappedService {
     private static cache = new Map<string, { report: WrappedReport; expires: number }>();
     private static CACHE_TTL = 3600 * 1000; // 1 hour
+    private static CACHE_MAX_ENTRIES = 48;
 
     static clearCache() {
         this.cache.clear();
+    }
+
+    static _cacheSizeForTest(): number {
+        return this.cache.size;
+    }
+
+    /** monthly: YYYY-MM with a real month; yearly: four digits. */
+    static isValidPeriod(type: string, period: unknown): period is string {
+        if (typeof period !== 'string') return false;
+        if (type === 'monthly') return /^\d{4}-(0[1-9]|1[0-2])$/.test(period);
+        if (type === 'yearly') return /^\d{4}$/.test(period);
+        return false;
+    }
+
+    private static cacheSet(key: string, report: WrappedReport) {
+        const now = Date.now();
+        // Re-insert so Map order is oldest-first, then drop expired and the oldest overflow.
+        this.cache.delete(key);
+        this.cache.set(key, { report, expires: now + this.CACHE_TTL });
+        for (const [k, v] of this.cache) {
+            if (v.expires <= now) this.cache.delete(k);
+        }
+        while (this.cache.size > this.CACHE_MAX_ENTRIES) {
+            const oldest = this.cache.keys().next().value as string;
+            this.cache.delete(oldest);
+        }
     }
 
     static async getAvailablePeriods(): Promise<{ months: string[]; years: string[] }> {
@@ -97,7 +124,7 @@ export class WrappedService {
         }
 
         const report = await this.generateReport(month, 'monthly');
-        this.cache.set(cacheKey, { report, expires: Date.now() + this.CACHE_TTL });
+        this.cacheSet(cacheKey, report);
         return report;
     }
 
@@ -109,7 +136,7 @@ export class WrappedService {
         }
 
         const report = await this.generateReport(year, 'yearly');
-        this.cache.set(cacheKey, { report, expires: Date.now() + this.CACHE_TTL });
+        this.cacheSet(cacheKey, report);
         return report;
     }
 
@@ -426,6 +453,15 @@ export class WrappedService {
         );
     }
 
+    private static escapeXml(value: unknown): string {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+    }
+
     private static sanitizeForCard(text: string): string {
         if (!text) return 'None';
         // Remove common secret patterns (sk-, uuid-like, etc)
@@ -438,8 +474,12 @@ export class WrappedService {
 
     static generateCardSVG(report: WrappedReport, prefs: WrappedPreferences): string {
         const { stats, breakdowns } = report;
-        const total = prefs.show_total_spend ? `$${stats.total_spend.toFixed(2)}` : '****';
-        const topModel = this.sanitizeForCard(breakdowns.by_model[0]?.model);
+        const esc = (v: unknown) => this.escapeXml(v);
+        const total = esc(prefs.show_total_spend ? `$${stats.total_spend.toFixed(2)}` : '****');
+        const topModel = esc(this.sanitizeForCard(breakdowns.by_model[0]?.model));
+        const period = esc(report.period);
+        const requests = esc(stats.total_requests.toLocaleString());
+        const daysActive = esc(stats.days_active);
         
         return `
 <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
@@ -453,7 +493,7 @@ export class WrappedService {
     
     <!-- Header -->
     <text x="60" y="80" font-family="Arial, sans-serif" font-size="32" font-weight="bold" fill="#94A3B8">LLM OBSERVER</text>
-    <text x="60" y="160" font-family="Arial, sans-serif" font-size="64" font-weight="bold" fill="white">AI Wrapped ${report.period}</text>
+    <text x="60" y="160" font-family="Arial, sans-serif" font-size="64" font-weight="bold" fill="white">AI Wrapped ${period}</text>
     
     <!-- Main Stat -->
     <rect x="60" y="200" width="1080" height="4" fill="url(#grad1)" opacity="0.3" />
@@ -463,13 +503,13 @@ export class WrappedService {
     <!-- Sub Stats -->
     <g transform="translate(60, 480)">
         <text y="0" font-family="Arial, sans-serif" font-size="20" fill="#94A3B8">REQUESTS</text>
-        <text y="45" font-family="Arial, sans-serif" font-size="40" font-weight="bold" fill="white">${stats.total_requests.toLocaleString()}</text>
+        <text y="45" font-family="Arial, sans-serif" font-size="40" font-weight="bold" fill="white">${requests}</text>
         
         <text x="300" y="0" font-family="Arial, sans-serif" font-size="20" fill="#94A3B8">TOP MODEL</text>
         <text x="300" y="45" font-family="Arial, sans-serif" font-size="40" font-weight="bold" fill="white">${topModel}</text>
         
         <text x="700" y="0" font-family="Arial, sans-serif" font-size="20" fill="#94A3B8">DAYS ACTIVE</text>
-        <text x="700" y="45" font-family="Arial, sans-serif" font-size="40" font-weight="bold" fill="white">${stats.days_active}</text>
+        <text x="700" y="45" font-family="Arial, sans-serif" font-size="40" font-weight="bold" fill="white">${daysActive}</text>
     </g>
     
     <!-- Branding Footer -->

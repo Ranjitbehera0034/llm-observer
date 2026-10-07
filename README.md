@@ -225,7 +225,9 @@ Keys are encrypted with AES-256-GCM locally. Never logged, never sent anywhere.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LLM_OBSERVER_PORT` | `4001` | Dashboard and API port |
-| `LLM_OBSERVER_HOST` | `127.0.0.1` | Bind address |
+| `LLM_OBSERVER_HOST` | `127.0.0.1` | Bind address (a specific non-wildcard address is also accepted as a `Host`) |
+| `LLM_OBSERVER_ALLOWED_HOSTS` | unset | Extra `Host` names to accept, comma-separated (e.g. `observer.lan,my-box`). Requests whose `Host` is not `localhost`, `127.0.0.1`, `[::1]` or listed here get `421` (DNS-rebinding guard); set it if you reach the dashboard through a hostname, container name or reverse proxy |
+| `LLM_OBSERVER_ALLOWED_ORIGINS` | unset | Extra browser `Origin`s allowed to make state-changing requests or open the live event stream, comma-separated (e.g. `https://observer.example`). The dashboard's own origin, `localhost`/`127.0.0.1`/`[::1]` on the configured ports, the Vite dev server (`:5173`) and the desktop app are always allowed |
 | `LLM_OBSERVER_DATA_DIR` | `~/.llm-observer` | Database and config location |
 | `LLM_OBSERVER_PROXY_PORT` | `4000` | Proxy port (when enabled) |
 | `NO_UPDATE_NOTIFIER` | unset | Set to any value to disable the CLI's background npm-version check |
