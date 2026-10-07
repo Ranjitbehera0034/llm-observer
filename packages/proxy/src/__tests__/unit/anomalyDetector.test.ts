@@ -1,77 +1,85 @@
+// Runs the real SQL against an in-memory SQLite database seeded with ISO-format
+// rows (as the proxy writes them), so timestamp-comparison bugs are caught.
+jest.mock('@llm-observer/database', () => {
+    const { createTestDb } = require('../helpers/testDb');
+    const t = createTestDb();
+    const alerts: any[] = [];
+    return {
+        getDb: () => t.database,
+        bulkInsertRequests: t.bulkInsertRequests,
+        createAlert: jest.fn((a: any) => { alerts.push(a); return 'alert-id'; }),
+    };
+});
+
 import { _detectAnomalies } from '../../anomalyDetector';
-import { getDb, createAlert } from '@llm-observer/database';
-import { internalLogger } from '../../internalLogger';
+import { getDb, createAlert, bulkInsertRequests } from '@llm-observer/database';
 
-jest.mock('@llm-observer/database', () => ({
-    getDb: jest.fn(),
-    getSetting: jest.fn().mockReturnValue('1'), // Ensure email is "enabled"
-    createAlert: jest.fn()
-}));
+const HOUR = 60 * 60 * 1000;
+// Four simulated days of hourly runs; the old text comparison misbehaves on the
+// cutoff's calendar date, so most runs of the day were false positives.
+const START = Date.parse('2026-10-03T00:30:00.000Z');
 
-jest.mock('../../internalLogger', () => ({
-    internalLogger: {
-        add: jest.fn(),
-        flush: jest.fn()
-    }
-}));
+const iso = (ms: number) => new Date(ms).toISOString();
+const seed = (cost: number, atMs: number) => (bulkInsertRequests as any)([{ cost_usd: cost, created_at: iso(atMs) }]);
 
-// Mock fetch for Resend email validation
-global.fetch = jest.fn(() =>
-    Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ id: 'mock-resend-id' }),
-    })
-) as jest.Mock;
-
-describe('anomalyDetector Unit Tests', () => {
-    let mockDb: any;
+describe('anomalyDetector (in-memory SQLite)', () => {
+    let fetchMock: jest.Mock;
 
     beforeEach(() => {
-        mockDb = {
-            prepare: jest.fn().mockReturnThis(),
-            all: jest.fn().mockReturnValue([{ id: 'proj-1', name: 'Project 1', webhook_url: 'http://test.com' }]),
-            get: jest.fn()
-        };
-        (getDb as jest.Mock).mockReturnValue(mockDb);
+        getDb().prepare('DELETE FROM requests').run();
+        getDb().prepare('DELETE FROM projects WHERE id != ?').run('default');
+        getDb().prepare('UPDATE projects SET webhook_url = NULL').run();
+        (createAlert as jest.Mock).mockClear();
+        fetchMock = jest.fn().mockResolvedValue({ ok: true });
+        (global as any).fetch = fetchMock;
+        jest.spyOn(console, 'log').mockImplementation(() => { });
     });
 
-    afterEach(() => {
-        jest.clearAllMocks();
+    afterEach(() => jest.restoreAllMocks());
+
+    it('fires zero alerts for steady $1/hour traffic over 96 hourly runs', async () => {
+        for (let h = 0; h < 96; h++) {
+            const t = START + h * HOUR;
+            seed(1, t);
+            await _detectAnomalies(t + 30 * 60 * 1000);
+        }
+        expect(createAlert).not.toHaveBeenCalled();
     });
 
-    it('should detect a 5x volume spike and insert an alert', async () => {
-        // Return baseline = 10, recent = 55 (>5x)
-        mockDb.get.mockReturnValueOnce({ avg_cost: 10 });
-        mockDb.get.mockReturnValueOnce({ current_cost: 55 });
-
-        await _detectAnomalies();
-
-        // Should have created an alert for proj-1
-        expect(createAlert).toHaveBeenCalledWith(expect.objectContaining({
-            project_id: 'proj-1',
-            type: 'anomaly'
-        }));
+    it('ignores a spike that is older than the current hour but on the same calendar date', async () => {
+        const now = Date.parse('2026-10-07T20:00:00.000Z');
+        for (let h = 1; h <= 48; h++) seed(1, now - h * HOUR);
+        seed(20, now - 5 * HOUR); // 5h ago, same UTC date as the one-hour cutoff
+        await _detectAnomalies(now);
+        expect(createAlert).not.toHaveBeenCalled();
     });
 
-    it('should NOT trigger an alert under 5x volume spike', async () => {
-        // Return baseline = 10, recent = 20 (2x)
-        mockDb.get.mockReturnValueOnce({ avg_cost: 10 });
-        mockDb.get.mockReturnValueOnce({ current_cost: 20 });
-
-        await _detectAnomalies();
-
-        // Should NOT have created an alert for proj-1
-        expect(mockDb.prepare).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO alerts'));
+    it('fires on a real $20 spike in the current hour', async () => {
+        const now = Date.parse('2026-10-07T20:00:00.000Z');
+        for (let h = 1; h <= 48; h++) seed(1, now - h * HOUR - 10 * 60 * 1000);
+        seed(20, now - 10 * 60 * 1000);
+        await _detectAnomalies(now);
+        expect(createAlert).toHaveBeenCalledTimes(1);
+        expect(createAlert).toHaveBeenCalledWith(expect.objectContaining({ project_id: 'default', type: 'anomaly' }));
     });
 
-    it('should NOT trigger an alert if baseline or recent volume is below noise threshold (<10)', async () => {
-        // Return baseline = 1, recent = 8 (8x spike, but raw numbers too low)
-        mockDb.get.mockReturnValueOnce({ avg_cost: 0.001 });
-        mockDb.get.mockReturnValueOnce({ current_cost: 0.008 });
+    it('does not alert below the noise threshold', async () => {
+        const now = Date.parse('2026-10-07T20:00:00.000Z');
+        for (let h = 1; h <= 48; h++) seed(0.001, now - h * HOUR - 10 * 60 * 1000);
+        seed(0.008, now - 10 * 60 * 1000);
+        await _detectAnomalies(now);
+        expect(createAlert).not.toHaveBeenCalled();
+    });
 
-        await _detectAnomalies();
-
-        // Should NOT have created an alert for proj-1
-        expect(mockDb.prepare).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO alerts'));
+    it('posts to the project webhook with an abort timeout', async () => {
+        const now = Date.parse('2026-10-07T20:00:00.000Z');
+        getDb().prepare('UPDATE projects SET webhook_url = ? WHERE id = ?').run('http://hook.test/x', 'default');
+        for (let h = 1; h <= 48; h++) seed(1, now - h * HOUR - 10 * 60 * 1000);
+        seed(20, now - 10 * 60 * 1000);
+        await _detectAnomalies(now);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [url, init] = fetchMock.mock.calls[0];
+        expect(url).toBe('http://hook.test/x');
+        expect(init.signal).toBeInstanceOf(AbortSignal);
     });
 });

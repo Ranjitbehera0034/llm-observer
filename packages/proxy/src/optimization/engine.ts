@@ -4,6 +4,7 @@ import { allRules } from './rules';
 import { computeOptimizationScore } from './score';
 import { computePlanValue, PlanValue } from './planValue';
 import { getDb } from '@llm-observer/database';
+import { sqlAfter } from '../utils/time';
 
 export interface OptimizationRun {
     score: number;
@@ -18,7 +19,7 @@ export async function runOptimizationEngine(days: number = 30, useCache: boolean
     const db = getDb();
 
     if (useCache) {
-        const cached = db.prepare('SELECT * FROM optimization_cache WHERE expires_at > CURRENT_TIMESTAMP AND days_analyzed = ? ORDER BY computed_at DESC LIMIT 1').get(days) as any;
+        const cached = db.prepare(`SELECT * FROM optimization_cache WHERE ${sqlAfter('expires_at')} AND days_analyzed = ? ORDER BY computed_at DESC LIMIT 1`).get(new Date().toISOString(), days) as any;
         if (cached) {
             return {
                 score: cached.score,

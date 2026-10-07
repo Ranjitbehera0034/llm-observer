@@ -1,17 +1,22 @@
 import { getDb, createAlert } from '@llm-observer/database';
 import chalk from 'chalk';
+import { isoAgo, sqlAtOrAfter, HOUR_MS, DAY_MS } from './utils/time';
+
+const WEBHOOK_TIMEOUT_MS = 10_000;
 
 export function startAnomalyDetection(intervalMs: number = 60 * 60 * 1000) {
     console.log(chalk.gray('Starting background anomaly detector...'));
 
     // Run immediately then on interval
     _detectAnomalies();
-    setInterval(_detectAnomalies, intervalMs);
+    setInterval(() => { _detectAnomalies(); }, intervalMs);
 }
 
-export async function _detectAnomalies() {
+export async function _detectAnomalies(nowMs: number = Date.now()) {
     try {
         const db = getDb();
+        const twoDaysAgo = isoAgo(2 * DAY_MS, nowMs);
+        const oneHourAgo = isoAgo(HOUR_MS, nowMs);
 
         // 1. Fetch webhook_url alongside id and name
         const projects = db.prepare('SELECT id, name, webhook_url FROM projects').all() as any[];
@@ -23,20 +28,20 @@ export async function _detectAnomalies() {
                 FROM (
                     SELECT strftime('%Y-%m-%d %H:00:00', created_at) as hour, sum(cost_usd) as hourly_cost
                     FROM requests
-                    WHERE project_id = ? AND created_at >= datetime('now', '-2 days')
+                    WHERE project_id = ? AND ${sqlAtOrAfter('created_at')}
                     GROUP BY hour
                 )
             `);
-            const avgResult = avgStmt.get(project.id) as any;
+            const avgResult = avgStmt.get(project.id, twoDaysAgo) as any;
             const avgHourlySpend = avgResult?.avg_cost || 0;
 
             // 2. Get current hour spend
             const currentStmt = db.prepare(`
                 SELECT sum(cost_usd) as current_cost
                 FROM requests
-                WHERE project_id = ? AND created_at >= datetime('now', '-1 hour')
+                WHERE project_id = ? AND ${sqlAtOrAfter('created_at')}
             `);
-            const currentResult = currentStmt.get(project.id) as any;
+            const currentResult = currentStmt.get(project.id, oneHourAgo) as any;
             const currentHourSpend = currentResult?.current_cost || 0;
 
             // 3. Compare and alert
@@ -52,7 +57,7 @@ export async function _detectAnomalies() {
                     data: JSON.stringify({
                         current: currentHourSpend,
                         average: avgHourlySpend,
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date(nowMs).toISOString()
                     })
                 });
 
@@ -64,7 +69,8 @@ export async function _detectAnomalies() {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 text: `🚨 *LLM Observer Anomaly Alert* 🚨\n*Project:* ${project.name}\nSpend spike detected: Current hour spend ($${currentHourSpend.toFixed(4)}) is >5x the average ($${avgHourlySpend.toFixed(4)}).`
-                            })
+                            }),
+                            signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS)
                         });
                         console.log(chalk.green(`✓ Webhook fired for ${project.name}`));
                     } catch (webhookErr) {

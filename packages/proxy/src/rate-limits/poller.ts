@@ -1,4 +1,5 @@
 import { getDb, insertRateLimitSnapshot, cleanupOldSnapshots } from '@llm-observer/database';
+import { isoAgo, startOfUtcDayIso, sqlAtOrAfter, HOUR_MS, DAY_MS } from '../utils/time';
 
 // Rate limit poller cycle in MS (5 minutes)
 const POLL_INTERVAL = 5 * 60 * 1000;
@@ -9,8 +10,9 @@ export function estimateAnthropicRateLimits(): void {
     const db = getDb();
     const now = new Date().toISOString();
     
-    // Count sessions in last 5 hours
-    const count5hResp = db.prepare(`SELECT COUNT(*) as count FROM sessions WHERE provider = 'anthropic' AND started_at >= datetime('now', '-5 hours')`).get() as any;
+    // Count sessions in last 5 hours. Claude Code sessions are stored under
+    // provider 'claude-code'; 'anthropic' is kept for any legacy rows.
+    const count5hResp = db.prepare(`SELECT COUNT(*) as count FROM sessions WHERE provider IN ('anthropic', 'claude-code') AND ${sqlAtOrAfter('started_at')}`).get(isoAgo(5 * HOUR_MS)) as any;
     const count5h = count5hResp.count;
 
     // Output snapshot for 5h
@@ -33,14 +35,14 @@ export function performActivityMonitoring(provider: string): void {
     const dailyResp = db.prepare(`
         SELECT COUNT(*) as count, SUM(input_tokens + output_tokens) as tokens 
         FROM sessions 
-        WHERE provider = ? AND started_at >= datetime('now', 'start of day')
-    `).get(provider) as any;
+        WHERE provider = ? AND ${sqlAtOrAfter('started_at')}
+    `).get(provider, startOfUtcDayIso()) as any;
 
     const weeklyResp = db.prepare(`
         SELECT COUNT(*) as count, SUM(input_tokens + output_tokens) as tokens 
         FROM sessions 
-        WHERE provider = ? AND started_at >= datetime('now', '-7 days')
-    `).get(provider) as any;
+        WHERE provider = ? AND ${sqlAtOrAfter('started_at')}
+    `).get(provider, isoAgo(7 * DAY_MS)) as any;
 
     insertRateLimitSnapshot({
         provider,
