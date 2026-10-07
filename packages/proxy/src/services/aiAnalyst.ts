@@ -1,4 +1,3 @@
-import type Anthropic from '@anthropic-ai/sdk';
 import { getDb, getSetting, updateSetting, encrypt, decrypt } from '@llm-observer/database';
 
 const KEY_SETTING = 'ai_analyst_api_key';
@@ -119,31 +118,58 @@ const SYSTEM_PROMPT = `You are the cost analyst inside LLM Observer, a local, pr
 
 Ground every recommendation in the numbers you were given — cite them. Focus on the levers that matter for coding-agent workloads: cache economics (cache reads/writes usually dominate agentic sessions), model selection per task type, redundant tool usage, and budget guardrails. If the data is too thin for a recommendation category, say so rather than inventing one. Keep each recommendation self-contained and actionable.`;
 
-/* The SDK is loaded on demand, never at startup: it is an external of the proxy
- * bundle (not installed with the published CLI), and a privacy-first tool should
- * not load an LLM SDK unless the user opted into the analyst. */
-const loadAnthropic = async (): Promise<typeof Anthropic> => {
-    try {
-        const mod: any = await import('@anthropic-ai/sdk');
-        return mod.default ?? mod;
-    } catch (e: any) {
-        throw Object.assign(
-            new Error('The AI Analyst needs the @anthropic-ai/sdk package, which is not installed with the llm-observer CLI. Install it next to llm-observer (for a global install: cd "$(npm root -g)/llm-observer" && npm install @anthropic-ai/sdk) and restart.'),
-            { code: 'SDK_MISSING', cause: e }
-        );
-    }
+/* The Messages API is called with plain fetch: no SDK is installed with the
+ * published CLI, the desktop sidecar or Docker, and a privacy-first tool should
+ * not carry an LLM SDK just for one opt-in request.
+ * LLM_OBSERVER_ANTHROPIC_BASE_URL overrides the API origin. It exists only so
+ * tests and local development can point the analyst at a mock upstream. */
+const ANTHROPIC_VERSION = '2023-06-01';
+const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+
+const messagesUrl = (): string => {
+    const base = (process.env.LLM_OBSERVER_ANTHROPIC_BASE_URL || 'https://api.anthropic.com').replace(/\/+$/, '');
+    return `${base}/v1/messages`;
 };
 
-export const runAnalysis = async (client?: Anthropic): Promise<AnalystResult> => {
+const postMessages = async (apiKey: string, body: unknown): Promise<any> => {
+    let res: Response;
+    try {
+        res = await fetch(messagesUrl(), {
+            method: 'POST',
+            headers: {
+                'x-api-key': apiKey,
+                'anthropic-version': ANTHROPIC_VERSION,
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+        });
+    } catch (e: any) {
+        throw new Error(`Could not reach the Anthropic API: ${e?.message || e}`);
+    }
+
+    const text = await res.text();
+    let payload: any = null;
+    try { payload = JSON.parse(text); } catch { /* non-JSON body */ }
+
+    if (!res.ok) {
+        const type = payload?.error?.type;
+        const detail = payload?.error?.message || text.slice(0, 200) || res.statusText;
+        throw new Error(`Anthropic API error (${res.status}${type ? ` ${type}` : ''}): ${detail}`);
+    }
+    if (!payload) throw new Error('The Anthropic API returned an unreadable response.');
+    return payload;
+};
+
+export const runAnalysis = async (): Promise<AnalystResult> => {
     const apiKey = getAnalystKey();
-    if (!client && !apiKey) {
+    if (!apiKey) {
         throw Object.assign(new Error('No API key configured for AI Analyst'), { code: 'NO_KEY' });
     }
-    const anthropic = client ?? new (await loadAnthropic())({ apiKey: apiKey! });
 
     const snapshot = buildSpendSnapshot();
 
-    const response = await anthropic.messages.create({
+    const response = await postMessages(apiKey, {
         model: ANALYST_MODEL,
         max_tokens: 16000,
         thinking: { type: 'adaptive' },
@@ -153,7 +179,7 @@ export const runAnalysis = async (client?: Anthropic): Promise<AnalystResult> =>
             role: 'user',
             content: `Analyze this spend snapshot and produce recommendations:\n${JSON.stringify(snapshot, null, 1)}`
         }]
-    } as any);
+    });
 
     if ((response as any).stop_reason === 'refusal') {
         throw new Error('The model declined to analyze this request.');

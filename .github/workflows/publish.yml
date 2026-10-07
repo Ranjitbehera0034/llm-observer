@@ -22,6 +22,14 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      # Fail before building or publishing if the tag is not a real vX.Y.Z tag
+      # that matches the versions in the manifests.
+      - name: Check tag matches package versions
+        run: |
+          git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG" >/dev/null \
+            || { echo "::error::'$RELEASE_TAG' is not a tag"; exit 1; }
+          node scripts/check-release-version.js
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -53,6 +61,14 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
+      # Fail before building or publishing if the tag is not a real vX.Y.Z tag
+      # that matches the versions in the manifests.
+      - name: Check tag matches package versions
+        run: |
+          git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG" >/dev/null \
+            || { echo "::error::'$RELEASE_TAG' is not a tag"; exit 1; }
+          node scripts/check-release-version.js
+
       # OIDC trusted publishing (npm publish --provenance, no NPM_TOKEN) needs
       # npm >= 11.5.0. Pin the major: `npm install -g npm@latest` pulled npm 12
       # (which itself requires Node ^22.22.2 || ^24.15.0 || >=26) and broke a
@@ -61,7 +77,8 @@ jobs:
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
-          cache: npm
+          # No npm cache here: this job publishes with an OIDC token, so
+          # nothing restored from a shared cache may be an input to the publish.
 
       - run: npm install -g npm@11 && npm --version
 

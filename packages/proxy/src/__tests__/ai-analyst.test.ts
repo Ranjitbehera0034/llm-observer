@@ -27,11 +27,14 @@ jest.mock('@llm-observer/database', () => ({
     decrypt: (v: string) => v.replace(/^enc:/, '')
 }));
 
-const mockCreate = jest.fn();
-jest.mock('@anthropic-ai/sdk', () => {
-    return jest.fn().mockImplementation(() => ({
-        messages: { create: mockCreate }
-    }));
+// The analyst calls the Messages API with plain fetch (no SDK is installed
+// with the published CLI, the desktop sidecar or Docker).
+const mockFetch = jest.fn();
+const jsonResponse = (status: number, body: unknown) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => JSON.stringify(body),
+    json: async () => body
 });
 
 import express from 'express';
@@ -43,8 +46,10 @@ app.use(express.json());
 app.use('/api/optimize', optimizeRoutes);
 
 describe('AI Analyst', () => {
+    const realFetch = (global as any).fetch;
     beforeEach(() => {
-        mockCreate.mockReset();
+        mockFetch.mockReset();
+        (global as any).fetch = mockFetch;
         for (const k of Object.keys(settingsStore)) delete settingsStore[k];
     });
 
@@ -66,6 +71,8 @@ describe('AI Analyst', () => {
         expect(settingsStore['ai_analyst_api_key']).toBe('enc:sk-ant-api-valid-key');
     });
 
+    afterAll(() => { (global as any).fetch = realFetch; });
+
     it('refuses to analyze without a key', async () => {
         const res = await request(app).post('/api/optimize/ai/analyze');
         expect(res.status).toBe(400);
@@ -75,7 +82,7 @@ describe('AI Analyst', () => {
     it('runs an analysis: sends aggregates only, returns structured recommendations', async () => {
         await request(app).post('/api/optimize/ai/key').send({ apiKey: 'sk-ant-api-valid-key' });
 
-        mockCreate.mockResolvedValueOnce({
+        mockFetch.mockResolvedValueOnce(jsonResponse(200, {
             model: 'claude-opus-4-8',
             stop_reason: 'end_turn',
             content: [{
@@ -90,7 +97,7 @@ describe('AI Analyst', () => {
                     }]
                 })
             }]
-        });
+        }));
 
         const res = await request(app).post('/api/optimize/ai/analyze');
         expect(res.status).toBe(200);
@@ -99,7 +106,16 @@ describe('AI Analyst', () => {
         expect(res.body.result.recommendations[0].category).toBe('caching');
 
         // Privacy: the request body contains aggregates, never prompts/paths
-        const callArg = mockCreate.mock.calls[0][0];
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        const [url, init] = mockFetch.mock.calls[0];
+        expect(url).toBe('https://api.anthropic.com/v1/messages');
+        expect(init.method).toBe('POST');
+        expect(init.headers['x-api-key']).toBe('sk-ant-api-valid-key');
+        expect(init.headers['anthropic-version']).toBe('2023-06-01');
+        expect(init.headers['content-type']).toBe('application/json');
+        const callArg = JSON.parse(init.body);
+        expect(callArg.max_tokens).toBe(16000);
+        expect(typeof callArg.system).toBe('string');
         expect(callArg.model).toBe('claude-opus-4-8');
         const sent = JSON.stringify(callArg.messages);
         expect(sent).toContain('cache_read_tokens');
@@ -110,11 +126,61 @@ describe('AI Analyst', () => {
         expect(last.body.result.summary).toContain('Cache reads');
     });
 
-    it('surfaces API failures as 502 without crashing', async () => {
+    it('surfaces an API error response (invalid key, rate limit, overload) as 502 with the API message', async () => {
         await request(app).post('/api/optimize/ai/key').send({ apiKey: 'sk-ant-api-valid-key' });
-        mockCreate.mockRejectedValueOnce(new Error('overloaded_error'));
-        const res = await request(app).post('/api/optimize/ai/analyze');
+
+        mockFetch.mockResolvedValueOnce(jsonResponse(401, { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }));
+        let res = await request(app).post('/api/optimize/ai/analyze');
+        expect(res.status).toBe(502);
+        expect(res.body.error).toContain('401');
+        expect(res.body.error).toContain('invalid x-api-key');
+
+        mockFetch.mockResolvedValueOnce(jsonResponse(429, { type: 'error', error: { type: 'rate_limit_error', message: 'Number of requests has exceeded your rate limit' } }));
+        res = await request(app).post('/api/optimize/ai/analyze');
+        expect(res.status).toBe(502);
+        expect(res.body.error).toContain('429');
+        expect(res.body.error).toContain('rate limit');
+
+        mockFetch.mockResolvedValueOnce(jsonResponse(529, { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }));
+        res = await request(app).post('/api/optimize/ai/analyze');
         expect(res.status).toBe(502);
         expect(res.body.error).toContain('overloaded');
+    });
+
+    it('surfaces a network failure as 502 without crashing', async () => {
+        await request(app).post('/api/optimize/ai/key').send({ apiKey: 'sk-ant-api-valid-key' });
+        mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+        const res = await request(app).post('/api/optimize/ai/analyze');
+        expect(res.status).toBe(502);
+        expect(res.body.error).toContain('fetch failed');
+    });
+
+    it('reports a refusal or truncation from the model as 502', async () => {
+        await request(app).post('/api/optimize/ai/key').send({ apiKey: 'sk-ant-api-valid-key' });
+        mockFetch.mockResolvedValueOnce(jsonResponse(200, { model: 'claude-opus-4-8', stop_reason: 'max_tokens', content: [] }));
+        const res = await request(app).post('/api/optimize/ai/analyze');
+        expect(res.status).toBe(502);
+        expect(res.body.error).toContain('truncated');
+    });
+
+    it('does not depend on @anthropic-ai/sdk at all (it is not installed with the CLI, sidecar or Docker)', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const src = fs.readFileSync(path.join(__dirname, '..', 'services', 'aiAnalyst.ts'), 'utf8');
+        expect(src).not.toMatch(/@anthropic-ai\/sdk/);
+        const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
+        expect(Object.keys(pkg.dependencies || {})).not.toContain('@anthropic-ai/sdk');
+    });
+
+    it('honours LLM_OBSERVER_ANTHROPIC_BASE_URL (dev/test override)', async () => {
+        await request(app).post('/api/optimize/ai/key').send({ apiKey: 'sk-ant-api-valid-key' });
+        process.env.LLM_OBSERVER_ANTHROPIC_BASE_URL = 'http://127.0.0.1:1/';
+        try {
+            mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+            await request(app).post('/api/optimize/ai/analyze');
+            expect(mockFetch.mock.calls[0][0]).toBe('http://127.0.0.1:1/v1/messages');
+        } finally {
+            delete process.env.LLM_OBSERVER_ANTHROPIC_BASE_URL;
+        }
     });
 });
