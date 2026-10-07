@@ -230,6 +230,7 @@ Keys are encrypted with AES-256-GCM locally. Never logged, never sent anywhere.
 | `LLM_OBSERVER_ALLOWED_ORIGINS` | unset | Extra browser `Origin`s allowed to make state-changing requests or open the live event stream, comma-separated (e.g. `https://observer.example`). The dashboard's own origin, `localhost`/`127.0.0.1`/`[::1]` on the configured ports, the Vite dev server (`:5173`) and the desktop app are always allowed |
 | `LLM_OBSERVER_DATA_DIR` | `~/.llm-observer` | Database and config location |
 | `LLM_OBSERVER_PROXY_PORT` | `4000` | Proxy port (when enabled) |
+| `LLM_OBSERVER_SKIP_MIGRATION_BACKUP` | unset | Set to `1` to upgrade without the pre-upgrade database backup (see "Upgrade backups" under *What LLM Observer Does NOT Do*). Use it only when the disk is too full to hold a copy of the database |
 | `NO_UPDATE_NOTIFIER` | unset | Set to any value to disable the CLI's background npm-version check |
 
 ### CLI
@@ -293,6 +294,9 @@ All files are read in **read-only mode**. LLM Observer never modifies any AI too
 | GitHub Releases | Desktop app only, update check | Nothing but the GET request |
 | Your webhook URL | Only if you configure an alert webhook | The alert message |
 | Team server (`TEAM_SERVER_URL`) | Every 15 min, only if you join a team and enable team sync | Daily aggregates (cost, tokens, model, project name) + your member email — never prompts |
+
+**Upgrade backups.** Before applying a database migration to an existing database, LLM Observer writes a full copy next to it, `data.db.pre-migrate-v<schema>-<timestamp>.bak`, so a failed upgrade can be rolled back. That copy contains everything the database contains, including any `request_body`/`response_body` stored by the optional proxy, settings and your licence key. Backup files are created with mode `0600`, only the newest two are kept, they are deleted 14 days after they were written, and a failed upgrade that is retried keeps its first (true pre-upgrade) backup instead of taking new ones. `llm-observer reset` deletes them (and any `*.legacy.bak`, `-wal` and `-shm` files) along with the database. If there is no room for a copy, the upgrade stops with a message that names `LLM_OBSERVER_SKIP_MIGRATION_BACKUP=1` as the way to proceed without one.
+
 - **Does not require root privileges** — Runs as your user account
 - **Does not modify AI tool behavior** — Unless you explicitly enable proxy with kill switch
 - **Does not claim compliance certifications it doesn't have** — no SOC 2, no HIPAA. Everything here is "your data never leaves your machine unless you tell it to," which is a real, verifiable property — not a substitute for a real audited compliance program

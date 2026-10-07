@@ -321,6 +321,9 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
             }
 
             const reqRecord = {
+                // Minted here, not at insert, so the alert metadata, the SSE event
+                // and the stored row all carry the same id.
+                id: crypto.randomUUID(),
                 project_id: projectId,
                 provider: providerName,
                 model: requestInfo.model,

@@ -112,7 +112,7 @@ export const getCostOptimizationSuggestions = (projectId: string = 'default') =>
     const w2Stmt: any = db.prepare(`
         SELECT CAST(strftime('%H', started_at) as INTEGER) as hour, sum(estimated_cost_usd) as total_cost
         FROM sessions
-        WHERE started_at >= datetime('now', '-7 days')
+        WHERE datetime(started_at) >= datetime('now', '-7 days')
         GROUP BY hour
         ORDER BY total_cost DESC
         LIMIT 1
