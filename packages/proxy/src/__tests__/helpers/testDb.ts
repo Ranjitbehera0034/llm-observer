@@ -16,24 +16,30 @@ export function createTestDb(): {
     const database = new BetterSQLite3(':memory:');
     const migrationDir = path.join(__dirname, '../../../../../packages/database/src/migrations');
 
-    // Base schemas and runtime migrations (scan directory)
-    if (fs.existsSync(migrationDir)) {
-        const files = fs.readdirSync(migrationDir)
-            .filter(f => f.endsWith('.sql'))
-            .sort();
-        for (const file of files) {
-            const fullPath = path.join(migrationDir, file);
-            try {
-                database.exec(fs.readFileSync(fullPath, 'utf8'));
-            } catch (err: any) {
-                console.warn(`[testDb] Migration ${file} failed: ${err.message}`);
-            }
+    // Base schemas and runtime migrations (scan directory). Fail loudly: a test
+    // database with a silently missing table or column hides real defects.
+    if (!fs.existsSync(migrationDir)) {
+        throw new Error(`[testDb] Migrations directory not found at ${migrationDir}`);
+    }
+    const files = fs.readdirSync(migrationDir)
+        .filter(f => f.endsWith('.sql'))
+        .sort();
+    for (const file of files) {
+        const fullPath = path.join(migrationDir, file);
+        try {
+            database.exec(fs.readFileSync(fullPath, 'utf8'));
+        } catch (err: any) {
+            throw new Error(`[testDb] Migration ${file} failed: ${err.message}`);
         }
     }
 
     // Runtime versioned migrations
     const safeExec = (sql: string) => {
-        try { database.exec(sql); } catch { /* already exists */ }
+        try {
+            database.exec(sql);
+        } catch (err: any) {
+            if (!/duplicate column name/i.test(err.message)) throw err; // already added by a migration
+        }
     };
     safeExec('ALTER TABLE requests ADD COLUMN pricing_unknown BOOLEAN DEFAULT 0;');
     safeExec('ALTER TABLE model_pricing ADD COLUMN is_custom BOOLEAN DEFAULT 0;');

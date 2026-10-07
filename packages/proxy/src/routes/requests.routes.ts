@@ -3,9 +3,35 @@ import express from 'express';
 import { EventEmitter } from 'events';
 import { getDb, bulkInsertRequests } from '@llm-observer/database';
 import { buildReasoningChain } from '../analysis/reasoningChain';
+import { isRequestOriginOk } from '../security/localGuard';
 
 export const requestEventEmitter = new EventEmitter();
 requestEventEmitter.setMaxListeners(50);
+
+/**
+ * What the live SSE stream carries for each request: enough to update the
+ * dashboard counters and prepend a table row, but never prompt/response bodies,
+ * tags or metadata. Full records stay behind GET /api/requests/:id.
+ */
+export function toSlimRequestEvent(r: any) {
+    return {
+        id: r.id,
+        project_id: r.project_id,
+        provider: r.provider,
+        model: r.model,
+        endpoint: r.endpoint,
+        status: r.status,
+        status_code: r.status_code,
+        cost_usd: r.cost_usd,
+        latency_ms: r.latency_ms,
+        prompt_tokens: r.prompt_tokens,
+        completion_tokens: r.completion_tokens,
+        total_tokens: r.total_tokens,
+        is_streaming: r.is_streaming,
+        has_tools: r.has_tools,
+        created_at: r.created_at,
+    };
+}
 
 export const requestsRouter = Router();
 
@@ -90,15 +116,16 @@ requestsRouter.get('/events', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const origin = req.headers.origin || req.headers.host || '';
-    if (origin && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+    // Exact-match Origin (localGuard enforces the same on the apps; this keeps
+    // the route safe if it is ever mounted elsewhere).
+    if (!isRequestOriginOk(req)) {
         return res.status(403).end();
     }
 
     res.write('data: {"type":"connected"}\n\n');
 
     const onNewRequest = (requestData: any) => {
-        res.write(`data: ${JSON.stringify({ type: 'new_request', data: requestData })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'new_request', data: toSlimRequestEvent(requestData) })}\n\n`);
     };
 
     requestEventEmitter.on('new_request', onNewRequest);

@@ -7,7 +7,6 @@ import { requestsRouter, requestEventEmitter } from './requests.routes';
 import { authRouter } from './auth.routes';
 import { settingsRouter } from './settings.routes';
 import { licenseRouter } from './license.routes';
-import { webhooksRouter } from './webhooks.routes';
 import budgetsRouter from './budgets.routes';
 import alertsRouter from './alerts.routes';
 import appsRouter from './apps.routes';
@@ -23,10 +22,7 @@ import compareRouter from './compare.routes';
 export function createDashboardRouter(): Router {
     const router = Router();
 
-    // Payment webhooks (MUST be mounted before express.json() so it can read raw body)
-    router.use('/webhooks', webhooksRouter);
-
-    // Re-add global JSON parsing for dashboard routes
+    // JSON parsing for dashboard routes
     router.use(express.json());
 
     // Stats

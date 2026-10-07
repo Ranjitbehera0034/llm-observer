@@ -1,4 +1,5 @@
 import { getDb, Budget, getBudgetLimits, createAlert } from '@llm-observer/database';
+import { getPeriodStart, getSecondsUntilPeriodReset, periodLabel } from '../utils/period';
 
 export class BudgetService {
     
@@ -20,7 +21,7 @@ export class BudgetService {
         const spend = await this.calculateCurrentSpend(budget.scope, budget.scope_value, budget.period);
         const percent = spend / budget.limit_usd;
         
-        const periodStart = this.getPeriodStart(budget.period);
+        const periodStart = getPeriodStart(budget.period);
 
         // Check thresholds: 100%, 90%, 80% (Each fires independently)
         if (percent >= 1.0) {
@@ -65,8 +66,8 @@ export class BudgetService {
                 return { 
                     blocked: true, 
                     type: 'budget_exceeded',
-                    reason: `Daily budget exceeded: $${spent.toFixed(2)} spent of $${limit.toFixed(2)} limit.`,
-                    details: { limit, spent, scope: budget.scope, scope_value: budget.scope_value, retry_after: this.getSecondsUntilPeriodReset(budget.period) }
+                    reason: `${periodLabel(budget.period)} budget exceeded: $${spent.toFixed(2)} spent of $${limit.toFixed(2)} limit.`,
+                    details: { limit, spent, scope: budget.scope, scope_value: budget.scope_value, retry_after: getSecondsUntilPeriodReset(budget.period) }
                 };
             }
 
@@ -75,8 +76,8 @@ export class BudgetService {
                 return {
                     blocked: true,
                     type: 'budget_buffer',
-                    reason: `Budget nearly exhausted. $${(limit - spent).toFixed(2)} remaining (safety buffer: $${buffer.toFixed(2)}).`,
-                    details: { limit, spent, remaining: limit - spent, buffer, scope: budget.scope, scope_value: budget.scope_value, retry_after: this.getSecondsUntilPeriodReset(budget.period) }
+                    reason: `${periodLabel(budget.period)} budget nearly exhausted. $${(limit - spent).toFixed(2)} remaining (safety buffer: $${buffer.toFixed(2)}).`,
+                    details: { limit, spent, remaining: limit - spent, buffer, scope: budget.scope, scope_value: budget.scope_value, retry_after: getSecondsUntilPeriodReset(budget.period) }
                 };
             }
 
@@ -87,13 +88,13 @@ export class BudgetService {
                     return {
                         blocked: true,
                         type: 'budget_insufficient',
-                        reason: `Insufficient budget for this request. $${(limit - spent).toFixed(2)} remaining, estimated cost ~$${estimatedCost.toFixed(4)}.`,
+                        reason: `Insufficient ${budget.period} budget for this request. $${(limit - spent).toFixed(2)} remaining, estimated cost ~$${estimatedCost.toFixed(4)}.`,
                         details: { 
                             limit, spent, estimated: estimatedCost, 
                             input_tokens: inputTokens, 
                             output_tokens: inputTokens * (budget.estimate_multiplier || 3.0),
                             model, scope: budget.scope, scope_value: budget.scope_value, 
-                            retry_after: this.getSecondsUntilPeriodReset(budget.period) 
+                            retry_after: getSecondsUntilPeriodReset(budget.period) 
                         }
                     };
                 }
@@ -109,7 +110,7 @@ export class BudgetService {
      */
     public static async calculateCurrentSpend(scope: string, value: string | undefined, period: string): Promise<number> {
         const db = getDb();
-        const start = this.getPeriodStart(period);
+        const start = getPeriodStart(period);
         
         // 1. Get Sync costs in period
         let syncQuery = `SELECT SUM(cost_usd) as total FROM usage_records WHERE bucket_start >= ?`;
@@ -145,7 +146,7 @@ export class BudgetService {
      * Returns the budget with the highest utilization for the given request context.
      * Used for informational headers (X-Budget-Warning).
      */
-    static async getBudgetStatus(provider: string, model: string): Promise<{ percent: number, spent: number, limit: number, name: string } | null> {
+    static async getBudgetStatus(provider: string, model: string): Promise<{ percent: number, spent: number, limit: number, name: string, period: string } | null> {
         const budgets = getBudgetLimits(true);
         let maxUtilization = -1;
         let worstBudget: any = null;
@@ -162,42 +163,11 @@ export class BudgetService {
             
             if (utilization > maxUtilization) {
                 maxUtilization = utilization;
-                worstBudget = { percent: utilization, spent, limit: budget.limit_usd, name: budget.name };
+                worstBudget = { percent: utilization, spent, limit: budget.limit_usd, name: budget.name, period: budget.period };
             }
         }
 
         return worstBudget;
-    }
-
-    private static getPeriodStart(period: string): string {
-        const now = new Date();
-        now.setUTCHours(0, 0, 0, 0);
-
-        if (period === 'weekly') {
-            const day = now.getUTCDay();
-            const diff = now.getUTCDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
-            now.setUTCDate(diff);
-        } else if (period === 'monthly') {
-            now.setUTCDate(1);
-        }
-        
-        return now.toISOString();
-    }
-
-    private static getSecondsUntilPeriodReset(period: string): number {
-        const now = new Date();
-        const next = new Date(now);
-        next.setUTCHours(23, 59, 59, 999);
-        
-        if (period === 'weekly') {
-            const day = now.getUTCDay();
-            const daysUntilMonday = day === 0 ? 0 : 8 - day;
-            next.setUTCDate(now.getUTCDate() + daysUntilMonday);
-        } else if (period === 'monthly') {
-            next.setUTCMonth(now.getUTCMonth() + 1, 0); // Last day of month
-        }
-        
-        return Math.floor((next.getTime() - now.getTime()) / 1000);
     }
 
     private static async fireAlert(budget: Budget, type: string, severity: 'info' | 'warning' | 'critical', spend: number, periodStart: string) {

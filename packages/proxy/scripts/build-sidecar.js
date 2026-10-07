@@ -48,6 +48,8 @@ const traceScript = `
 process.env.LLM_OBSERVER_DATA_DIR = ${JSON.stringify(traceDataDir)};
 process.env.LLM_OBSERVER_PORT = '0';
 process.env.LLM_OBSERVER_PROXY_PORT = '0';
+// server.js only auto-starts as the entry point; this script require()s it.
+process.env.LLM_OBSERVER_AUTOSTART = '1';
 require(${JSON.stringify(serverPath)});
 setTimeout(() => {
     const pkgs = new Set();

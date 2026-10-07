@@ -137,3 +137,36 @@ describe('K — SSE /api/requests/events', () => {
         req.on('error', () => { /* expected on destroy */ });
     }, 10000);
 });
+
+describe('K — SSE payload is a slim projection', () => {
+    let server: http.Server;
+    let port: number;
+    beforeEach(async () => { ({ server, port } = await startServer()); });
+    afterEach(async () => { await closeServer(server); });
+
+    it('K9 — new_request events carry no request_body or response_body', async () => {
+        const received = await new Promise<string>((resolve, reject) => {
+            const req = http.get({ hostname: '127.0.0.1', port, path: '/api/requests/events', headers: { Host: '127.0.0.1' } }, (res) => {
+                let buf = '';
+                res.on('data', (chunk) => {
+                    buf += chunk.toString();
+                    if (buf.includes('connected') && !buf.includes('new_request')) {
+                        requestEventEmitter.emit('new_request', {
+                            id: 'abc', project_id: 'default', provider: 'openai', model: 'gpt-4', endpoint: '/v1/chat/completions',
+                            prompt_tokens: 3, completion_tokens: 4, total_tokens: 7, cost_usd: 0.5, latency_ms: 12,
+                            status_code: 200, status: 'success', created_at: '2026-01-01T00:00:00.000Z',
+                            request_body: '{"messages":"TOP SECRET PROMPT"}', response_body: 'TOP SECRET ANSWER',
+                            tags: 'x', metadata: '{"k":"TOP SECRET META"}', prompt_hash: 'h',
+                        });
+                    }
+                    if (buf.includes('new_request')) { req.destroy(); resolve(buf); }
+                });
+            });
+            req.on('error', () => { /* expected on destroy */ });
+            setTimeout(() => reject(new Error('no event')), 3000);
+        });
+        expect(received).not.toMatch(/TOP SECRET|request_body|response_body/);
+        const evt = JSON.parse(received.split('data: ').pop()!.trim());
+        expect(evt.data).toMatchObject({ id: 'abc', project_id: 'default', model: 'gpt-4', cost_usd: 0.5, total_tokens: 7, status: 'success', latency_ms: 12, status_code: 200 });
+    });
+});

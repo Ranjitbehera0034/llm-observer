@@ -42,6 +42,10 @@ export interface LicenseInfo {
     isPro: boolean;
     licenseKey?: string;
     status: 'active' | 'cancelled' | 'free';
+    /** A stored legacy key could not be checked against this machine; limits fall back to Free but nothing is deleted on that basis. */
+    integrityMismatch?: boolean;
+    /** Human-readable explanation for the dashboard when something needs the user's attention. */
+    notice?: string;
     limits: {
         maxProjects: number;
         logRetentionDays: number;
@@ -101,12 +105,18 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
         isSignedKey(licenseKey) ? verifySignedKey(licenseKey) !== null : licenseKey.startsWith('PRO_')
     );
 
-    // Verify the stored key hasn't been tampered with (e.g. via direct DB edit)
-    if (isPro) {
+    // Legacy keys carry no signature, so they are bound to this machine with an
+    // HMAC to catch direct DB edits. Signed keys are already verified above and
+    // must not depend on the hostname: a recreated container would lose Pro.
+    if (isPro && !isSignedKey(licenseKey!)) {
         const storedHmac = getSetting('license_key_hmac');
         if (!verifyLicenseKeyIntegrity(licenseKey, storedHmac)) {
-            console.warn('[LICENSE] License key integrity check failed — key may have been tampered with. Treating as free tier.');
-            cachedLicense = { isPro: false, licenseKey: undefined, status: 'free', limits: FREE_LIMITS };
+            console.warn('[LICENSE] License key integrity check failed — key may have been tampered with, or this machine changed. Treating as free tier.');
+            cachedLicense = {
+                isPro: false, licenseKey: undefined, status: 'free', limits: FREE_LIMITS,
+                integrityMismatch: true,
+                notice: 'Your license could not be verified on this machine (the hostname or hardware may have changed). Re-enter your license key to restore Pro.'
+            };
             lastCheckTime = now;
             return cachedLicense;
         }
@@ -223,7 +233,7 @@ let revalidateTimer: NodeJS.Timeout | null = null;
 export async function revalidateLicense(force = false): Promise<void> {
     const key = getSetting('license_key');
     if (!key || getSetting('license_status') !== 'active') return;
-    if (key.startsWith('PRO_') && !LEGACY_KEY_FORMAT.test(key)) return; // dev-mode / local-webhook key
+    if (key.startsWith('PRO_') && !LEGACY_KEY_FORMAT.test(key)) return; // dev-mode key
 
     const last = Date.parse(getSetting('license_checked_at') || '') || 0;
     if (!force && Date.now() - last < REVALIDATE_EVERY_MS) return;
@@ -255,34 +265,4 @@ export async function checkProjectLimit(): Promise<boolean> {
     const projectCount = countRow.count;
 
     return projectCount < info.limits.maxProjects;
-}
-
-/**
- * Called by payment webhooks to instantly activate a Pro license locally.
- */
-export function activateLicenseFromPayment(opts: {
-    provider: 'lemonsqueezy' | 'razorpay';
-    subscriptionId: string;
-    customerId: string;
-    amountCents: number;
-    currency: string;
-    event: string;
-}): { success: boolean; key: string } {
-    const key = `PRO_${opts.provider.toUpperCase()}_${opts.subscriptionId}`;
-
-    updateSetting('license_key', key);
-    updateSetting('license_key_hmac', signLicenseKey(key));
-    updateSetting('license_status', 'active');
-    updateSetting('license_provider', opts.provider);
-    updateSetting('license_subscription_id', opts.subscriptionId);
-    updateSetting('license_customer_id', opts.customerId);
-    updateSetting('license_amount_cents', String(opts.amountCents));
-    updateSetting('license_currency', opts.currency);
-    updateSetting('license_activated_at', new Date().toISOString());
-    updateSetting('license_last_event', opts.event);
-
-    cachedLicense = null;
-
-    console.log(`[LICENSE] ✅ Activated via ${opts.provider} webhook. Key: ${key.substring(0, 20)}...`);
-    return { success: true, key };
 }

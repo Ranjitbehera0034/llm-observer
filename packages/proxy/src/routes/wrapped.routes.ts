@@ -22,7 +22,10 @@ router.get('/available-periods', async (req, res) => {
  */
 router.get('/monthly', async (req, res) => {
     try {
-        const month = (req.query.month as string) || new Date().toISOString().slice(0, 7);
+        const month = req.query.month ?? new Date().toISOString().slice(0, 7);
+        if (!WrappedService.isValidPeriod('monthly', month)) {
+            return res.status(400).json({ error: 'Invalid month, expected YYYY-MM' });
+        }
         const report = await WrappedService.getMonthlyReport(month);
         res.json(report);
     } catch (err: any) {
@@ -36,7 +39,10 @@ router.get('/monthly', async (req, res) => {
  */
 router.get('/yearly', async (req, res) => {
     try {
-        const year = (req.query.year as string) || new Date().toISOString().slice(0, 4);
+        const year = req.query.year ?? new Date().toISOString().slice(0, 4);
+        if (!WrappedService.isValidPeriod('yearly', year)) {
+            return res.status(400).json({ error: 'Invalid year, expected YYYY' });
+        }
         const report = await WrappedService.getYearlyReport(year);
         res.json(report);
     } catch (err: any) {
@@ -74,11 +80,17 @@ router.put('/preferences', async (req, res) => {
  */
 router.get('/card', async (req, res) => {
     try {
-        const period = req.query.period as string;
-        const type = (req.query.type as 'monthly' | 'yearly') || 'monthly';
-        
+        const period = req.query.period;
+        const type = req.query.type ?? 'monthly';
+
         if (!period) {
             return res.status(400).json({ error: 'Missing period' });
+        }
+        if (type !== 'monthly' && type !== 'yearly') {
+            return res.status(400).json({ error: 'Invalid type, expected monthly or yearly' });
+        }
+        if (!WrappedService.isValidPeriod(type, period)) {
+            return res.status(400).json({ error: type === 'monthly' ? 'Invalid period, expected YYYY-MM' : 'Invalid period, expected YYYY' });
         }
 
         const report = type === 'monthly' 
@@ -88,16 +100,14 @@ router.get('/card', async (req, res) => {
         const prefs = await WrappedService.getPreferences();
         const svg = WrappedService.generateCardSVG(report, prefs);
         
-        const format = req.query.format || 'svg';
-        if (format === 'svg') {
-            res.setHeader('Content-Type', 'image/svg+xml');
-            return res.send(svg);
-        } else {
-            // Placeholder for PNG conversion if needed
-            // For now, return SVG as fallback
-            res.setHeader('Content-Type', 'image/svg+xml');
-            return res.send(svg);
-        }
+        // The card is a standalone image. If it is ever opened as a document (top-level
+        // navigation) it must not be able to run script, be framed, or be sniffed as HTML.
+        // Placeholder for PNG conversion if needed; for now every format returns the SVG.
+        res.setHeader('Content-Type', 'image/svg+xml');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+        return res.send(svg);
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }
