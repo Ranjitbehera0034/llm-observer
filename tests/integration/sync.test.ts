@@ -29,10 +29,12 @@ describe('Anthropic Usage Sync Tests', () => {
         app.use(express.json());
         app.use('/api/sync', syncRoutes);
         
-        // Mock success response for key validation
+        // Mock success response for key validation. The poller that starts after the key is saved
+        // gets the same body, so it also carries an empty report (an unrecognised body now stops
+        // the poller with an error instead of being read as "no data").
         (fetch as any).mockResolvedValue({
             ok: true,
-            json: async () => ({ id: 'org_123', name: 'Test Org' })
+            json: async () => ({ id: 'org_123', name: 'Test Org', data: [], has_more: false })
         });
     });
 

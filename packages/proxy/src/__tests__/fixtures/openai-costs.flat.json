@@ -1,0 +1,6 @@
+{
+  "data": [
+    { "start_time": 1782864000, "line_item": "gpt-4o-2024-08-06", "amount": { "value": 0.06, "currency": "usd" } }
+  ],
+  "has_more": false
+}

@@ -1,0 +1,14 @@
+{
+  "data": [
+    {
+      "start_time": 1782864000,
+      "end_time": 1782950400,
+      "model": "gpt-4o-2024-08-06",
+      "input_tokens": 1000,
+      "output_tokens": 500,
+      "input_cached_tokens": 800,
+      "num_model_requests": 5
+    }
+  ],
+  "has_more": false
+}
