@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  See every dollar across your AI coding tools — without changing how you work. Claude Code is verified against real recordings; Aider, Cursor, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI have parsers that are still unverified or experimental (see [Auto-Detected Session Files](#auto-detected-session-files)).
+  See every dollar across your AI coding tools — without changing how you work. Claude Code is tested against a scrubbed excerpt of one real log (see [Auto-Detected Session Files](#auto-detected-session-files) for exactly what that covers); Aider, Cursor, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI have parsers that are still unverified or experimental (see [Auto-Detected Session Files](#auto-detected-session-files)).
 </p>
 
 <p align="center">
@@ -52,7 +52,7 @@ Dashboard opens at **http://localhost:4001**. That's it.
 
 On first launch, LLM Observer automatically detects your installed AI tools, parses your session history, and shows a populated dashboard — **no API keys, no proxy setup, no account required.**
 
-> **Want billing-accurate costs?** Add your provider Admin API keys in the dashboard (Sync page). See [Add Provider Keys](#add-provider-keys) below.
+> **Want provider-reported usage instead of local estimates?** Add your provider Admin API keys in the dashboard (Sync page). See [Add Provider Keys](#add-provider-keys) below. The sync is designed to reconcile with your provider invoice; not yet validated against a live account ([docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)).
 
 ---
 
@@ -60,11 +60,11 @@ On first launch, LLM Observer automatically detects your installed AI tools, par
 
 ### Session Tracking (Zero Config)
 
-- **Auto-Detection** — Automatically finds Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI data on your machine (only Claude Code is verified against real recordings; the rest are marked unverified or experimental)
+- **Auto-Detection** — Automatically finds Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI data on your machine (only Claude Code has a real, scrubbed recording behind its tests; the rest are marked unverified or experimental)
 - **Session Explorer** — Browse every AI conversation with cost, duration, tokens, model, and project
 - **Incremental Parsing** — Only new/modified files are re-parsed on startup (fast after first run)
 - **Session Type Labels** — Automatically classifies sessions as "interactive" or "agentic"
-- **Recorded-format regression tests** — Every parser is checked against checked-in fixtures of real log formats (current and legacy) in CI, so an upstream format change is caught before it silently shows a user $0 — see [Guarding against upstream format drift](#guarding-against-upstream-format-drift)
+- **Recorded-format regression tests** — The Claude Code parser is checked in CI against a scrubbed excerpt of a real log (plus hand-written fixtures for older formats), so an upstream format change is caught before it silently shows a user $0; the other parsers' fixtures are hand-written and are labelled as such — see [Guarding against upstream format drift](#guarding-against-upstream-format-drift)
 
 ### Subagent Observability
 
@@ -108,7 +108,7 @@ On first launch, LLM Observer automatically detects your installed AI tools, par
 
 ### Provider API Sync
 
-- **Billing-Accurate Costs** — Pull real spend from Anthropic and OpenAI admin APIs (matches your invoice)
+- **Provider-Reported Costs** — Pull spend from Anthropic and OpenAI admin APIs (designed to reconcile with your provider invoice; not yet validated against a live account, see [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md))
 - **Automatic Polling** — Syncs every 60 seconds in the background
 - **Multi-Provider** — Single dashboard for Anthropic + OpenAI with aggregated totals
 
@@ -116,8 +116,8 @@ On first launch, LLM Observer automatically detects your installed AI tools, par
 
 - **Per-Provider / Per-Model Budgets** — Set daily, weekly, or monthly limits
 - **Three-Threshold Alerts** — Notifications at 80%, 90%, and 100% of budget
-- **Kill Switch** — Optionally hard-block proxy requests when a budget is exceeded
-- **Pre-Estimation** — Estimates request cost *before* sending to prevent overshoot
+- **Kill Switch** — Optionally block proxy requests once recorded spend exceeds a budget. Best effort: spend is written to the database in short batches (about 5 seconds or 10 requests), so a burst of requests can overshoot a limit before the block applies
+- **Pre-Estimation** — Estimates request cost *before* sending to reduce overshoot
 - **Desktop Notifications** — Native OS alerts, not just in-dashboard (macOS, Linux, Windows)
 
 ### AI Wrapped
@@ -142,7 +142,7 @@ On first launch, LLM Observer automatically detects your installed AI tools, par
 ### Local Proxy (Optional)
 
 - **Per-Request Detail** — Full prompt, response, and latency for proxied traffic
-- **Budget Enforcement** — Kill switch blocks requests when limits are hit
+- **Budget Enforcement** — Kill switch blocks requests once recorded spend exceeds the limit (best effort; spend is written in short batches)
 - **Provider Error Forwarding** — 402/429 errors passed through with `_source` field
 - **Ollama, first-class** — Local models route through the same proxy and are always tracked at $0 cost, no API key needed
 
@@ -155,9 +155,9 @@ LLM Observer has four independent data engines. Use any combination:
 ```
 Engine 1: Session Parser                Engine 2: Usage API Sync
 Reads local files from                  Polls Anthropic & OpenAI admin APIs
-~/.claude/, ~/.cursor/, ~/.aider/       for billing-accurate spend data
+~/.claude/, ~/.cursor/, ~/.aider/       for provider-reported spend data
 Setup: None (auto-detects)              Setup: Add admin API key (30 sec)
-Gives: Per-session detail               Gives: Exact cost matching invoice
+Gives: Per-session detail               Gives: Provider-reported cost*
 
 Engine 3: Network Monitor               Engine 4: Local Proxy
 Detects which apps connect              Intercepts requests for full
@@ -166,15 +166,17 @@ Setup: Enable in Settings               Setup: Route traffic through proxy
 Gives: Per-app attribution              Gives: Per-request detail + kill switch
 ```
 
+\* Designed to reconcile with your provider invoice; not yet validated against a live account ([docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)).
+
 **All data stays local.** SQLite database on your machine. No cloud. No telemetry unless you opt in. No account.
 
-**Data priority:** When multiple engines report cost for the same provider, Usage API sync (billing-accurate) takes precedence. Session parser provides per-session breakdown. They complement each other.
+**Data priority:** When multiple engines report cost for the same provider, Usage API sync (provider-reported) takes precedence. Session parser provides per-session breakdown. They complement each other.
 
 ---
 
 ## Add Provider Keys
 
-Session parsing estimates costs from token counts (~95% accurate). For exact billing data:
+Session parsing estimates costs from token counts (~95% accurate). For provider-reported usage data (designed to reconcile with your invoice; not yet validated against a live account, see [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)):
 
 ### Anthropic
 
@@ -258,7 +260,7 @@ LLM_OBSERVER_PORT=3000 llm-observer start
 
 | Tool | Location | Format | Status |
 |------|----------|--------|--------|
-| Claude Code | `~/.claude/projects/` | JSONL | **Verified**: recorded fixtures, golden-output tests |
+| Claude Code | `~/.claude/projects/` | JSONL | **Verified** (narrowly): golden-output tests against a scrubbed excerpt of one real Claude Code 2.1.291 log from Linux, plus hand-written fixtures for older formats |
 | Cursor IDE | `~/.cursor/ai-tracking/ai-code-tracking.db` | SQLite | **Experimental**: Cursor logs no token counts locally; detected, but no usage is read and no sessions are created |
 | Aider | `~/.aider/analytics.jsonl` | JSONL | **Experimental**: fixtures are synthetic, derived from upstream source. Aider only writes this file if started with `--analytics-log ~/.aider/analytics.jsonl` |
 | GitHub Copilot | `~/Library/.../github.copilot-chat/state.vscdb` | SQLite | **Unverified**: hand-written fixtures |
@@ -266,7 +268,7 @@ LLM_OBSERVER_PORT=3000 llm-observer start
 | Cline / Roo Code | `~/Library/.../globalStorage/{extensionId}/tasks/*/api_conversation_history.json` | JSON | **Unverified**: hand-written fixtures |
 | OpenAI Codex CLI | `~/.codex/sessions/*.jsonl` | JSONL | **Unverified**: hand-written fixtures |
 
-**Verified** means the parser is tested against a real recording of the tool's own files. **Unverified** parsers read real data but were written against the tool's docs or source, so their numbers may not match what the tool actually bills; the dashboard labels them too. **Experimental** parsers have a known gap on top of that. A tool is promoted only once a real recording is checked in (see [CONTRIBUTING.md](CONTRIBUTING.md#capturing-a-real-recording)).
+**Verified** means the parser is tested against a real recording of the tool's own files. For Claude Code that recording is one small, scrubbed excerpt (a 16-record session and a 10-record subagent log, Claude Code 2.1.291 on Linux; prompts, outputs and paths replaced by placeholders, token counts real). It shows the parser reads that format, not that dollar costs match a bill, and macOS/Windows and other Claude Code versions were not recorded. **Unverified** parsers read real data but were written against the tool's docs or source, so their numbers may not match what the tool actually bills; the dashboard labels them too. **Experimental** parsers have a known gap on top of that. A tool is promoted only once a real recording is checked in (see [CONTRIBUTING.md](CONTRIBUTING.md#capturing-a-real-recording)).
 
 All files are read in **read-only mode**. LLM Observer never modifies any AI tool's data.
 
@@ -317,7 +319,7 @@ Exits `0` if every session matches exactly, `1` otherwise. A session actively be
 
 ### Guarding against upstream format drift
 
-Editors change their session-log format without warning, which is how token counts silently go to $0. `packages/proxy/src/parsers/__tests__/formatMatrix.test.ts` guards against this: it re-parses a set of recorded, real-shaped fixture files (`__tests__/fixtures/claude/`) and asserts the output against a checked-in golden manifest (`__tests__/fixtures/format-matrix.json`), covering both the current nested Claude Code format and the older top-level-fields format it still needs to read. This runs as its own `parser-format-drift` job in CI (`.github/workflows/ci.yml`), separate from the main test job, so a format regression shows up as a distinctly labeled, easy-to-spot failed check. Currently covers the Claude Code parser; the same manifest pattern is meant to be extended to the other editor parsers as their fixture suites land.
+Editors change their session-log format without warning, which is how token counts silently go to $0. `packages/proxy/src/parsers/__tests__/formatMatrix.test.ts` guards against this: it re-parses a scrubbed excerpt of a real Claude Code log (`__tests__/fixtures/claude/recorded/`) and asserts the output against a checked-in golden manifest (`__tests__/fixtures/format-matrix.json`). A separate test (`syntheticFormats.test.ts`) covers the older top-level-fields format and other edge cases with hand-written fixtures (`__tests__/fixtures/synthetic/`), which are not recordings. This runs as its own `parser-format-drift` job in CI (`.github/workflows/ci.yml`), separate from the main test job, so a format regression shows up as a distinctly labeled, easy-to-spot failed check. Currently covers the Claude Code parser; the same manifest pattern is meant to be extended to the other editor parsers as their fixture suites land.
 
 ---
 
@@ -364,7 +366,7 @@ npm test             # Run all tests
 | Capability | LLM Observer | BurnRate | Helicone | Langfuse |
 |:-----------|:---:|:---:|:---:|:---:|
 | Zero-config session parsing | ✅ | ✅ | ❌ | ❌ |
-| Billing-accurate costs (API sync) | ✅ | ❌ | ❌ | ❌ |
+| Provider-reported costs (API sync) | ✅ | ❌ | ❌ | ❌ |
 | Budget enforcement (kill switch) | ✅ | ❌ | ❌ | ❌ |
 | Network-level app detection | ✅ | ❌ | ❌ | ❌ |
 | Subagent observability | ✅ | ✅ | ❌ | ❌ |
@@ -447,7 +449,7 @@ No. LLM Observer reads data your tools already produce. No SDK, no config change
 <details>
 <summary><strong>How accurate are cost estimates?</strong></summary>
 <br />
-Session-estimated costs are within ~5% of actual billing. For exact numbers, add your Admin API key — the Usage API sync matches your invoice. You don't have to take that on faith either — see <a href="#verify-your-own-numbers">Verify Your Own Numbers</a>.
+Session-estimated costs are within ~5% of actual billing. For provider-reported numbers, add your Admin API key. The Usage API sync is designed to reconcile with your provider invoice; it has not yet been validated against a live account ([docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)). You don't have to take that on faith either — see <a href="#verify-your-own-numbers">Verify Your Own Numbers</a>.
 </details>
 
 <details>
@@ -465,7 +467,7 @@ Yes. Everything runs locally with no data leaving your machine. A team-auth back
 <details>
 <summary><strong>What if Claude Code changes its file format?</strong></summary>
 <br />
-The parser handles known format variations (current and legacy) and is checked against recorded fixtures in CI (<a href="#guarding-against-upstream-format-drift">Guarding against upstream format drift</a>) — a regression there fails a distinctly-labeled CI check before it ships. Malformed or entirely novel formats are skipped per-line rather than crashing the whole session.
+The parser handles known format variations (current and legacy) and is checked in CI against a scrubbed real log excerpt and hand-written fixtures for older formats (<a href="#guarding-against-upstream-format-drift">Guarding against upstream format drift</a>) — a regression there fails a distinctly-labeled CI check before it ships. Malformed or entirely novel formats are skipped per-line rather than crashing the whole session.
 </details>
 
 ---

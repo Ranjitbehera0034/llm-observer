@@ -6,7 +6,15 @@ import path from 'path';
 import { banner } from '../index';
 import { getPidPath } from '../pidFile';
 
-export function setupStartCommands(program: Command) {
+// How long the server gets to shut down gracefully after a signal before it is killed.
+const SHUTDOWN_GRACE_MS = 10000;
+
+export interface StartOptions {
+  /** Server entry to spawn. Defaults to the bundled server.js next to this file. */
+  serverPath?: string;
+}
+
+export function setupStartCommands(program: Command, opts: StartOptions = {}) {
   program
     .command('start')
     .description('Boot up the Proxy Server and Dashboard UI concurrently')
@@ -16,7 +24,7 @@ export function setupStartCommands(program: Command) {
 
       // Resolve the bundled server relative to this file's location
       // Works both locally (dist/server.js) and after npm install
-      const serverPath = path.resolve(__dirname, 'server.js');
+      const serverPath = opts.serverPath ?? path.resolve(__dirname, 'server.js');
 
       if (!fs.existsSync(serverPath)) {
         console.error(chalk.red(`Could not find server at: ${serverPath}`));
@@ -40,21 +48,40 @@ export function setupStartCommands(program: Command) {
         console.error(chalk.red(`Failed to start: ${err.message}`));
       });
 
+      let childExited = false;
       child.on('exit', (code) => {
+        childExited = true;
         if (code !== 0) {
           console.log(chalk.yellow(`\nServices exited with code ${code}`));
         }
       });
 
-      process.on('SIGINT', () => {
-        console.log(chalk.yellow('\nShutting down LLM Observer...'));
-        if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
-        child.kill('SIGINT');
-        process.exit(0);
-      });
+      const removePidFile = () => {
+        try { fs.unlinkSync(pidPath); } catch { /* already gone */ }
+      };
 
-      process.on('exit', () => {
-        if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
-      });
+      // SIGTERM (docker stop, systemd, kill) and SIGHUP (terminal closed) get the
+      // same treatment as Ctrl-C: forward the signal so the server shuts down
+      // gracefully, then leave. Without this the CLI dies by default disposition
+      // and orphans the server, which keeps holding its ports.
+      let shuttingDown = false;
+      const shutdown = (signal: NodeJS.Signals) => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        console.log(chalk.yellow('\nShutting down LLM Observer...'));
+        removePidFile();
+        if (childExited) process.exit(0);
+        child.once('exit', () => process.exit(0));
+        child.kill(signal);
+        setTimeout(() => {
+          child.kill('SIGKILL');
+          process.exit(0);
+        }, SHUTDOWN_GRACE_MS).unref();
+      };
+      for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+        process.on(signal, () => shutdown(signal));
+      }
+
+      process.on('exit', removePidFile);
     });
 }

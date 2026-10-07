@@ -12,6 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Fail before any build or installer work if the tag does not match the
+      # versions in the manifests (tauri-action names the release after
+      # tauri.conf.json, so a mismatch would upload onto the wrong release).
+      - name: Check tag matches package versions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/check-release-version.js
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -39,7 +47,13 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
-      
+
+      # Re-checked here: this job is what builds and uploads the installers.
+      - name: Check tag matches package versions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/check-release-version.js
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

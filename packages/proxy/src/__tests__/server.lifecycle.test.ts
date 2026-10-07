@@ -11,7 +11,8 @@ import path from 'path';
 import express from 'express';
 import Database from 'better-sqlite3';
 import { initDb, getDb, closeDb } from '@llm-observer/database';
-import { listenOrExit, createShutdownHandler } from '../server';
+import { EventEmitter } from 'events';
+import { listenOrExit, createShutdownHandler, installSignalHandlers } from '../server';
 import { internalLogger } from '../internalLogger';
 
 const listening = (server: net.Server) => new Promise<number>(resolve => server.listen(0, '127.0.0.1', () => resolve((server.address() as net.AddressInfo).port)));
@@ -116,5 +117,43 @@ describe('createShutdownHandler', () => {
         await shutdown('SIGTERM');
         expect(close).toHaveBeenCalled();
         expect(exit).toHaveBeenCalledWith(1);
+    });
+});
+
+describe('installSignalHandlers (the wiring main() uses)', () => {
+    let dbFile: string;
+    beforeEach(() => {
+        closeDb();
+        dbFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'llmo-signals-')), 'data.db');
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+        initDb(dbFile);
+        getDb().prepare("INSERT OR IGNORE INTO projects (id, name, daily_budget) VALUES ('default', 'Default Project', 5)").run();
+    });
+    afterEach(() => { closeDb(); jest.restoreAllMocks(); });
+
+    const rowCount = () => {
+        const reader = new Database(dbFile, { readonly: true });
+        try { return (reader.prepare('SELECT count(*) AS n FROM requests').get() as { n: number }).n; } finally { reader.close(); }
+    };
+    const exited = (exit: jest.Mock) => new Promise<number>(resolve => { exit.mockImplementation(resolve); });
+
+    it.each(['SIGTERM', 'SIGINT'])('%s flushes the real logger queue to SQLite and exits 0', async (signal) => {
+        await internalLogger.add({
+            project_id: 'default', provider: 'openai', model: 'gpt-4', endpoint: '/v1/chat/completions',
+            cost_usd: 0.01, status_code: 200, status: 'success',
+        } as any);
+        expect(rowCount()).toBe(0); // queued in memory only
+
+        const proc = new EventEmitter();
+        const exit = jest.fn();
+        const done = exited(exit);
+        installSignalHandlers(proc, exit);
+        expect(proc.listenerCount('SIGTERM')).toBe(1);
+        expect(proc.listenerCount('SIGINT')).toBe(1);
+
+        proc.emit(signal);
+        expect(await done).toBe(0);
+        expect(rowCount()).toBe(1);
+        expect(() => getDb()).toThrow(); // database closed after the flush
     });
 });

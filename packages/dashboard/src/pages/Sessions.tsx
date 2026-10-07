@@ -163,7 +163,7 @@ export default function Sessions() {
                 <Info className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
                 <p className="leading-relaxed">
                     <strong className="text-indigo-300 font-bold">Note:</strong> Per-session costs are estimated dynamically from token counts. 
-                    Daily totals on the Overview page use billing-verified data synced directly from the provider APIs when available.
+                    Daily totals on the Overview page use usage reported by the provider APIs when synced. That sync is designed to reconcile with your provider invoice but has not yet been validated against a live account.
                 </p>
             </div>
 
@@ -248,7 +248,7 @@ export default function Sessions() {
                                 <th className="py-4 px-6 text-xs font-black text-textMuted uppercase tracking-widest">Date</th>
                                 <th className="py-4 px-6 text-xs font-black text-textMuted uppercase tracking-widest">Tool</th>
                                 <th className="py-4 px-6 text-xs font-black text-textMuted uppercase tracking-widest">Project</th>
-                                <th className="py-4 px-6 text-xs font-black text-textMuted uppercase tracking-widest text-right" title="Estimated from local token counting. See Overview for billing-verified totals.">Est. Cost</th>
+                                <th className="py-4 px-6 text-xs font-black text-textMuted uppercase tracking-widest text-right" title="Estimated from local token counting. See Overview for provider-reported totals.">Est. Cost</th>
                                 <th className="py-4 px-6 text-xs font-black text-textMuted uppercase tracking-widest text-right">Duration</th>
                             </tr>
                         </thead>

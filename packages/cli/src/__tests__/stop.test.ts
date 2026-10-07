@@ -24,11 +24,15 @@ describe('llm-observer stop', () => {
     const origProfile = process.env.USERPROFILE;
     let tmpHome: string;
     let child: ReturnType<typeof spawn> | undefined;
+    let serverPath: string;
 
     beforeEach(() => {
         tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'llmo-stop-'));
         process.env.HOME = tmpHome;
         process.env.USERPROFILE = tmpHome;
+        // Stand-in for the bundled dist/server.js that `start` spawns.
+        serverPath = path.join(tmpHome, 'server.js');
+        fs.writeFileSync(serverPath, 'setInterval(() => {}, 1000);');
     });
 
     afterEach(() => {
@@ -41,7 +45,7 @@ describe('llm-observer stop', () => {
 
     it('terminates the process recorded in the pid file that `start` writes', async () => {
         // Same location and format start.ts uses: <home>/.llm-observer/observer.pid
-        child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+        child = spawn(process.execPath, [serverPath], { stdio: 'ignore' });
         const pid = child.pid!;
         const pidPath = getPidPath();
         expect(pidPath).toBe(path.join(tmpHome, '.llm-observer', 'observer.pid'));
@@ -52,7 +56,7 @@ describe('llm-observer stop', () => {
         const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
         try {
             const program = new Command();
-            setupStopCommands(program);
+            setupStopCommands(program, { serverPath });
             await program.parseAsync(['node', 'llm-observer', 'stop']);
         } finally {
             logSpy.mockRestore();
@@ -62,11 +66,53 @@ describe('llm-observer stop', () => {
         expect(fs.existsSync(pidPath)).toBe(false);
     });
 
+    it('does not signal an unrelated process whose pid is in a stale pid file', async () => {
+        // A reused pid: alive, but not an llm-observer server.
+        child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+        const pid = child.pid!;
+        const pidPath = getPidPath();
+        fs.mkdirSync(path.dirname(pidPath), { recursive: true });
+        fs.writeFileSync(pidPath, pid.toString());
+
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+        let output = '';
+        try {
+            const program = new Command();
+            setupStopCommands(program, { serverPath });
+            await program.parseAsync(['node', 'llm-observer', 'stop']);
+            output = logSpy.mock.calls.flat().join('\n');
+        } finally {
+            logSpy.mockRestore();
+        }
+
+        await new Promise(r => setTimeout(r, 300));
+        expect(isAlive(pid)).toBe(true);
+        expect(fs.existsSync(pidPath)).toBe(false);
+        expect(output).toMatch(/stale/i);
+    });
+
+    it('removes a pid file whose process no longer exists', async () => {
+        const pidPath = getPidPath();
+        fs.mkdirSync(path.dirname(pidPath), { recursive: true });
+        fs.writeFileSync(pidPath, '99999999');
+
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+        try {
+            const program = new Command();
+            setupStopCommands(program, { serverPath });
+            await program.parseAsync(['node', 'llm-observer', 'stop']);
+            expect(logSpy.mock.calls.flat().join('\n')).toMatch(/stale/i);
+        } finally {
+            logSpy.mockRestore();
+        }
+        expect(fs.existsSync(pidPath)).toBe(false);
+    });
+
     it('reports cleanly when nothing is running', async () => {
         const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
         try {
             const program = new Command();
-            setupStopCommands(program);
+            setupStopCommands(program, { serverPath });
             await program.parseAsync(['node', 'llm-observer', 'stop']);
             expect(logSpy.mock.calls.flat().join('\n')).toMatch(/No background process/);
         } finally {

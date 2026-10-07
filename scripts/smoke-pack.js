@@ -5,7 +5,7 @@
  * Builds the CLI, `npm pack`s it, installs the tarball into an empty temp
  * directory (the way a user's `npm install -g llm-observer` would), boots
  * `llm-observer start` on free ports against a throwaway HOME and data dir,
- * polls /health, then shuts it down with SIGINT and with `llm-observer stop`.
+ * polls /health, exercises the AI Analyst against a local mock Anthropic API, then shuts it down with SIGINT, SIGTERM and `llm-observer stop`.
  *
  * It exists because the v2.0.0/2.0.1 tarballs crashed on first run with
  * MODULE_NOT_FOUND for a dependency that was bundled as external but never
@@ -43,12 +43,12 @@ const option = (name) => {
     return i >= 0 ? args[i + 1] : undefined;
 };
 
-// Externals that are only loaded on demand behind an opt-in feature and are
-// deliberately not declared as CLI dependencies.
-// @anthropic-ai/sdk: AI Analyst (aiAnalyst.ts loads it lazily and returns a
-// clear error if it is missing).
+// Externals that are only loaded on demand and are deliberately not declared as
+// CLI dependencies.
 // encoding: node-fetch v2 does `try { require("encoding") } catch {}`.
-const LAZY_OPTIONAL_EXTERNALS = new Set(['@anthropic-ai/sdk', 'encoding']);
+// (The AI Analyst calls the Anthropic API with fetch and has no SDK, so
+// @anthropic-ai/sdk reappearing in the bundle fails the undeclared-externals check.)
+const LAZY_OPTIONAL_EXTERNALS = new Set(['encoding']);
 
 const log = (msg) => console.log(`[smoke-pack] ${msg}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -94,6 +94,30 @@ function httpGet(url) {
         });
         req.on('error', () => resolve(0));
         req.on('timeout', () => { req.destroy(); resolve(0); });
+    });
+}
+
+/** Minimal JSON request helper; resolves { status, body } (status 0 on connection failure). */
+function httpJson(method, url, payload) {
+    return new Promise((resolve) => {
+        const data = payload === undefined ? null : JSON.stringify(payload);
+        const req = http.request(url, {
+            method,
+            timeout: 20000,
+            headers: data ? { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) } : {},
+        }, (res) => {
+            let text = '';
+            res.on('data', (d) => { text += d; });
+            res.on('end', () => {
+                let body = null;
+                try { body = JSON.parse(text); } catch { /* not JSON */ }
+                resolve({ status: res.statusCode, body });
+            });
+        });
+        req.on('error', () => resolve({ status: 0, body: null }));
+        req.on('timeout', () => { req.destroy(); resolve({ status: 0, body: null }); });
+        if (data) req.write(data);
+        req.end();
     });
 }
 
@@ -149,6 +173,7 @@ async function main() {
 
     const failures = [];
     const children = [];
+    const servers = [];
     const fail = (msg) => { failures.push(msg); console.error(`[smoke-pack] FAIL: ${msg}`); };
 
     try {
@@ -190,6 +215,26 @@ async function main() {
         let dashboardPort = await freePort();
         while (dashboardPort === proxyPort) dashboardPort = await freePort();
 
+        // Local stand-in for api.anthropic.com so the AI Analyst can be exercised
+        // end to end without a real key or network access.
+        const upstreamRequests = [];
+        const upstream = http.createServer((req, res) => {
+            let body = '';
+            req.on('data', (d) => { body += d; });
+            req.on('end', () => {
+                upstreamRequests.push({ method: req.method, url: req.url, headers: req.headers, body });
+                res.writeHead(200, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({
+                    model: 'claude-opus-4-8',
+                    stop_reason: 'end_turn',
+                    content: [{ type: 'text', text: JSON.stringify({ summary: 'Smoke summary.', recommendations: [] }) }],
+                }));
+            });
+        });
+        await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
+        servers.push(upstream);
+        const upstreamPort = upstream.address().port;
+
         const env = { ...process.env };
         for (const k of Object.keys(env)) {
             if (/API_KEY|ADMIN_KEY|^ANTHROPIC_|^OPENAI_/i.test(k)) delete env[k];
@@ -201,6 +246,7 @@ async function main() {
             LLM_OBSERVER_PROXY_PORT: String(proxyPort),
             LLM_OBSERVER_PORT: String(dashboardPort),
             LLM_OBSERVER_HOST: '127.0.0.1',
+            LLM_OBSERVER_ANTHROPIC_BASE_URL: `http://127.0.0.1:${upstreamPort}`,
             NO_UPDATE_NOTIFIER: '1',
             CI: '1',
         });
@@ -254,8 +300,37 @@ async function main() {
             if (exited) log('start #1: clean shutdown on SIGINT');
         }
 
-        // 5b. `llm-observer stop` must terminate a process started by `llm-observer start`
-        const second = await bootAndCheck('start #2');
+        // 5b. SIGTERM (docker stop, systemd, kill) must not orphan the server either
+        const termRun = await bootAndCheck('start #2 (SIGTERM)');
+        if (termRun) {
+            // 5b-i. AI Analyst works in the packed artifact: no SDK, plain fetch to the (mock) API
+            const keyRes = await httpJson('POST', `http://127.0.0.1:${dashboardPort}/api/optimize/ai/key`, { apiKey: 'sk-ant-api-smoke' });
+            const analyzeRes = keyRes.status === 200
+                ? await httpJson('POST', `http://127.0.0.1:${dashboardPort}/api/optimize/ai/analyze`, {})
+                : null;
+            const sent = upstreamRequests[0];
+            if (keyRes.status !== 200) fail(`AI Analyst: saving a key returned ${keyRes.status}`);
+            else if (!analyzeRes || analyzeRes.status !== 200 || analyzeRes.body?.result?.summary !== 'Smoke summary.') {
+                fail(`AI Analyst: analyze returned ${analyzeRes && analyzeRes.status} ${JSON.stringify(analyzeRes && analyzeRes.body)}`);
+            } else if (!sent || sent.url !== '/v1/messages' || sent.headers['x-api-key'] !== 'sk-ant-api-smoke' || !sent.headers['anthropic-version']) {
+                fail(`AI Analyst: unexpected upstream request ${JSON.stringify(sent && { url: sent.url, headers: sent.headers })}`);
+            } else {
+                log('AI Analyst: analysis served through the packed CLI (mock upstream)');
+            }
+
+            termRun.cli.child.kill('SIGTERM');
+            const exited = await waitFor(() => termRun.cli.exited, 15000);
+            if (!exited) fail('start #2: CLI did not exit within 15s of SIGTERM');
+            if (termRun.serverPid) {
+                const gone = await waitFor(() => !isAlive(termRun.serverPid), 15000);
+                if (!gone) fail(`start #2: server process ${termRun.serverPid} orphaned after SIGTERM`);
+            }
+            if (fs.existsSync(pidFile)) fail('start #2: pid file left behind after SIGTERM');
+            if (exited) log('start #2: clean shutdown on SIGTERM');
+        }
+
+        // 5c. `llm-observer stop` must terminate a process started by `llm-observer start`
+        const second = await bootAndCheck('start #3');
         if (second && second.serverPid) {
             const stop = spawnSync(process.execPath, [binPath, 'stop'], { cwd: installDir, env, encoding: 'utf8' });
             if (stop.status !== 0) fail(`stop exited with ${stop.status}\n${stop.stdout}${stop.stderr}`);
@@ -266,6 +341,7 @@ async function main() {
     } catch (err) {
         fail(err.message);
     } finally {
+        for (const srv of servers) { try { srv.close(); } catch { /* already closed */ } }
         for (const state of children) {
             if (!state.exited) { try { state.child.kill('SIGKILL'); } catch { /* already gone */ } }
         }

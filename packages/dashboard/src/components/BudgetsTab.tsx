@@ -308,8 +308,8 @@ export function BudgetsTab() {
                                         <div className="absolute left-1 top-1 w-4 h-4 bg-slate-400 rounded-full peer-checked:left-7 peer-checked:bg-red-500 transition-all shadow-[0_0_8px_rgba(0,0,0,0.5)]" />
                                     </div>
                                     <div className="flex flex-col">
-                                        <span className="text-sm font-bold text-white group-hover:text-red-400 transition-colors">Hard Block (Kill Switch)</span>
-                                        <span className="text-[10px] text-slate-500 font-medium leading-tight">Block requests when limit is reached.</span>
+                                        <span className="text-sm font-bold text-white group-hover:text-red-400 transition-colors">Block After Limit (Best Effort)</span>
+                                        <span className="text-[10px] text-slate-500 font-medium leading-tight">Blocks requests once recorded spend exceeds the limit. Spend is written in short batches, so a burst can slip past.</span>
                                     </div>
                                 </label>
                             </div>
@@ -446,7 +446,7 @@ export function BudgetsTab() {
                                         <div className="flex items-center gap-3 pr-6 border-r border-slate-800/50">
                                             <div className="flex flex-col items-end mr-1">
                                                 <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Enforce</span>
-                                                <span className={`text-[8px] font-bold ${budget.kill_switch ? 'text-red-400' : 'text-slate-500'}`}>PROTECTED</span>
+                                                <span className={`text-[8px] font-bold ${budget.kill_switch ? 'text-red-400' : 'text-slate-500'}`}>{budget.kill_switch ? 'BEST EFFORT' : 'OFF'}</span>
                                             </div>
                                             <label className="relative inline-flex items-center cursor-pointer">
                                                 <input 
@@ -491,7 +491,7 @@ export function BudgetsTab() {
                     <h5 className="text-sm font-bold text-white mb-1">Pre-estimation active</h5>
                     <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
                         Proxy requests are pre-estimated using model pricing tables before execution. 
-                        If a request is estimated to cross the kill-switch limit, it will be blocked with a 429 error and an alert will be logged.
+                        If a request is estimated to cross the kill-switch limit, it will be blocked with a 429 error and an alert will be logged. Enforcement is best effort: recorded spend lags the proxy by up to about 5 seconds or 10 requests, so a burst of requests can exceed a limit before it is blocked.
                     </p>
                 </div>
             </div>

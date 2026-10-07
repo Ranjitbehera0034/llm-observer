@@ -1,59 +1,41 @@
 {
-  "_comment": "Golden-output manifest for the recorded-format regression matrix (see formatMatrix.test.ts). Each entry pairs a checked-in fixture file with the exact values the parser must produce for it. To extend to another editor's parser, ONLY with a real recording (never a hand-written fixture), add a sibling top-level key here plus a matching adapter in formatMatrix.test.ts's ADAPTERS map.",
+  "_comment": "Golden-output manifest for the recorded-format regression matrix (see formatMatrix.test.ts). Each entry pairs a checked-in fixture with the exact values the parser must produce for it. ONLY real recordings (scrubbed with scripts/redact-claude-recording.js) belong here; never a hand-written fixture. Hand-written fixtures live under synthetic/ with their own manifest and test. To extend to another editor's parser, add a sibling top-level key here plus a matching adapter in formatMatrix.test.ts's ADAPTERS map. Costs are priced with the test's mocked table (3 / 15 / 0.3 USD per million), not a real price list.",
   "claude": [
     {
-      "fixture": "format-v1-legacy-top-level.jsonl",
-      "description": "pre-2025 format: model/usage/content at top level of the event, no message.id/requestId",
+      "fixture": "recorded/claude-code-2.1.291-linux",
+      "description": "scrubbed excerpt of a real Claude Code 2.1.291 session on Linux: nested message format, usage repeated per content-block line (deduped by message.id + requestId), 1h cache writes, Bash/Grep tool calls, one subagent file",
       "expected": {
-        "primaryModel": "claude-3-5-sonnet-20241022",
-        "messageCount": 3,
-        "inputTokens": 100,
-        "outputTokens": 50,
-        "cacheReadTokens": 0,
-        "cacheWriteTokens": 0,
+        "primaryModel": "claude-opus-5-5",
+        "messageCount": 16,
+        "inputTokens": 8,
+        "outputTokens": 1386,
+        "cacheReadTokens": 261023,
+        "cacheWriteTokens": 42775,
         "toolCalls": {
-          "Read": 1
+          "Bash": 5,
+          "Grep": 1
         },
         "sessionType": "agentic",
         "isEstimated": false,
-        "costSource": "pricing_table"
-      }
-    },
-    {
-      "fixture": "format-v2-current-nested.jsonl",
-      "description": "current format: payload nested under message, usage repeated per content-block line within one request and deduped by (message.id, requestId)",
-      "expected": {
-        "primaryModel": "claude-sonnet-5",
-        "messageCount": 3,
-        "inputTokens": 200,
-        "outputTokens": 80,
-        "cacheReadTokens": 500,
-        "cacheWriteTokens": 100,
-        "toolCalls": {
-          "Write": 1
-        },
-        "sessionType": "agentic",
-        "isEstimated": false,
-        "costSource": "pricing_table"
-      }
-    },
-    {
-      "fixture": "format-v3-mixed-unknown-model.jsonl",
-      "description": "mixed-model session where one model (claude-opus-5-5) is missing from the price table: each model is priced separately, the unknown one via family fallback, and the session is flagged estimated instead of silently under-priced",
-      "expected": {
-        "primaryModel": "claude-sonnet-5",
-        "messageCount": 4,
-        "inputTokens": 1000000,
-        "outputTokens": 1000000,
-        "cacheReadTokens": 1000000,
-        "cacheWriteTokens": 0,
-        "toolCalls": {
-          "Edit": 1
-        },
-        "sessionType": "agentic",
-        "isEstimated": true,
-        "costSource": "family_fallback",
-        "costUsd": 28.5
+        "costSource": "pricing_table",
+        "costUsd": 0.3557709,
+        "subagents": [
+          {
+            "agentId": "a2f31d9401ad515dc",
+            "model": "claude-sonnet-5-5",
+            "messageCount": 10,
+            "inputTokens": 6,
+            "outputTokens": 31,
+            "cacheReadTokens": 140835,
+            "cacheWriteTokens": 23752,
+            "toolCalls": {
+              "Bash": 4
+            },
+            "isEstimated": false,
+            "costSource": "pricing_table",
+            "costUsd": 0.1318035
+          }
+        ]
       }
     }
   ]
