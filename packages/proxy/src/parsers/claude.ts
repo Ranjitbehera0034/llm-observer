@@ -72,20 +72,15 @@ const countToolUses = (event: any, toolCalls: Record<string, number>): void => {
 
 const CLAUDE_TOOL_NAME = 'Claude Code';
 
-// Subagent transcripts live in <project>/<sessionId>/subagents/agent-*.jsonl.
+// Subagent transcripts live in <project>/<sessionId>/subagents/agent-*.jsonl, and agents started
+// by a workflow in <project>/<sessionId>/subagents/workflows/<workflowId>/agent-*.jsonl.
 const isSubagentPath = (claudeDir: string, filePath: string): boolean =>
     path.relative(claudeDir, filePath).split(path.sep).includes('subagents');
 
 const findSubagentFiles = (sessionFilePath: string): string[] => {
     const sessionId = path.basename(sessionFilePath, '.jsonl');
     const dir = path.join(path.dirname(sessionFilePath), sessionId, 'subagents');
-    try {
-        return fs.readdirSync(dir)
-            .filter(f => f.endsWith('.jsonl'))
-            .map(f => path.join(dir, f));
-    } catch {
-        return [];
-    }
+    return findFilesRecursive(dir, /\.jsonl$/).sort();
 };
 
 const safeMtime = (filePath: string): number => {

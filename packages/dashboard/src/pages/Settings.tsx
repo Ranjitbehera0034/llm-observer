@@ -502,7 +502,7 @@ export default function Settings() {
 
                             <div className="card mt-6">
                                 <h2 className="text-xl font-bold text-white mb-2">Local Session Sources</h2>
-                                <p className="text-sm text-textMuted mb-6">Automatically detect and parse local AI tool usage history without routing traffic through the proxy. Only Claude Code is verified against real recordings; the others are marked unverified or experimental until a real recording is checked in. Hover a badge for details.</p>
+                                <p className="text-sm text-textMuted mb-6">Automatically detect and parse local AI tool usage history without routing traffic through the proxy. Claude Code is tested against a scrubbed excerpt of a real log; the others are marked unverified or experimental until a real recording is checked in. Hover a badge for details.</p>
                                 
                                 <div className="space-y-4">
                                     {[

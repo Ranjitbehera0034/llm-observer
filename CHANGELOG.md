@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-10-07
+
+**Upgrade now if you installed 2.0.0 or 2.0.1 from npm: `llm-observer start` crashed on a clean install** with
+`Cannot find module '@anthropic-ai/sdk'` (it only worked where the package happened to be installed
+already). 2.0.2 fixes that and a long list of correctness, privacy and data-safety problems found in an
+architecture review. Existing databases upgrade in place; a backup is taken first (see below).
+
+### Fixed - first run and releases
+- The npm package now starts on a clean machine. The AI Analyst no longer depends on the Anthropic SDK: it
+  calls the Messages API directly, so it also works in the npm CLI, the desktop sidecar and Docker (it
+  returned 501 everywhere except a developer checkout before). Retries are not attempted any more; a failed
+  call returns one clear error.
+- `scripts/smoke-pack.js` packs the CLI, installs it into an empty directory, starts it, checks
+  `/health`, the dashboard and the AI Analyst endpoint, and shuts it down; CI and the publish workflow run it.
+- Reproducible releases: `package-lock.json` is committed, workflows use `npm ci`, publishing requires green
+  tests and typecheck, the tag must equal the package version, `npm` is pinned (OIDC publishing needs 11.x),
+  and the publish job restores no cache. `react-is` is now a declared dashboard dependency.
+- `llm-observer stop` checks the recorded pid is really this install's server before signalling it, and
+  `llm-observer start` now forwards SIGTERM/SIGHUP (docker stop, systemd) instead of orphaning the server.
+
+### Fixed - money
+- Provider-scoped budgets (for example "$3/day on OpenAI") never matched because the guard did not know the
+  provider. They now do, and the pre-flight estimate prices the right model, counts Anthropic `system` and
+  `tools`, Gemini `contents` and OpenAI Responses `input`, and honours `max_tokens` instead of assuming a
+  3x output (which caused false 429s at 60% utilisation).
+- Admin-API sync no longer inserts a duplicate `usage_records` row on every 60-second poll (SQLite treats
+  NULL key columns as distinct); migration 014 collapses existing duplicates, keeping the newest row. The
+  pollers also accept the vendors' documented nested response shape, and an unrecognised shape now sets a
+  visible sync error instead of silently inserting nothing. Anthropic's cost report now includes today.
+- Budget spend read from sync data no longer reads as $0 for most of the day outside UTC.
+- Claude parser: models missing from the price table are priced with a family fallback and flagged
+  *estimated* instead of silently costing $0; cache reads on models with no cached rate use 0.1x the input
+  rate and are flagged; usage is priced per model; agents under `<session>/subagents/` and
+  `<session>/subagents/workflows/<id>/` are read and attributed to the parent; re-importing a session returns
+  its true id. Migration 015 adds the provenance columns; the Sessions page shows the flag.
+- Anomaly detector and rate-limit estimate compared ISO timestamps with SQLite's `datetime()` text, firing
+  false critical alerts on most hourly runs; fixed (shared helper), with a per-project alert cooldown and a
+  webhook timeout. Optimizer cache entries now expire after an hour, not at UTC midnight.
+- The Cursor parser no longer inserts a mock `$0` session (which made the plan-value rule recommend dropping
+  Cursor); Aider events get stable ids and are read from the `properties` object upstream actually writes.
+- Optimizer: rules need real days and sessions of data before reporting savings; invented constants and the
+  hard-coded accuracy string are gone.
+
+### Fixed - security and privacy
+- Both ports reject requests whose `Host` is not loopback (421) and cross-site `Origin`s (403), closing DNS
+  rebinding and `localhost.evil.com` style bypasses. `LLM_OBSERVER_ALLOWED_HOSTS` / `LLM_OBSERVER_ALLOWED_ORIGINS`
+  allow extra names (reverse proxy, LAN bind).
+- The Wrapped card SVG reflected an unvalidated `period` (script execution in the dashboard origin); inputs
+  are validated and escaped and the response carries a sandboxing CSP.
+- Alerts and the live SSE stream no longer copy prompt/response bodies (alerts keep six metadata fields;
+  migration 016 rewrites existing rows). Alert metadata and SSE events now carry the real request id.
+- A hostname change can no longer downgrade a paying user and trigger deletion: signed (LLMO1) keys skip the
+  machine-bound check, and while a licence is unresolved retention deletes nothing.
+- The local payment-webhook endpoints were removed: the payment providers cannot reach a loopback server, the
+  license server handles the real webhooks, and their body-parser bug had kept a forgeable-key path inert.
+- Upgrade backups: written 0600, kept for at most 14 days (newest two), never replaced by a retry of a failed
+  upgrade, removed by `llm-observer reset`. They contain a full copy of the database, including any stored
+  proxy bodies. `LLM_OBSERVER_SKIP_MIGRATION_BACKUP=1` skips them.
+
+### Fixed - data safety
+- Migrations run in a transaction under `BEGIN IMMEDIATE` and take a `VACUUM INTO` backup first; a failed
+  migration leaves the schema untouched and the next start retries. A missing migrations directory is an error.
+- A `data.db` in the current directory can no longer overwrite your real database, and `--help` no longer
+  opens one. The legacy-location copy now includes data still in the WAL.
+- SIGTERM/SIGINT flush queued requests and close the database; a busy port exits with an actionable message.
+- Retention keeps budget alerts (they are the dedupe rows) and compares timestamps consistently.
+
+### Changed
+- Budget days, weeks and months now start at local midnight (previously UTC for provider, model and global
+  budgets). After upgrading outside UTC a budget alert for the current period may fire once more.
+- The kill switch is described as best effort: spend is written in short batches (about 5 seconds or 10
+  requests), so a burst can pass the limit. The UI says so.
+- Parsers are labelled verified / experimental / unverified in Settings and the README. Claude Code is tested
+  against a scrubbed excerpt of one real log (Claude Code 2.1.291, Linux) plus hand-written fixtures; the
+  others have no real recording yet. Admin-API sync is documented as designed to reconcile with your invoice
+  but not yet validated against a live account (`docs/RELEASE_CHECKLIST.md`).
+- README accuracy claims for session estimates ("~95% accurate", "within ~5%") were removed: they were never
+  measured.
+
+### Known limitations
+- Subscription tools (Cursor, Copilot, Windsurf) are not captured by the proxy, and the Cursor parser is
+  detect-only until its local store is decoded.
+- Kill-switch overshoot and the double count after a sync flips to `error` are not fixed; Team features,
+  OpenTelemetry (OTLP) ingestion and an adapter contract for new parsers remain on the roadmap.
+
 ## [2.0.1] - 2026-10-06
 
 ### Security / Privacy

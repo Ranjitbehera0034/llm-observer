@@ -1,6 +1,6 @@
 {
   "name": "@llm-observer/database",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "LLM Observer SQLite Database Layer",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

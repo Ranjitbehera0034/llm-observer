@@ -41,9 +41,9 @@ It does not show the computed dollar cost matches an Anthropic invoice (the matr
 price table), nor that macOS/Windows logs or older Claude Code versions look the same. Older formats
 are covered by the hand-written files in `../../synthetic/claude/`, which are NOT recordings.
 
-## Not covered by the parser yet
+## Layout
 
-In this session the subagent logs actually lived under
-`<sessionId>/subagents/workflows/<workflowId>/agent-*.jsonl` (workflow-spawned agents), one directory
-deeper than `parsers/claude.ts` looks. The subagent file here was moved up to
-`<sessionId>/subagents/` to match the layout the parser reads for Task-tool subagents.
+Workflow-spawned subagents are stored as Claude Code wrote them:
+`<sessionId>/subagents/workflows/<workflowId>/agent-*.jsonl` (the workflow id is replaced with
+`wf_redacted`). `parsers/claude.ts` reads `subagents/` recursively, so these are attributed to the
+parent session along with Task-tool subagents that sit directly under `<sessionId>/subagents/`.

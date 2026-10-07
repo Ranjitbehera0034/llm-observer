@@ -7,7 +7,7 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({
         status: 'ok',
         service: 'llm-observer-license-server',
-        version: '2.0.1',
+        version: '2.0.2',
         timestamp: new Date().toISOString(),
         env: {
             hasResendKey: !!process.env.RESEND_API_KEY,

@@ -176,7 +176,7 @@ Gives: Per-app attribution              Gives: Per-request detail + kill switch
 
 ## Add Provider Keys
 
-Session parsing estimates costs from token counts (~95% accurate). For provider-reported usage data (designed to reconcile with your invoice; not yet validated against a live account, see [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)):
+Session parsing estimates costs from token counts and the price table, so it can differ from your invoice (discounts, unlisted models and cache pricing are the usual causes; sessions priced from a fallback are flagged as estimated). For provider-reported usage data (designed to reconcile with your invoice; not yet validated against a live account, see [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)):
 
 ### Anthropic
 
@@ -449,7 +449,7 @@ No. LLM Observer reads data your tools already produce. No SDK, no config change
 <details>
 <summary><strong>How accurate are cost estimates?</strong></summary>
 <br />
-Session-estimated costs are within ~5% of actual billing. For provider-reported numbers, add your Admin API key. The Usage API sync is designed to reconcile with your provider invoice; it has not yet been validated against a live account ([docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)). You don't have to take that on faith either — see <a href="#verify-your-own-numbers">Verify Your Own Numbers</a>.
+Session-estimated costs are estimates: they depend on the price table and can differ from your bill, and we have not measured how far (sessions priced from a fallback are flagged as estimated). For provider-reported numbers, add your Admin API key. The Usage API sync is designed to reconcile with your provider invoice; it has not yet been validated against a live account ([docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)). You don't have to take that on faith either — see <a href="#verify-your-own-numbers">Verify Your Own Numbers</a>.
 </details>
 
 <details>

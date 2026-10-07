@@ -137,6 +137,34 @@ describe('Claude parser: pricing provenance, subagents and retries (real DB)', (
         expect(agents.map(a => a.agent_id)).toEqual(['aaa', 'bbb']);
     });
 
+    it('also reads workflow-spawned subagents nested under subagents/workflows/<workflowId>/', async () => {
+        // Claude Code 2.1.29x writes agents started by a workflow into a nested folder; a flat
+        // readdir missed them, so their (often larger) cost never reached the parent session.
+        fs.writeFileSync(path.join(projectDir, 'parent-wf.jsonl'), [
+            user(),
+            assistant('p', 'claude-sonnet-5', { input_tokens: 1_000_000, output_tokens: 0 })
+        ].join('\n') + '\n');
+        const flat = path.join(projectDir, 'parent-wf', 'subagents');
+        const nested = path.join(flat, 'workflows', 'wf_123');
+        fs.mkdirSync(nested, { recursive: true });
+        fs.writeFileSync(path.join(flat, 'agent-flat.jsonl'), [
+            user(), assistant('f', 'claude-sonnet-5', { input_tokens: 0, output_tokens: 1_000_000 })
+        ].join('\n') + '\n');
+        fs.writeFileSync(path.join(nested, 'agent-nested.jsonl'), [
+            user(), assistant('n', 'claude-sonnet-5', { input_tokens: 1_000_000, output_tokens: 0 })
+        ].join('\n') + '\n');
+
+        await claudeParser.parse();
+
+        const s = getSession('parent-wf');
+        expect(s.subagent_count).toBe(2);
+        expect(s.total_subagent_cost_usd).toBeCloseTo(15 + 3, 6);
+        const all = getDb().prepare("SELECT session_id FROM sessions WHERE provider = 'claude-code'").all() as any[];
+        expect(all.map(r => r.session_id)).toEqual(['parent-wf']);
+        const agents = getDb().prepare('SELECT agent_id FROM subagents WHERE parent_session_id = ? ORDER BY agent_id').all(s.id) as any[];
+        expect(agents.map(a => a.agent_id)).toEqual(['flat', 'nested']);
+    });
+
     it('does not attribute subagents of one session to another session in the same project', async () => {
         for (const sid of ['p-one', 'p-two']) {
             fs.writeFileSync(path.join(projectDir, `${sid}.jsonl`), [user(), assistant(sid, 'claude-sonnet-5', { input_tokens: 10, output_tokens: 10 })].join('\n') + '\n');

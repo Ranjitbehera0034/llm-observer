@@ -13,6 +13,7 @@ const FILES = [
     'docs/index.md',
     'packages/cli/README.md',
     'packages/dashboard/src/pages/Sessions.tsx',
+    'packages/dashboard/src/pages/Settings.tsx',
     'packages/dashboard/src/components/BudgetsTab.tsx',
     'landing-page/src/App.tsx',
 ];
@@ -24,6 +25,7 @@ const BANNED: [RegExp, string][] = [
     [/billing-verified/i, 'sync is not validated against a live account'],
     [/hard[- ]block/i, 'the kill switch is best effort (spend is written in batches)'],
     [/verified against real recordings/i, 'the Claude recording is one scrubbed excerpt'],
+    [/~?\s?95%\s+accurate|within ~?5% of actual/i, 'session cost accuracy has not been measured'],
     [/surprise bill/i, 'the kill switch cannot promise to prevent a bill'],
 ];
 

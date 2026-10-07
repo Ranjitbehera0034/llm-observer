@@ -25,9 +25,7 @@ tests/
     └── dashboard/
         ├── license-status.bru
         ├── activate-license.bru
-        ├── stats-overview.bru
-        ├── razorpay-webhook.bru
-        └── lemonsqueezy-webhook.bru
+        └── stats-overview.bru
 ```
 
 ---
