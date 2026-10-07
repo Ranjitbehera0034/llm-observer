@@ -1,5 +1,6 @@
 import { getDb, Budget, getBudgetLimits, createAlert } from '@llm-observer/database';
-import { getPeriodStart, getSecondsUntilPeriodReset, periodLabel } from '../utils/period';
+import { estimateOutputTokens } from './costEstimator';
+import { getPeriodStart, getPeriodStartLabel, getSecondsUntilPeriodReset, periodLabel } from '../utils/period';
 
 export class BudgetService {
     
@@ -43,7 +44,8 @@ export class BudgetService {
         provider: string, 
         model: string, 
         inputTokens: number,
-        estimatedCost: number
+        estimatedCost: number,
+        maxOutputTokens?: number
     ): Promise<{ blocked: boolean, type?: 'budget_exceeded' | 'budget_buffer' | 'budget_insufficient', reason?: string, details?: any }> {
         const budgets = getBudgetLimits(true).filter(b => b.kill_switch);
         
@@ -92,7 +94,7 @@ export class BudgetService {
                         details: { 
                             limit, spent, estimated: estimatedCost, 
                             input_tokens: inputTokens, 
-                            output_tokens: inputTokens * (budget.estimate_multiplier || 3.0),
+                            output_tokens: estimateOutputTokens(inputTokens, budget.estimate_multiplier || 3.0, maxOutputTokens),
                             model, scope: budget.scope, scope_value: budget.scope_value, 
                             retry_after: getSecondsUntilPeriodReset(budget.period) 
                         }
@@ -112,9 +114,10 @@ export class BudgetService {
         const db = getDb();
         const start = getPeriodStart(period);
         
-        // 1. Get Sync costs in period
-        let syncQuery = `SELECT SUM(cost_usd) as total FROM usage_records WHERE bucket_start >= ?`;
-        const syncParams: any[] = [start];
+        // 1. Get Sync costs in period. Sync buckets are UTC-day labels, so match them by calendar
+        // date against the local period start rather than by instant against local midnight.
+        let syncQuery = `SELECT SUM(cost_usd) as total FROM usage_records WHERE date(bucket_start) >= date(?)`;
+        const syncParams: any[] = [getPeriodStartLabel(period)];
         if (scope === 'provider') { syncQuery += ' AND provider = ?'; syncParams.push(value); }
         if (scope === 'model') { syncQuery += ' AND model = ?'; syncParams.push(value); }
         

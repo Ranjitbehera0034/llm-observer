@@ -10,7 +10,7 @@ export interface UsageTotals {
 
 export const emptyTotals = (): UsageTotals => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0 });
 
-export type CostSource = 'pricing_table' | 'family_fallback' | 'unpriced';
+export type CostSource = 'pricing_table' | 'estimated' | 'family_fallback' | 'unpriced';
 
 interface Rate {
     model: string;
@@ -98,18 +98,25 @@ export const resolveClaudePricing = (model: string): ResolvedPricing | null => {
     return pick ? { rate: pick.rate, source: 'family_fallback' } : null;
 };
 
-// Anthropic bills cache writes at 1.25x input (5-minute TTL) and 2x input (1-hour TTL).
-const bucketCost = (rate: Rate, totals: UsageTotals): number => {
+// Anthropic bills cache writes at 1.25x input (5-minute TTL) and 2x input (1-hour TTL),
+// and cache reads at 0.1x input.
+const CACHE_READ_MULTIPLE = 0.1;
+
+// `derivedCacheRead` is set when the price row has no cached rate and the 0.1x input multiple was
+// used instead, so the price is derived rather than an exact table match.
+const bucketCost = (rate: Rate, totals: UsageTotals): { cost: number; derivedCacheRead: boolean } => {
     const cacheWrite5m = Math.max(0, totals.cacheWrite - totals.cacheWrite1h);
     const inputCost = (totals.input / 1_000_000) * rate.input;
     const outputCost = (totals.output / 1_000_000) * rate.output;
-    const cacheReadCost = rate.cached ? (totals.cacheRead / 1_000_000) * rate.cached : 0;
+    const derivedCacheRead = !rate.cached && totals.cacheRead > 0;
+    const cacheReadRate = rate.cached || rate.input * CACHE_READ_MULTIPLE;
+    const cacheReadCost = (totals.cacheRead / 1_000_000) * cacheReadRate;
     const cacheWriteCost = (cacheWrite5m / 1_000_000) * rate.input * 1.25
         + (totals.cacheWrite1h / 1_000_000) * rate.input * 2;
-    return inputCost + outputCost + cacheReadCost + cacheWriteCost;
+    return { cost: inputCost + outputCost + cacheReadCost + cacheWriteCost, derivedCacheRead };
 };
 
-const SOURCE_RANK: Record<CostSource, number> = { pricing_table: 0, family_fallback: 1, unpriced: 2 };
+const SOURCE_RANK: Record<CostSource, number> = { pricing_table: 0, estimated: 1, family_fallback: 2, unpriced: 3 };
 
 export interface PricedUsage {
     costUsd: number;
@@ -140,8 +147,12 @@ export const priceUsageByModel = (buckets: Map<string, UsageTotals>, fallbackMod
     for (const [model, totals] of merged) {
         if (!hasTokens(totals)) continue;
         const resolved = resolveClaudePricing(model);
-        const source: CostSource = resolved ? resolved.source : 'unpriced';
-        if (resolved) costUsd += bucketCost(resolved.rate, totals);
+        let source: CostSource = resolved ? resolved.source : 'unpriced';
+        if (resolved) {
+            const priced = bucketCost(resolved.rate, totals);
+            costUsd += priced.cost;
+            if (priced.derivedCacheRead && source === 'pricing_table') source = 'estimated';
+        }
         if (SOURCE_RANK[source] > SOURCE_RANK[costSource]) costSource = source;
     }
     return { costUsd, isEstimated: costSource !== 'pricing_table', costSource };

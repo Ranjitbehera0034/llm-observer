@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { getDb, validateApiKey } from '@llm-observer/database';
 import { randomUUID } from 'crypto';
 import { BudgetService } from './services/budget.service';
-import { estimateRequestTokens, estimateRequestCost } from './services/costEstimator';
+import { estimateRequestTokens, estimateRequestCost, extractMaxOutputTokens } from './services/costEstimator';
 import { getPeriodStart } from './utils/period';
 import './types';
 
@@ -75,7 +75,8 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
   
   // v1.7.0: Enhanced Token and Cost Estimation (reads system/tools/contents/input, not just messages)
   const inputTokens = estimateRequestTokens(req.body);
-  const estimatedCost = estimateRequestCost(provider, model, inputTokens, project.estimate_multiplier);
+  const maxOutputTokens = extractMaxOutputTokens(req.body);
+  const estimatedCost = estimateRequestCost(provider, model, inputTokens, project.estimate_multiplier, maxOutputTokens);
 
   // 1. LEGACY: Project-level Budget Check (v1.0.x)
   if (project.daily_budget != null && project.kill_switch) {
@@ -125,7 +126,7 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
   }
 
   // 2. V1.7.0: Multi-layer Provider/Model Budgets
-  const budgetCheck = await BudgetService.checkKillSwitch(provider, model, inputTokens, estimatedCost);
+  const budgetCheck = await BudgetService.checkKillSwitch(provider, model, inputTokens, estimatedCost, maxOutputTokens);
   
   if (budgetCheck.blocked) {
       const details = budgetCheck.details;
