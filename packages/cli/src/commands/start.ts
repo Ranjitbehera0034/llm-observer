@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
 import { banner } from '../index';
+import { getPidPath } from '../pidFile';
 
 export function setupStartCommands(program: Command) {
   program
@@ -28,11 +29,7 @@ export function setupStartCommands(program: Command) {
         env: process.env
       });
 
-      const pidPath = path.join(
-        process.env.HOME || process.env.USERPROFILE || '',
-        '.llm-observer',
-        'observer.pid'
-      );
+      const pidPath = getPidPath();
 
       if (child.pid) {
         fs.mkdirSync(path.dirname(pidPath), { recursive: true });

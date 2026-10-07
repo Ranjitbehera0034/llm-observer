@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsup && node scripts/postbuild.js",
     "test": "jest",
+    "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
   "bin": {

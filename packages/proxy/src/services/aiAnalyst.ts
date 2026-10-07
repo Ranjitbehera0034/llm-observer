@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk';
 import { getDb, getSetting, updateSetting, encrypt, decrypt } from '@llm-observer/database';
 
 const KEY_SETTING = 'ai_analyst_api_key';
@@ -119,12 +119,27 @@ const SYSTEM_PROMPT = `You are the cost analyst inside LLM Observer, a local, pr
 
 Ground every recommendation in the numbers you were given — cite them. Focus on the levers that matter for coding-agent workloads: cache economics (cache reads/writes usually dominate agentic sessions), model selection per task type, redundant tool usage, and budget guardrails. If the data is too thin for a recommendation category, say so rather than inventing one. Keep each recommendation self-contained and actionable.`;
 
+/* The SDK is loaded on demand, never at startup: it is an external of the proxy
+ * bundle (not installed with the published CLI), and a privacy-first tool should
+ * not load an LLM SDK unless the user opted into the analyst. */
+const loadAnthropic = async (): Promise<typeof Anthropic> => {
+    try {
+        const mod: any = await import('@anthropic-ai/sdk');
+        return mod.default ?? mod;
+    } catch (e: any) {
+        throw Object.assign(
+            new Error('The AI Analyst needs the @anthropic-ai/sdk package, which is not installed with the llm-observer CLI. Install it next to llm-observer (for a global install: cd "$(npm root -g)/llm-observer" && npm install @anthropic-ai/sdk) and restart.'),
+            { code: 'SDK_MISSING', cause: e }
+        );
+    }
+};
+
 export const runAnalysis = async (client?: Anthropic): Promise<AnalystResult> => {
     const apiKey = getAnalystKey();
     if (!client && !apiKey) {
         throw Object.assign(new Error('No API key configured for AI Analyst'), { code: 'NO_KEY' });
     }
-    const anthropic = client ?? new Anthropic({ apiKey: apiKey! });
+    const anthropic = client ?? new (await loadAnthropic())({ apiKey: apiKey! });
 
     const snapshot = buildSpendSnapshot();
 

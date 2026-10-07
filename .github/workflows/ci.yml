@@ -17,15 +17,72 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 20
-        
+        cache: npm
+
+    # npm ci installs exactly what package-lock.json pins (and fails if the
+    # lockfile and the package.json files disagree); .npmrc sets
+    # legacy-peer-deps, which the lockfile was generated with.
     - name: Install dependencies
-      run: npm install
-      
+      run: npm ci
+
     - name: Build all packages
       run: npm run build:ci
 
+    - name: Typecheck
+      run: npm run typecheck
+
     - name: Run tests
       run: npm test
+
+    # Root vitest suite; runs against the dist/ output built above.
+    - name: Run root integration tests
+      run: npm run test:unit
+
+  # Installs the exact tarball `npm publish` would ship into an empty directory
+  # and boots it (scripts/smoke-pack.js). Catches runtime dependencies that are
+  # bundled as external but not declared in packages/cli/package.json, which no
+  # test of the monorepo working tree can see. publish.yml runs the same script.
+  smoke-pack:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: npm
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build, pack, install and boot the packed CLI
+      run: node scripts/smoke-pack.js
+
+  # A clean checkout must install from the lockfile and build on every OS the
+  # desktop installers and the npm package are used on.
+  install-build-matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: npm
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build all packages
+      run: npm run build:ci
 
   parser-format-drift:
     runs-on: ubuntu-latest
@@ -44,7 +101,7 @@ jobs:
         node-version: 20
 
     - name: Install dependencies
-      run: npm install
+      run: npm ci
 
     - name: Build database package
       run: npm run build --workspace=@llm-observer/database

@@ -10,7 +10,38 @@ on:
         required: true
 
 jobs:
+  # Nothing is published unless the tagged commit installs from the lockfile,
+  # typechecks, passes its tests and the packed CLI installs and boots from an
+  # empty directory (scripts/smoke-pack.js).
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      # Not `npm run build --workspaces --if-present`: that has no
+      # dependency ordering, and packages/cli's build copies
+      # packages/proxy/dist/server.js -- it needs proxy built first.
+      # build:ci is the already-correctly-ordered variant (and skips the
+      # desktop Tauri build, irrelevant for an npm publish).
+      - run: npm run build:ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:unit
+      - name: Smoke-test the packed CLI
+        run: node scripts/smoke-pack.js --skip-build
+
   build:
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -23,22 +54,18 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
 
       # OIDC trusted publishing (npm publish --provenance, no NPM_TOKEN) needs
-      # npm >= 11.5.0, and `npm install -g npm@latest` below now pulls npm 12,
-      # which itself requires Node ^22.22.2 || ^24.15.0 || >=26 -- Node 20
-      # satisfies neither the trusted-publishing floor nor npm 12's own floor.
+      # npm >= 11.5.0. Pin the major: `npm install -g npm@latest` pulled npm 12
+      # (which itself requires Node ^22.22.2 || ^24.15.0 || >=26) and broke a
+      # publish on 2026-07-20.
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+          cache: npm
 
-      - run: npm install -g npm@latest && npm --version
+      - run: npm install -g npm@11 && npm --version
 
-      - run: npm install
-      # Not `npm run build --workspaces --if-present`: that has no
-      # dependency ordering, and packages/cli's build copies
-      # packages/proxy/dist/server.js -- it needs proxy built first.
-      # build:ci is the already-correctly-ordered variant (and skips the
-      # desktop Tauri build, irrelevant for an npm publish).
+      - run: npm ci
       - run: npm run build:ci
 
       - name: Checksum the package that will be published
@@ -48,11 +75,15 @@ jobs:
           sha256sum llm-observer-*.tgz > CHECKSUMS.txt
           cat CHECKSUMS.txt
 
+      # The tarball that is checksummed, smoke-tested and published is one file.
+      - name: Smoke-test the exact tarball that will be published
+        run: node scripts/smoke-pack.js --tarball "$(ls "$PWD"/packages/cli/llm-observer-*.tgz)"
+
       - name: Attach checksum to the GitHub release
         working-directory: packages/cli
         run: gh release upload "${{ env.RELEASE_TAG }}" CHECKSUMS.txt --clobber || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: npm publish --provenance
+      - run: npm publish "$(ls llm-observer-*.tgz)" --provenance
         working-directory: packages/cli
