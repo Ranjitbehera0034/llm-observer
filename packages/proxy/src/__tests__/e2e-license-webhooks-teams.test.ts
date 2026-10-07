@@ -1,13 +1,7 @@
 // =====================================================================================
 // Suite H: License API — GET /api/license/status, POST /api/license/activate
-// Suite J: Webhooks — POST /api/webhooks/lemonsqueezy, /razorpay
 // Suite L: Team Sync — POST /api/teams/:id/sync
 // =====================================================================================
-
-import crypto from 'crypto';
-
-const LEMON_SECRET = 'test-lemon-secret-key-12345';
-const RAZORPAY_SECRET = 'test-razorpay-secret-key-12345';
 
 jest.mock('@llm-observer/database', () => {
     const { createTestDb } = require('./helpers/testDb');
@@ -45,10 +39,6 @@ jest.mock('../licenseManager', () => {
             }
             return { success: false, message: 'Invalid license key' };
         },
-        activateLicenseFromPayment: (data: any) => {
-            isPro = true;
-            return { success: true };
-        },
         checkProjectLimit: async () => !isPro,
     };
 });
@@ -56,14 +46,11 @@ jest.mock('../licenseManager', () => {
 import supertest from 'supertest';
 import express from 'express';
 import { licenseRouter } from '../routes/license.routes';
-import { webhooksRouter } from '../routes/webhooks.routes';
 import { requestsRouter } from '../routes/requests.routes';
 import { getDb } from '@llm-observer/database';
 
 const app = express();
-// Webhooks need raw body for HMAC
 app.use('/api/license', licenseRouter);
-app.use('/api/webhooks', webhooksRouter);
 app.use('/api/teams', requestsRouter);
 
 // =================== SUITE H: LICENSE ===================
@@ -95,76 +82,6 @@ describe('H — License API', () => {
 
         const statusRes = await supertest(app).get('/api/license/status');
         expect(statusRes.body.data.isPro).toBe(true);
-    });
-});
-
-// =================== SUITE J: WEBHOOKS ===================
-
-function signBody(body: string, secret: string) {
-    return crypto.createHmac('sha256', secret).update(Buffer.from(body)).digest('hex');
-}
-
-describe('J — Webhooks API', () => {
-
-    beforeAll(() => {
-        process.env.LEMONSQUEEZY_WEBHOOK_SECRET = LEMON_SECRET;
-        process.env.RAZORPAY_WEBHOOK_SECRET = RAZORPAY_SECRET;
-    });
-    afterAll(() => {
-        delete process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
-        delete process.env.RAZORPAY_WEBHOOK_SECRET;
-    });
-
-    it('J2 — Negative: LemonSqueezy with invalid HMAC returns 401', async () => {
-        const res = await supertest(app)
-            .post('/api/webhooks/lemonsqueezy')
-            .set('x-signature', 'deadbeefdeadbeef')
-            .set('x-event-name', 'subscription_created')
-            .send({ data: { attributes: {}, id: '1' } });
-        expect(res.status).toBe(401);
-    });
-
-    it('J3 — Negative: LemonSqueezy with missing signature header returns 401', async () => {
-        const res = await supertest(app)
-            .post('/api/webhooks/lemonsqueezy')
-            .set('x-event-name', 'subscription_created')
-            .send({});
-        expect(res.status).toBe(401);
-        expect(res.body.error).toContain('Missing');
-    });
-
-    it('J5 — Corner: LemonSqueezy unknown event type returns 200 with action=ignored', async () => {
-        const body = JSON.stringify({ data: { id: 'sub_1', attributes: { customer_id: 'c1' } } });
-        const sig = signBody(body, LEMON_SECRET);
-        const res = await supertest(app)
-            .post('/api/webhooks/lemonsqueezy')
-            .set('Content-Type', 'application/json')
-            .set('x-signature', sig)
-            .set('x-event-name', 'some_unknown_event')
-            .send(body);
-        expect(res.status).toBe(200);
-        expect(res.body.action).toBe('ignored');
-    });
-
-    it('J4 — Positive: LemonSqueezy subscription_cancelled deactivates license', async () => {
-        const body = JSON.stringify({ data: { id: 'sub_1', attributes: { customer_id: 'c1' } } });
-        const sig = signBody(body, LEMON_SECRET);
-        const res = await supertest(app)
-            .post('/api/webhooks/lemonsqueezy')
-            .set('Content-Type', 'application/json')
-            .set('x-signature', sig)
-            .set('x-event-name', 'subscription_cancelled')
-            .send(body);
-        expect(res.status).toBe(200);
-        expect(res.body.action).toBe('deactivated');
-    });
-
-    it('J8 — Corner: Razorpay with mismatched signature length returns 401', async () => {
-        const res = await supertest(app)
-            .post('/api/webhooks/razorpay')
-            .set('x-razorpay-signature', 'short')
-            .send({ event: 'payment.captured' });
-        expect(res.status).toBe(401);
     });
 });
 

@@ -8,7 +8,6 @@ jest.mock('../licenseManager', () => ({
     getLicenseInfo: jest.fn().mockResolvedValue({ isPro: false, limits: { maxProjects: 1 } }),
     checkProjectLimit: jest.fn().mockResolvedValue(false), // Simulate free tier limit reached
     activateLicense: jest.fn(),
-    activateLicenseFromPayment: jest.fn(),
 }));
 
 jest.mock('@llm-observer/database', () => {

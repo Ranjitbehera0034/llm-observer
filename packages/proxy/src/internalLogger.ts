@@ -2,6 +2,17 @@ import { RequestRecord, bulkInsertRequests, getAlertRules, createAlert } from '@
 
 const BATCH_SIZE = 10;
 const BATCH_TIMEOUT = 5000; // 5 seconds
+const ALERT_COOLDOWN_MS = 5 * 60 * 1000;
+const WEBHOOK_TIMEOUT_MS = 10_000;
+
+// "<project>:<rule>" -> time the rule last fired, so one bad minute doesn't
+// write an alert row (and fire a webhook) for every request in it.
+const lastAlertAt = new Map<string, number>();
+
+/** Test hook: forget which rules have fired recently. */
+export function __resetAlertCooldownsForTests(): void {
+    lastAlertAt.clear();
+}
 
 let queue: Omit<RequestRecord, 'id'>[] = [];
 let timeout: NodeJS.Timeout | null = null;
@@ -77,12 +88,27 @@ async function evaluateAlertRules(requestData: any) {
             }
 
             if (isTriggered) {
+                const projectId = requestData.project_id || 'default';
+                const cooldownKey = `${projectId}:${rule.id}`;
+                const now = Date.now();
+                const last = lastAlertAt.get(cooldownKey);
+                if (last !== undefined && now - last < ALERT_COOLDOWN_MS) continue;
+                lastAlertAt.set(cooldownKey, now);
+
                 createAlert({
-                    project_id: requestData.project_id || 'default',
+                    project_id: projectId,
                     type: rule.condition_type,
                     severity: 'critical',
                     message,
-                    data: JSON.stringify(requestData),
+                    // Metadata only: prompts and responses must not outlive request retention.
+                    data: JSON.stringify({
+                        request_id: requestData.id ?? null,
+                        project_id: projectId,
+                        model: requestData.model,
+                        status: requestData.status,
+                        cost_usd: requestData.cost_usd,
+                        latency_ms: requestData.latency_ms
+                    }),
                     notified_via: rule.webhook_url ? 'webhook' : 'dashboard'
                 });
 
@@ -91,7 +117,7 @@ async function evaluateAlertRules(requestData: any) {
                         rule_name: rule.name,
                         message,
                         timestamp: new Date().toISOString(),
-                        project_id: requestData.project_id
+                        project_id: projectId
                     }).catch(err => console.error(`Failed to dispatch webhook for rule ${rule.name}`, err));
                 }
             }
@@ -106,7 +132,8 @@ async function dispatchWebhook(url: string, payload: any) {
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS)
         });
         if (!res.ok) {
             console.error(`Webhook payload rejected by ${url} with status ${res.status}`);

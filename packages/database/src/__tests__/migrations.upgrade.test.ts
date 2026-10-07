@@ -195,3 +195,31 @@ describe('migration runner', () => {
         });
     });
 });
+
+describe('016_alerts_minimise', () => {
+    it('rewrites existing alert rows to metadata only and leaves other alerts alone', () => {
+        const before = realFiles().filter(f => f < '016');
+        const db = new Database(':memory:');
+        runMigrations(db, migrationsDirWith(before));
+        db.exec("INSERT OR IGNORE INTO organizations (id, name) VALUES ('default', 'Default Organization'); INSERT OR IGNORE INTO projects (id, name) VALUES ('default', 'Default Project')");
+
+        const full = {
+            id: 'req-1', project_id: 'default', provider: 'openai', model: 'gpt-4', cost_usd: 1.5, latency_ms: 800,
+            status: 'error', status_code: 500, request_body: '{"messages":"SECRET PROMPT"}', response_body: 'SECRET ANSWER',
+        };
+        const ins = db.prepare("INSERT INTO alerts (id, project_id, type, message, data) VALUES (?, 'default', ?, 'm', ?)");
+        ins.run('a1', 'latency_spike', JSON.stringify(full));
+        ins.run('a2', 'response_drift', JSON.stringify({ provider: 'openai', model: 'gpt-4', driftScore: 3 }));
+        ins.run('a3', 'latency_spike', 'not json {request_body');
+        ins.run('a4', 'latency_spike', null);
+
+        runMigrations(db, REAL_MIGRATIONS);
+
+        const row = (id: string) => (db.prepare('SELECT data FROM alerts WHERE id = ?').get(id) as any).data as string;
+        expect(JSON.parse(row('a1'))).toEqual({ request_id: 'req-1', project_id: 'default', model: 'gpt-4', status: 'error', cost_usd: 1.5, latency_ms: 800 });
+        expect(row('a1')).not.toMatch(/SECRET|request_body|response_body/);
+        expect(JSON.parse(row('a2'))).toEqual({ provider: 'openai', model: 'gpt-4', driftScore: 3 });
+        expect(row('a3')).toBe('not json {request_body');
+        expect(row('a4')).toBeNull();
+    });
+});
