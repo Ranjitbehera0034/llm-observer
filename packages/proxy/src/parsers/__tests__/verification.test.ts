@@ -19,4 +19,12 @@ describe('parser verification registry', () => {
         expect(PARSER_VERIFICATION.cursor.verification).toBe('experimental');
         expect(PARSER_VERIFICATION.aider.verification).toBe('experimental');
     });
+
+    it('describes Claude Code verification as what it is: a scrubbed excerpt, not a bill check', () => {
+        const note = PARSER_VERIFICATION['claude-code'].note;
+        expect(note).toMatch(/scrubbed excerpt/i);
+        expect(note).toMatch(/hand-written/i);
+        expect(note).toMatch(/not checked against a bill/i);
+        expect(note).not.toMatch(/^Recorded Claude Code JSONL fixtures/);
+    });
 });

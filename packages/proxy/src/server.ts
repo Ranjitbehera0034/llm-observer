@@ -162,14 +162,26 @@ function main() {
         console.log(`📊 Dashboard API running on http://${HOST}:${DASHBOARD_PORT}`);
     }));
 
+    installSignalHandlers();
+}
+
+/**
+ * Wires SIGTERM/SIGINT to the shutdown handler with the real logger flush and
+ * database close. `proc` and `exit` are injectable so a test can drive it
+ * without signalling the Jest process.
+ */
+export function installSignalHandlers(
+    proc: { on(signal: 'SIGTERM' | 'SIGINT', listener: () => void): unknown } = process,
+    exit: (code: number) => void = (code) => process.exit(code),
+): void {
     const shutdown = createShutdownHandler({
         servers,
         flush: () => internalLogger.flush(),
         closeDatabase: closeDb,
-        exit: (code) => process.exit(code),
+        exit,
     });
-    process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
-    process.on('SIGINT', () => { void shutdown('SIGINT'); });
+    proc.on('SIGTERM', () => { void shutdown('SIGTERM'); });
+    proc.on('SIGINT', () => { void shutdown('SIGINT'); });
 }
 
 // Only start when run as the entry point (node dist/server.js, ts-node src/server.ts).

@@ -3,7 +3,8 @@
  * (local-midnight) helper. The process TZ is fixed at startup and cannot be
  * changed from inside a Jest sandbox, so each scenario re-runs this file in a
  * child Jest process with TZ set (RM7_TZ_CHILD); the parent just asserts the
- * child passed.
+ * child passed. The child gets the same --testTimeout as the package's `test`
+ * script and is killed after 55s so a hang fails the test instead of the job.
  */
 import { execFileSync } from 'child_process';
 import path from 'path';
@@ -23,11 +24,15 @@ if (!CHILD) {
             it(`resolves today consistently with TZ=${tz}`, () => {
                 execFileSync(process.execPath, [
                     path.join(require.resolve('jest/package.json'), '..', 'bin', 'jest.js'),
-                    __filename, '--silent', '--forceExit', '--runInBand',
+                    __filename, '--silent', '--forceExit', '--runInBand', '--testTimeout=30000',
                 ], {
                     cwd: path.join(__dirname, '..', '..'),
                     env: { ...process.env, TZ: tz, RM7_TZ_CHILD: '1' },
                     stdio: 'pipe',
+                    // execFileSync blocks this worker's event loop, so Jest's own timeout cannot
+                    // interrupt it; a hung child has to be killed here to fail the test.
+                    timeout: 55_000,
+                    killSignal: 'SIGKILL',
                 });
             }, 60_000);
         }

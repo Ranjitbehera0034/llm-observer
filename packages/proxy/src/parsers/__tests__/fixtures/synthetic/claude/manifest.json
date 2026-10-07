@@ -1,0 +1,60 @@
+{
+  "_comment": "Golden values for the HAND-WRITTEN Claude fixtures in this folder. They are not recordings and must not be moved into ../../format-matrix.json (see README.md here).",
+  "claude": [
+    {
+      "fixture": "format-v1-legacy-top-level.jsonl",
+      "description": "pre-2025 format: model/usage/content at top level of the event, no message.id/requestId",
+      "expected": {
+        "primaryModel": "claude-3-5-sonnet-20241022",
+        "messageCount": 3,
+        "inputTokens": 100,
+        "outputTokens": 50,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "toolCalls": {
+          "Read": 1
+        },
+        "sessionType": "agentic",
+        "isEstimated": false,
+        "costSource": "pricing_table"
+      }
+    },
+    {
+      "fixture": "format-v2-current-nested.jsonl",
+      "description": "current format: payload nested under message, usage repeated per content-block line within one request and deduped by (message.id, requestId)",
+      "expected": {
+        "primaryModel": "claude-sonnet-5",
+        "messageCount": 3,
+        "inputTokens": 200,
+        "outputTokens": 80,
+        "cacheReadTokens": 500,
+        "cacheWriteTokens": 100,
+        "toolCalls": {
+          "Write": 1
+        },
+        "sessionType": "agentic",
+        "isEstimated": false,
+        "costSource": "pricing_table"
+      }
+    },
+    {
+      "fixture": "format-v3-mixed-unknown-model.jsonl",
+      "description": "mixed-model session where one model (claude-opus-5-5) is missing from the price table: each model is priced separately, the unknown one via family fallback, and the session is flagged estimated instead of silently under-priced",
+      "expected": {
+        "primaryModel": "claude-sonnet-5",
+        "messageCount": 4,
+        "inputTokens": 1000000,
+        "outputTokens": 1000000,
+        "cacheReadTokens": 1000000,
+        "cacheWriteTokens": 0,
+        "toolCalls": {
+          "Edit": 1
+        },
+        "sessionType": "agentic",
+        "isEstimated": true,
+        "costSource": "family_fallback",
+        "costUsd": 28.5
+      }
+    }
+  ]
+}

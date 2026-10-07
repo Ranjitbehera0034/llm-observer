@@ -17,7 +17,7 @@ features:
   - title: 100% Private
     details: Your prompts, completions, and API keys stay on your machine in a local SQLite database.
   - title: Budget Guards
-    details: Automatically block requests if a project hits its budget. No more surprise bills.
+    details: Block requests once a project's recorded spend exceeds its budget (best effort: spend is written in short batches, so a burst can overshoot).
   - title: Unified Proxy
     details: One endpoint for OpenAI, Anthropic, Gemini, Mistral, and Groq.
 ---
