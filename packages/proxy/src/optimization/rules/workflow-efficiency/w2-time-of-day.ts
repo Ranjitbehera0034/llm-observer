@@ -1,4 +1,5 @@
 import { OptimizationRule, OptimizationResult, RuleContext } from '../../types';
+import { sessionSavingsAt } from '../../dedupe';
 
 export const w2TimeOfDay: OptimizationRule = {
     id: "workflow-late-night-fatigue",
@@ -42,6 +43,7 @@ export const w2TimeOfDay: OptimizationRule = {
                 impact: "low",
                 estimatedMonthlySavings: lateNightCostSum * 0.2,
                 basis: "heuristic",
+                sessionSavings: sessionSavingsAt(context.sessions.filter(s => lateNightHours.includes(new Date(s.started_at).getHours())), 0.2),
                 action: "Tired coding is expensive coding. Save complex tasks for when you're alert to reduce retries.",
                 dataPoints: {
                     lateNightAvg,

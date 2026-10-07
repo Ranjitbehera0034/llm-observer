@@ -22,6 +22,7 @@ import { dedupeSessionSavings } from '../../optimization/dedupe';
 import { w2TimeOfDay } from '../../optimization/rules/workflow-efficiency/w2-time-of-day';
 import { p2SubscriptionValue } from '../../optimization/rules/provider-optimization/p2-subscription-value';
 import { m3ProjectMismatch } from '../../optimization/rules/model-selection/m3-project-mismatch';
+import { a1ExpensiveExplore } from '../../optimization/rules/agent-optimization/a1-expensive-explore';
 import { OptimizationResult, RuleContext } from '../../optimization/types';
 import { AppCorrelator } from '../../services/appCorrelator';
 
@@ -196,6 +197,57 @@ describe('dedupeSessionSavings', () => {
         const run = await runOptimizationEngine(30, false);
         const spend = sessions.reduce((a, s) => a + s.estimated_cost_usd, 0);
         expect(run.totalSavingsUsd).toBeLessThanOrEqual(spend);
+    });
+});
+
+describe('engine dedupe across model-selection and workflow rules', () => {
+    const old = new Date(Date.now() - 20 * DAY).toISOString();
+    const quiet = { subagent_count: 0, deepest_agent_depth: 0, message_count: 10 };
+
+    it('does not stack m3 on m1 for the same outlier-project Opus sessions', async () => {
+        const opus = Array.from({ length: 10 }, (_, i) => session(i, { ...quiet, project_name: 'big', estimated_cost_usd: 10, started_at: i === 0 ? old : undefined }));
+        const sonnet = Array.from({ length: 10 }, (_, i) => session(100 + i, { ...quiet, project_name: 'small', model_primary: 'claude-sonnet-4', output_tokens: 5000, estimated_cost_usd: 1 }));
+        mockSessions = [...opus, ...sonnet].map(s => ({ ...s, started_at: s.started_at ?? new Date(Date.now() - 3600_000).toISOString() }));
+        const run = await runOptimizationEngine(30, false);
+
+        const m1 = run.results.find(r => r.ruleId === 'model-downgrade-simple-tasks')!;
+        const m3 = run.results.find(r => r.ruleId === 'project-model-mismatch')!;
+        expect(m1.estimatedMonthlySavings).toBeCloseTo(75, 5);
+        // m1 already claims 0.75 of each of these sessions; m3's 0.4 adds nothing
+        expect(m3.estimatedMonthlySavings).toBeCloseTo(0, 5);
+        expect(run.totalSavingsUsd).toBeLessThanOrEqual(100);
+        expect(run.results.every(r => r.sessionSavings === undefined)).toBe(true);
+    });
+
+    it('does not stack w2 on other rules for late-night sessions', async () => {
+        const night = (i: number) => session(i, { ...quiet, project_name: 'p', started_at: new Date(2026, 0, 15, 2, 0, 0).toISOString(), estimated_cost_usd: 10 });
+        const day = (i: number) => session(i, { ...quiet, project_name: 'p', model_primary: 'claude-sonnet-4', output_tokens: 5000, started_at: new Date(2026, 0, 15, 10, 0, 0).toISOString(), estimated_cost_usd: 1 });
+        const nightSessions = Array.from({ length: 10 }, (_, i) => night(i));
+        const sessions = [...nightSessions, ...Array.from({ length: 10 }, (_, i) => day(100 + i))];
+        // Older start so the 14-day rules run
+        sessions[0].started_at = new Date(Date.now() - 20 * DAY).toISOString();
+        sessions[0].estimated_cost_usd = 10;
+        mockSessions = sessions;
+        const run = await runOptimizationEngine(30, false);
+        const w2 = run.results.find(r => r.ruleId === 'workflow-late-night-fatigue');
+        const m1 = run.results.find(r => r.ruleId === 'model-downgrade-simple-tasks')!;
+        expect(m1.estimatedMonthlySavings).toBeGreaterThan(0);
+        // w2 would claim 0.2 of each session m1 has already claimed at 0.75
+        expect(w2?.estimatedMonthlySavings ?? 0).toBeCloseTo(0, 5);
+        expect(run.totalSavingsUsd).toBeLessThanOrEqual(110);
+    });
+});
+
+describe('a1 session attribution', () => {
+    it('attributes explore savings to the parent sessions', () => {
+        const subagents: any[] = [
+            { parent_session_id: 7, agent_type: 'explore', estimated_cost_usd: 10 },
+            { parent_session_id: 7, agent_type: 'explore', estimated_cost_usd: 10 },
+            { parent_session_id: 8, agent_type: 'plan', estimated_cost_usd: 5 },
+        ];
+        const r = a1ExpensiveExplore.evaluate(ctx({ subagents }))!;
+        expect(r.sessionSavings).toEqual({ '7': 6 });
+        expect(r.estimatedMonthlySavings).toBeCloseTo(6, 5);
     });
 });
 
