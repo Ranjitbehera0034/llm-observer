@@ -18,6 +18,8 @@ export interface SubagentRecord {
   tool_calls_json?: string;
   file_path?: string;
   created_at?: string;
+  is_estimated?: boolean | number;
+  cost_source?: string;
 }
 
 export const insertSubagent = (agent: SubagentRecord): number => {
@@ -27,12 +29,14 @@ export const insertSubagent = (agent: SubagentRecord): number => {
       parent_session_id, agent_id, agent_type, model,
       started_at, ended_at, duration_seconds, message_count,
       input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-      estimated_cost_usd, tool_calls_json, file_path
+      estimated_cost_usd, tool_calls_json, file_path,
+      is_estimated, cost_source
     ) VALUES (
       ?, ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?, ?,
-      ?, ?, ?
+      ?, ?, ?,
+      ?, ?
     )
     ON CONFLICT(parent_session_id, agent_id) DO UPDATE SET
       agent_type = excluded.agent_type,
@@ -47,7 +51,9 @@ export const insertSubagent = (agent: SubagentRecord): number => {
       cache_write_tokens = excluded.cache_write_tokens,
       estimated_cost_usd = excluded.estimated_cost_usd,
       tool_calls_json = excluded.tool_calls_json,
-      file_path = excluded.file_path
+      file_path = excluded.file_path,
+      is_estimated = excluded.is_estimated,
+      cost_source = excluded.cost_source
   `);
 
   const info = stmt.run(
@@ -65,7 +71,9 @@ export const insertSubagent = (agent: SubagentRecord): number => {
     agent.cache_write_tokens || 0,
     agent.estimated_cost_usd || 0,
     agent.tool_calls_json || '{}',
-    agent.file_path || null
+    agent.file_path || null,
+    agent.is_estimated ? 1 : 0,
+    agent.cost_source || null
   );
 
   return info.lastInsertRowid as number;

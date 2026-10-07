@@ -12,7 +12,15 @@ jest.mock('@llm-observer/database', () => ({
     getSubagentsBySession: jest.fn(() => []),
     updateSessionTotals: jest.fn(),
     upsertToolUsage: jest.fn(),
-    getPricingForModel: jest.fn(() => ({ input: 3, output: 15, cached: 0.3 }))
+    invalidateEstimatedSessions: jest.fn(() => 0),
+    // claude-opus-5-5 is deliberately absent from the price table (family fallback must kick in)
+    getPricingForModel: jest.fn((_provider: string, model: string) =>
+        model.startsWith('claude-opus-5') ? undefined : { input: 3, output: 15, cached: 0.3 }
+    ),
+    fetchPricingFromDb: jest.fn(() => [
+        { provider: 'anthropic', model: 'claude-opus-4-8', input_cost_per_1m: 5, output_cost_per_1m: 25, cached_input_cost_per_1m: 0.5 },
+        { provider: 'anthropic', model: 'claude-sonnet-5', input_cost_per_1m: 3, output_cost_per_1m: 15, cached_input_cost_per_1m: 0.3 }
+    ])
 }));
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
@@ -30,6 +38,9 @@ interface MatrixEntry {
         cacheWriteTokens: number;
         toolCalls: Record<string, number>;
         sessionType: string;
+        isEstimated: boolean;
+        costSource: string;
+        costUsd?: number;
     };
 }
 
@@ -84,5 +95,8 @@ describe('Claude parser — recorded format matrix', () => {
         expect(call.cache_write_tokens).toBe(expected.cacheWriteTokens);
         expect(JSON.parse(call.tool_calls_json)).toEqual(expected.toolCalls);
         expect(call.session_type).toBe(expected.sessionType);
+        expect(Boolean(call.is_estimated)).toBe(expected.isEstimated);
+        expect(call.cost_source).toBe(expected.costSource);
+        if (expected.costUsd !== undefined) expect(call.estimated_cost_usd).toBeCloseTo(expected.costUsd, 6);
     });
 });

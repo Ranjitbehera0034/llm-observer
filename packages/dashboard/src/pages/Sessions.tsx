@@ -23,6 +23,8 @@ interface SessionRow {
     has_subagents: boolean;
     subagent_count: number;
     tool_calls_json: string;
+    is_estimated?: number | boolean;
+    cost_source?: string | null;
 }
 
 export default function Sessions() {
@@ -300,7 +302,21 @@ export default function Sessions() {
                                         <span className="text-sm text-textMuted font-mono group-hover:text-indigo-400 transition-colors">{session.project_name}</span>
                                     </td>
                                     <td className="py-4 px-6 text-right font-mono text-sm font-medium text-emerald-400">
-                                        {formatCurrency(session.estimated_cost_usd)}
+                                        <div className="flex items-center justify-end gap-2">
+                                            {session.is_estimated ? (
+                                                <span
+                                                    title={session.cost_source === 'unpriced'
+                                                        ? 'No price is known for this model, so the cost shown is not real. It will be filled in when pricing updates.'
+                                                        : session.cost_source === 'family_fallback'
+                                                            ? 'Estimated: priced at the closest known model of the same family because this exact model is not in the pricing table yet. It is re-priced automatically when pricing updates.'
+                                                            : 'Estimated: this tool does not log exact token counts or prices, so the cost is approximate.'}
+                                                    className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-bold uppercase tracking-wider border border-amber-500/20"
+                                                >
+                                                    {session.cost_source === 'unpriced' ? 'Unpriced' : 'Est.'}
+                                                </span>
+                                            ) : null}
+                                            <span>{formatCurrency(session.estimated_cost_usd)}</span>
+                                        </div>
                                     </td>
                                     <td className="py-4 px-6 text-right">
                                         <div className="flex items-center justify-end gap-3 text-sm text-textMuted group-hover:text-white transition-colors">
