@@ -9,6 +9,9 @@ import {
     getAllSettings,
     updateSettings
 } from '@llm-observer/database';
+import { setTelemetryOptIn } from '../telemetry';
+
+const PROTECTED_SETTING = /^(license_|telemetry_install_id$|telemetry_last_ping_at$)/;
 
 export const settingsRouter = Router();
 
@@ -97,6 +100,15 @@ settingsRouter.put('/settings', express.json(), (req, res) => {
         for (const [key, value] of Object.entries(payload)) {
             // Ignore any values that contain the redact mask "****"
             if (typeof value === 'string' && value.includes('****')) {
+                continue;
+            }
+            // License state only changes through /api/license/activate, and the
+            // telemetry ID/timestamps only through the telemetry module
+            if (PROTECTED_SETTING.test(key)) {
+                continue;
+            }
+            if (key === 'telemetry_opt_in') {
+                setTelemetryOptIn(String(value) === 'true');
                 continue;
             }
             filteredPayload[key] = String(value);

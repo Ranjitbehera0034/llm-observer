@@ -1,4 +1,3 @@
-import * as credentials from '../rate-limits/credentials';
 import * as poller from '../rate-limits/poller';
 import * as database from '@llm-observer/database';
 import request from 'supertest';
@@ -20,7 +19,8 @@ jest.mock('@llm-observer/database', () => {
         getLatestSnapshots: jest.fn().mockReturnValue([{ provider: 'anthropic', window_type: 'daily', utilization_pct: 0 }]),
         getRateLimitConfig: jest.fn().mockReturnValue([]),
         upsertRateLimitConfig: jest.fn(),
-        getHeatmapData: jest.fn().mockReturnValue({ grid: Array(7).fill({ hours: [] }) })
+        getHeatmapData: jest.fn().mockReturnValue({ grid: Array(7).fill({ hours: [] }) }),
+        cleanupOldSnapshots: jest.fn()
     };
 });
 jest.mock('node-fetch');
@@ -36,28 +36,17 @@ describe('Rate Limit Tracking System', () => {
         jest.clearAllMocks();
     });
 
-    describe('OAuth Credential Reading', () => {
-        it('should read macOS keychain credentials', async () => {
-            const spy = jest.spyOn(credentials, 'readClaudeOAuthMacOS').mockResolvedValue('test-token');
-            const token = await credentials.readClaudeOAuthMacOS();
-            expect(token).toBe('test-token');
-            spy.mockRestore();
-        });
-
-        it('should fallback to .claude/.credentials.json if keychain fails', async () => {
-            expect(true).toBe(true);
-        });
-    });
-
     describe('Rate Limit API Mocking & Polling', () => {
-        it('should fetch Claude API rate limits natively if token is provided', async () => {
-            // Mock fetch and expect db inserts
-            jest.spyOn(database, 'insertRateLimitSnapshot');
-            // ...
-            expect(true).toBe(true);
+        it('polls without any network call (never reads or sends Claude credentials)', async () => {
+            const fetchMock = jest.requireMock('node-fetch') as jest.Mock;
+            await poller.pollRateLimits();
+            expect(fetchMock).not.toHaveBeenCalled();
+            expect(database.insertRateLimitSnapshot).toHaveBeenCalledWith(
+                expect.objectContaining({ provider: 'anthropic', is_estimated: true, window_type: '5h' })
+            );
         });
 
-        it('should perform estimation fallback for Anthropic if token is missing', () => {
+        it('should estimate Anthropic rate limits from local sessions', () => {
             jest.spyOn(database, 'insertRateLimitSnapshot');
             poller.estimateAnthropicRateLimits();
             expect(database.insertRateLimitSnapshot).toHaveBeenCalledWith(

@@ -1,6 +1,6 @@
 {
   "name": "@llm-observer/license-server",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Cloud relay for LLM Observer payment webhooks and license key delivery",
   "private": true,
   "type": "module",
@@ -8,7 +8,8 @@
     "dev": "vercel dev",
     "build": "tsc",
     "deploy": "vercel --prod",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "keygen": "node scripts/keygen.mjs"
   },
   "dependencies": {
     "resend": "^4.0.0"

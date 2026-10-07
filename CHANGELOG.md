@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-06
+
+### Security / Privacy
+- **Removed Claude credential reading.** The rate-limit poller read Claude
+  Code's OAuth token from the OS keychain (`security` / `secret-tool`) or
+  `~/.claude/.credentials.json` every 5 minutes and sent it as a Bearer token
+  to an undocumented `api.claude.ai` endpoint. That contradicted the
+  "nothing leaves your machine" promise and is gone: Anthropic rate-limit
+  usage is now always estimated from locally parsed sessions.
+  (`packages/proxy/src/rate-limits/credentials.ts` deleted.)
+- **Removed IP geolocation.** Opening Settings called `ipapi.co`, sending the
+  user's IP to a third party just to choose a payment provider. It now uses
+  the browser's time zone, locally.
+- README now lists every outbound network request the app can make, when,
+  and what is sent.
+- **Closed the free-Pro bypass.** Any key starting with `PRO_` used to unlock
+  Pro locally without being checked. Keys are now `LLMO1.` keys signed by the
+  license server (Ed25519) and verified offline by the app, so they can't be
+  forged and keep working when the server is unreachable. `PRO_` dev keys only
+  work with `LLM_OBSERVER_DEV_LICENSE=1`. Legacy `PRO_LS_`/`PRO_RZP_` keys are
+  verified with the license server.
+- **Webhooks fail closed.** The LemonSqueezy and Razorpay webhooks skipped
+  signature checks when their secret was unset — and `.env.example` named the
+  LemonSqueezy secret differently from the code, so following the docs left it
+  unset and anyone could POST a fake payment to get a key. Unsigned requests are
+  now rejected; both secret names are accepted.
+- **License signing secret mismatch.** `.env.example` documented
+  `LICENSE_SECRET` but the code read `LICENSE_SIGNING_SECRET`, falling back to a
+  secret published in the source. Both names are now read; keys signed with the
+  public fallback are rejected unless `ALLOW_LEGACY_DEV_SECRET=true`.
+- `PUT /api/settings` can no longer write `license_*` or telemetry ID settings.
+
+### Added
+- **Owner view.** `https://<license-server>/admin.html` (password: `ADMIN_TOKEN`)
+  lists paying customers — email, provider, amount, status, devices activated —
+  and opt-in active-install counts by plan, version and OS. Backed by Upstash
+  Redis; see `packages/license-server/README.md`.
+- Subscription lifecycle: cancellations and expiries from LemonSqueezy and
+  Razorpay are recorded, and the app re-checks its key once a day, dropping to
+  Free when a subscription has expired. Network errors never downgrade anyone.
+- **Opt-in anonymous usage stats** (Settings → Share anonymous usage stats, off
+  by default): once a day sends a random install ID, app version, OS and
+  Free/Pro — nothing else. Turning it off deletes the install ID.
+
+### Changed
+- Pro is $9/mo or $79/yr (₹299/mo via Razorpay) everywhere: landing page,
+  CLI README, docs, the plan-value calculation and the Razorpay checkout
+  default (was $19 / ₹1,599 in some places).
+- Default license server is `https://api.llm-observer.com` (was the parked
+  `api.llmobserver.com`); override with `LLM_OBSERVER_LICENSE_SERVER`.
+- LemonSqueezy renewals no longer email a fresh key every month, and
+  `order_created` is ignored (it duplicated `subscription_created`).
+- `llm-observer pricing update` downloads from this repository instead of
+  `run-llama/llm-observer`.
+
 ### Fixed
 - `packages/license-server`'s first real Vercel deploy attempt failed with
   `Function Runtimes must have a valid version` -- `vercel.json`'s

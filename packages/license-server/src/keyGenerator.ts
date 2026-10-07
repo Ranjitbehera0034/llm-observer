@@ -1,17 +1,23 @@
 import crypto from 'crypto';
 
-const SIGNING_SECRET = process.env.LICENSE_SIGNING_SECRET || 'dev-secret-change-in-prod';
+// Legacy PRO_ keys are only verified now; new keys are Ed25519-signed (see signing.ts).
+//
+// LICENSE_SECRET is the name .env.example documented while the code read
+// LICENSE_SIGNING_SECRET, so a deploy that followed the docs signed every key
+// with the public fallback below. Such keys are forgeable by anyone, so they
+// are rejected unless the owner opts in with ALLOW_LEGACY_DEV_SECRET=true
+// (to honour early customers while re-issuing them signed keys).
+const DEV_SECRET = 'dev-secret-change-in-prod';
 
-/**
- * Generates a deterministic, signed PRO_ license key from payment metadata.
- *
- * Format: PRO_{PROVIDER}_{SHORT_HASH}_{SUBSCRIPTION_ID}
- *
- * The HMAC signature makes keys unforgeable without the secret.
- * The same payment event always generates the same key (idempotent).
- */
-const fingerprintFor = (providerTag: string, shortSubId: string): string => {
-    const hmac = crypto.createHmac('sha256', SIGNING_SECRET);
+function legacySecrets(): string[] {
+    const configured = [process.env.LICENSE_SIGNING_SECRET, process.env.LICENSE_SECRET].filter((s): s is string => !!s);
+    if (configured.length === 0) return [DEV_SECRET]; // local dev / tests
+    if (process.env.ALLOW_LEGACY_DEV_SECRET === 'true') configured.push(DEV_SECRET);
+    return configured;
+}
+
+const fingerprintFor = (providerTag: string, shortSubId: string, secret: string = legacySecrets()[0]): string => {
+    const hmac = crypto.createHmac('sha256', secret);
     hmac.update(`${providerTag}:${shortSubId}`);
     return hmac.digest('hex').substring(0, 8).toUpperCase();
 };
@@ -48,12 +54,14 @@ export function isValidLicenseKeyFormat(key: string): boolean {
 export function verifyLicenseKey(key: string): boolean {
     if (!isValidLicenseKeyFormat(key)) return false;
     const [, providerTag, fingerprint, shortSubId] = key.split('_');
-    const expected = fingerprintFor(providerTag, shortSubId);
-    try {
-        return crypto.timingSafeEqual(Buffer.from(fingerprint), Buffer.from(expected));
-    } catch {
-        return false;
-    }
+    return legacySecrets().some(secret => {
+        const expected = fingerprintFor(providerTag, shortSubId, secret);
+        try {
+            return crypto.timingSafeEqual(Buffer.from(fingerprint), Buffer.from(expected));
+        } catch {
+            return false;
+        }
+    });
 }
 
 /**

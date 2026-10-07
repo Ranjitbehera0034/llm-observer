@@ -26,6 +26,8 @@ export default function Settings() {
     const [savingPiiToggle, setSavingPiiToggle] = useState(false);
     const [driftDetectionEnabled, setDriftDetectionEnabled] = useState(false);
     const [savingDriftToggle, setSavingDriftToggle] = useState(false);
+    const [telemetryEnabled, setTelemetryEnabled] = useState(false);
+    const [savingTelemetryToggle, setSavingTelemetryToggle] = useState(false);
     const [showOpenAiKey, setShowOpenAiKey] = useState(false);
     const [showAnthropicKey, setShowAnthropicKey] = useState(false);
     const [showGoogleKey, setShowGoogleKey] = useState(false);
@@ -73,6 +75,7 @@ export default function Settings() {
                     setOllamaBaseUrl(data.data.ollama_base_url || '');
                     setPiiRedactionEnabled(data.data.pii_redaction_enabled === 'true');
                     setDriftDetectionEnabled(data.data.response_drift_detection_enabled === 'true');
+                    setTelemetryEnabled(data.data.telemetry_opt_in === 'true');
                     setScanInterval(data.data.network_monitor_interval || '5000');
                 }
             } catch (err) {
@@ -103,20 +106,17 @@ export default function Settings() {
         };
         fetchSessionProviders();
 
-        // Detect Country for Payments
-        const detectCountry = async () => {
-            try {
-                const res = await fetch('https://ipapi.co/json/');
-                const data = await res.json();
-                setCountry(data.country_code);
-            } catch (err) {
-                console.error('Failed to detect country:', err);
-                setCountry('US'); // Fallback to Global
-            } finally {
-                setDetectingCountry(false);
-            }
-        };
-        detectCountry();
+        // Pick the payment provider from the browser's time zone instead of an
+        // IP-geolocation service, so opening Settings never sends the user's IP
+        // to a third party. India uses Razorpay (UPI); everyone else Lemon Squeezy.
+        try {
+            const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            setCountry(tz === 'Asia/Kolkata' || tz === 'Asia/Calcutta' ? 'IN' : 'US');
+        } catch {
+            setCountry('US');
+        } finally {
+            setDetectingCountry(false);
+        }
     }, []);
 
     useEffect(() => {
@@ -279,6 +279,23 @@ export default function Settings() {
             console.error('Failed to update response drift detection setting', err);
         } finally {
             setSavingDriftToggle(false);
+        }
+    };
+
+    const toggleTelemetry = async () => {
+        const next = !telemetryEnabled;
+        setSavingTelemetryToggle(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ telemetry_opt_in: String(next) })
+            });
+            if (res.ok) setTelemetryEnabled(next);
+        } catch (err) {
+            console.error('Failed to update usage stats setting', err);
+        } finally {
+            setSavingTelemetryToggle(false);
         }
     };
 
@@ -731,6 +748,33 @@ export default function Settings() {
                                 </div>
                             </div>
 
+                            <div className="card">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white mb-2">Share Anonymous Usage Stats</h2>
+                                        <p className="text-sm text-textMuted">Help the developer see how many people use LLM Observer. Once a day, sends only a random install ID, the app version, your OS and whether you're on Free or Pro.</p>
+                                    </div>
+                                    <button
+                                        onClick={toggleTelemetry}
+                                        disabled={savingTelemetryToggle}
+                                        aria-label="Share anonymous usage stats"
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${telemetryEnabled ? 'bg-primary' : 'bg-background border border-border'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${telemetryEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+                                <div className="p-4 bg-amber-500/5 rounded-xl border border-amber-500/20 border-dashed flex items-start gap-4">
+                                    <ShieldCheck className="w-6 h-6 text-amber-500 shrink-0" />
+                                    <div>
+                                        <h4 className="text-white font-semibold text-sm">Off by default</h4>
+                                        <p className="text-xs text-textMuted mt-1 leading-relaxed">
+                                            Never sent: your spend, tokens, prompts, models, projects, file paths or API keys.
+                                            The install ID is random, not tied to your machine or account, and is deleted when you turn this off.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="card text-center py-12 opacity-50">
                                 <KeyRound className="w-12 h-12 text-textMuted mx-auto mb-4 opacity-20" />
                                 <h2 className="text-lg font-bold text-white mb-2">Advanced Security</h2>
@@ -878,7 +922,7 @@ export default function Settings() {
                                                     type="password"
                                                     value={activationKey}
                                                     onChange={(e) => setActivationKey(e.target.value)}
-                                                    placeholder="sk_live_..."
+                                                    placeholder="LLMO1...."
                                                     className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary group-hover:border-slate-500 transition-all font-mono text-sm"
                                                 />
                                                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
@@ -933,7 +977,7 @@ export default function Settings() {
                                                                     type="password"
                                                                     value={activationKey}
                                                                     onChange={(e) => setActivationKey(e.target.value)}
-                                                                    placeholder="sk_live_..."
+                                                                    placeholder="LLMO1...."
                                                                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary group-hover:border-slate-500 transition-all font-mono text-xs"
                                                                 />
                                                             </div>

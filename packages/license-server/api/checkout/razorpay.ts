@@ -11,7 +11,7 @@
  *
  * Env:
  *   RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET  — API credentials (server-side only)
- *   RAZORPAY_PRO_AMOUNT_PAISE              — price in paise (default 159900 = ₹1,599)
+ *   RAZORPAY_PRO_AMOUNT_PAISE              — price in paise (default 29900 = ₹299, the monthly Pro price)
  *   CHECKOUT_CALLBACK_URL                  — where Razorpay redirects after payment
  *
  * Razorpay Docs: https://razorpay.com/docs/payment-links/
@@ -53,7 +53,7 @@ export default async function handler(req: Request): Promise<Response> {
         });
     }
 
-    const amountPaise = parseInt(process.env.RAZORPAY_PRO_AMOUNT_PAISE || '159900', 10);
+    const amountPaise = parseInt(process.env.RAZORPAY_PRO_AMOUNT_PAISE || '29900', 10);
 
     const rzpRes = await fetch('https://api.razorpay.com/v1/payment_links', {
         method: 'POST',

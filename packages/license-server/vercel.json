@@ -21,6 +21,14 @@
         {
             "src": "/checkout/razorpay",
             "dest": "/api/checkout/razorpay.ts"
+        },
+        {
+            "src": "/telemetry/ping",
+            "dest": "/api/telemetry/ping.ts"
+        },
+        {
+            "src": "/admin/report",
+            "dest": "/api/admin/report.ts"
         }
     ]
 }

@@ -17,6 +17,8 @@ import { syncManager } from './syncManager';
 import { usageSyncManager } from './sync';
 import { networkMonitor } from './services/networkMonitor';
 import { initParsers } from './parsers/manager';
+import { startLicenseRevalidation } from './licenseManager';
+import { startTelemetry } from './telemetry';
 import './types';
 
 const app = express();
@@ -187,6 +189,8 @@ async function bootstrap() {
         usageSyncManager.start();
         networkMonitor.start();
         initParsers();
+        startLicenseRevalidation();
+        startTelemetry();
 
     } catch (err) {
         console.error('Fatal Initialization Error:', err);

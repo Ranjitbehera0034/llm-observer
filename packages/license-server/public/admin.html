@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>LLM Observer — Owner</title>
+<style>
+  :root { --bg:#0b0b10; --card:#15151d; --line:#262633; --text:#e8e8f0; --muted:#8a8aa0; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#7c3aed; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:15px; margin:28px 0 10px; }
+  p.sub { color:var(--muted); margin:0 0 20px; }
+  form { display:flex; gap:8px; flex-wrap:wrap; }
+  input { flex:1; min-width:220px; background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  button { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 16px; font-weight:600; cursor:pointer; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; }
+  .tile b { display:block; font-size:24px; } .tile span { color:var(--muted); font-size:12px; }
+  .wrap { overflow-x:auto; border:1px solid var(--line); border-radius:12px; }
+  table { width:100%; border-collapse:collapse; } th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:500; font-size:12px; background:var(--card); }
+  .pill { padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; }
+  .active { background:#22c55e22; color:var(--ok); } .cancelled { background:#f59e0b22; color:var(--warn); } .expired { background:#ef444422; color:var(--bad); }
+  .muted { color:var(--muted); } .err { color:var(--bad); margin-top:12px; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; } .row > div { flex:1; min-width:220px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>LLM Observer — Owner view</h1>
+  <p class="sub">Paying customers from payment webhooks, plus anonymous active installs from users who opted in to usage stats.</p>
+  <form id="f">
+    <input id="token" type="password" placeholder="ADMIN_TOKEN" autocomplete="current-password" required />
+    <button>Load</button>
+  </form>
+  <div id="err" class="err"></div>
+  <div id="out" hidden>
+    <h2>Overview</h2>
+    <div class="tiles" id="tiles"></div>
+    <h2>Paying customers</h2>
+    <div class="wrap"><table>
+      <thead><tr><th>Email</th><th>Status</th><th>Provider</th><th>Amount</th><th>Since</th><th>Last event</th><th>Devices</th><th>Last seen</th></tr></thead>
+      <tbody id="customers"></tbody>
+    </table></div>
+    <h2>Active installs (last 30 days, opted-in only)</h2>
+    <div class="row">
+      <div><div class="wrap"><table><thead><tr><th>Tier</th><th>Installs</th></tr></thead><tbody id="tier"></tbody></table></div></div>
+      <div><div class="wrap"><table><thead><tr><th>Version</th><th>Installs</th></tr></thead><tbody id="ver"></tbody></table></div></div>
+      <div><div class="wrap"><table><thead><tr><th>OS</th><th>Installs</th></tr></thead><tbody id="os"></tbody></table></div></div>
+    </div>
+    <p class="muted">Free users who haven't opted in aren't counted here — see npm downloads (npmjs.com/package/llm-observer) for the overall picture.</p>
+  </div>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  const day = s => s ? esc(String(s).slice(0, 10)) : '<span class="muted">—</span>';
+  try { $('token').value = sessionStorage.getItem('llmo_admin') || ''; } catch {}
+
+  const rows = obj => Object.entries(obj).sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('') || '<tr><td class="muted" colspan="2">No data yet</td></tr>';
+
+  async function load(e) {
+    e && e.preventDefault();
+    $('err').textContent = '';
+    const token = $('token').value.trim();
+    if (!token) return;
+    try { sessionStorage.setItem('llmo_admin', token); } catch {}
+    const res = await fetch('/admin/report', { headers: { Authorization: 'Bearer ' + token } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { $('out').hidden = true; $('err').textContent = data.error || ('Error ' + res.status); return; }
+
+    const c = data.customers;
+    const count = s => c.filter(x => x.status === s).length;
+    const tiles = [
+      ['Active paying', count('active')], ['Cancelling', count('cancelled')], ['Expired', count('expired')],
+      ['Installs 7d', data.installs.active_7d], ['Installs 30d', data.installs.active_30d], ['Installs ever', data.installs.total_ever],
+    ];
+    $('tiles').innerHTML = tiles.map(([l, v]) => `<div class="tile"><b>${v}</b><span>${esc(l)}</span></div>`).join('');
+
+    $('customers').innerHTML = c.map(x => {
+      const last = x.activations.map(a => a.last_seen).sort().pop();
+      return `<tr><td>${esc(x.email)}</td><td><span class="pill ${esc(x.status)}">${esc(x.status)}</span></td>
+        <td>${esc(x.provider)}</td><td>${esc(x.amount)} ${esc(x.currency)}</td><td>${day(x.created_at)}</td>
+        <td class="muted">${esc(x.last_event)}</td><td>${x.activations.length}</td><td>${day(last)}</td></tr>`;
+    }).join('') || '<tr><td class="muted" colspan="8">No paying customers yet</td></tr>';
+
+    $('tier').innerHTML = rows(data.installs.by_tier);
+    $('ver').innerHTML = rows(data.installs.by_version);
+    $('os').innerHTML = rows(data.installs.by_os);
+    $('out').hidden = false;
+  }
+  $('f').addEventListener('submit', load);
+  if ($('token').value) load();
+</script>
+</body>
+</html>

@@ -166,7 +166,7 @@ Setup: Enable in Settings               Setup: Route traffic through proxy
 Gives: Per-app attribution              Gives: Per-request detail + kill switch
 ```
 
-**All data stays local.** SQLite database on your machine. No cloud. No telemetry. No account.
+**All data stays local.** SQLite database on your machine. No cloud. No telemetry unless you opt in. No account.
 
 **Data priority:** When multiple engines report cost for the same provider, Usage API sync (billing-accurate) takes precedence. Session parser provides per-session breakdown. They complement each other.
 
@@ -272,7 +272,23 @@ All files are read in **read-only mode**. LLM Observer never modifies any AI too
 - **Does not store your prompts or responses** — Database contains token counts, costs, and metadata only, for data parsed passively from editor session logs. (The optional local proxy is the one path that does store `request_body`/`response_body` — it's an explicit opt-in, off by default, and exists specifically to give you per-request detail when you choose to route traffic through it.)
 - **Does not redact anything by default** — PII redaction exists but is opt-in; off until you turn it on in Settings
 - **Does not intercept traffic by default** — Proxy is optional and off by default
-- **Does not send data anywhere** — No telemetry, no cloud, no analytics. The one opt-in exception is the AI Analyst, which sends only aggregated metadata (never prompts/responses) to Claude, and only if you supply your own API key. Separately, the CLI does a background check against the public npm registry for newer versions (no data sent beyond the package name, same as running `npm outdated`) — disable with `NO_UPDATE_NOTIFIER=1` or `--no-update-notifier`.
+- **Does not send your data anywhere** — No cloud, no analytics, and no telemetry unless you opt in (Settings → Share anonymous usage stats, which sends only a random install ID, version, OS and plan). The other opt-in exception is the AI Analyst, which sends only aggregated metadata (never prompts/responses) to Claude, and only if you supply your own API key.
+- **Does not read other apps' credentials** — It never reads Claude Code's (or any other tool's) login token from your keychain or credential files. Rate-limit usage is estimated from your local sessions.
+
+**Every outbound network request it makes**, so you can verify the claim above:
+
+| Request | When | What is sent |
+|---------|------|--------------|
+| `raw.githubusercontent.com` (`pricing.json`) | On startup | Nothing but the GET request — downloads current model prices |
+| `registry.npmjs.org` | CLI start (update notice) | Package name only — disable with `NO_UPDATE_NOTIFIER=1` or `--no-update-notifier` |
+| Anthropic / OpenAI admin usage APIs | Every 60s, only if you added an Admin API key | Your admin key, to read your own usage/cost |
+| The provider you call | Only if you route traffic through the optional proxy | Your request, forwarded as-is |
+| Anthropic Messages API | Only if you run the opt-in AI Analyst with your key | Aggregated metadata only |
+| License server (`api.llm-observer.com`) | Only with a Pro key: on activation, then once a day | The key, a machine ID (hash of hostname/CPU/OS) and app version — to record your devices and notice an ended subscription. Your Pro keeps working offline; only an explicit "subscription ended" answer turns it off |
+| License server, usage ping | Only if you turn on **Settings → Share anonymous usage stats** (off by default), once a day | A random install ID, app version, OS and Free/Pro — nothing else |
+| GitHub Releases | Desktop app only, update check | Nothing but the GET request |
+| Your webhook URL | Only if you configure an alert webhook | The alert message |
+| Team server (`TEAM_SERVER_URL`) | Every 15 min, only if you join a team and enable team sync | Daily aggregates (cost, tokens, model, project name) + your member email — never prompts |
 - **Does not require root privileges** — Runs as your user account
 - **Does not modify AI tool behavior** — Unless you explicitly enable proxy with kill switch
 - **Does not claim compliance certifications it doesn't have** — no SOC 2, no HIPAA. Everything here is "your data never leaves your machine unless you tell it to," which is a real, verifiable property — not a substitute for a real audited compliance program
@@ -429,7 +445,7 @@ Session-estimated costs are within ~5% of actual billing. For exact numbers, add
 <details>
 <summary><strong>Is my data safe?</strong></summary>
 <br />
-Everything stays in a local SQLite database. No cloud, no telemetry, no account. Admin keys are AES-256-GCM encrypted. The database stores costs and metadata — never prompts or responses, except for the optional local proxy (off by default) which you'd explicitly route traffic through.
+Everything stays in a local SQLite database. No cloud, no account, and no telemetry unless you opt in. Admin keys are AES-256-GCM encrypted. The database stores costs and metadata — never prompts or responses, except for the optional local proxy (off by default) which you'd explicitly route traffic through.
 </details>
 
 <details>
