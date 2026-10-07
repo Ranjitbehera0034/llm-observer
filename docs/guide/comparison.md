@@ -28,7 +28,7 @@ Honest comparison of LLM observability tools in 2026.
 
 | Tool | Free | Paid |
 |------|------|------|
-| **LLM Observer** | Forever free (local) | $19/mo Pro, $49/seat Team |
+| **LLM Observer** | Forever free (local) | $9/mo Pro, $49/seat Team |
 | Helicone | 10K req/month | $80/month+ |
 | Portkey | 10K req/month | $49/month+ |
 | LangSmith | 5K traces | $39/month+ |

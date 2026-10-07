@@ -105,12 +105,34 @@ describe('POST /api/license/activate', () => {
         expect(res.status).toBe(400);
     });
 
-    it('activates a PRO_ local key', async () => {
+    it('rejects a made-up PRO_ key outside dev mode', async () => {
         const res = await request(app)
             .post('/api/license/activate')
             .send({ key: 'PRO_TEST_KEY_123' });
-        expect(res.status).toBe(200);
-        expect(res.body).toHaveProperty('success', true);
+        expect(res.status).toBe(400);
+    });
+
+    it('activates a PRO_ local key in dev mode (LLM_OBSERVER_DEV_LICENSE=1)', async () => {
+        process.env.LLM_OBSERVER_DEV_LICENSE = '1';
+        try {
+            const res = await request(app)
+                .post('/api/license/activate')
+                .send({ key: 'PRO_TEST_KEY_123' });
+            expect(res.status).toBe(200);
+            expect(res.body).toHaveProperty('success', true);
+        } finally {
+            delete process.env.LLM_OBSERVER_DEV_LICENSE;
+        }
+    });
+});
+
+describe('PUT /api/settings', () => {
+    it('cannot be used to flip license state', async () => {
+        await request(app).put('/api/settings').send({ license_status: 'active', license_key: 'PRO_x', license_key_hmac: 'ff', telemetry_install_id: 'spoofed' });
+        const res = await request(app).get('/api/settings');
+        expect(res.body.data.license_key).not.toBe('PRO_x');
+        expect(res.body.data.license_key_hmac).not.toBe('ff');
+        expect(res.body.data.telemetry_install_id).not.toBe('spoofed');
     });
 });
 

@@ -148,7 +148,7 @@ llm-observer reset --force           # Wipe the local database
 | Plan | Price | Features |
 |---|---|---|
 | **Free** | $0 forever | 1 project · 7-day log retention · Budget guard · Anomaly alerts |
-| **Pro** | $19/mo | Unlimited projects · 90-day retention · Cost optimizer · CSV/PDF export · Priority support |
+| **Pro** | $9/mo ($79/yr) | Unlimited projects · 90-day retention · Cost optimizer · CSV/PDF export · Priority support |
 | **Pro (India)** | ₹1,599/mo | Same as Pro, billed via Razorpay |
 | **Team** | $49/seat/mo | Everything in Pro + encrypted team sync + shared dashboard *(team-server auth backend exists; dashboard/CLI integration is still in progress — see the [main repo README](https://github.com/Ranjitbehera0034/llm-observer#roadmap))* |
 

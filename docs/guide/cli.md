@@ -70,8 +70,8 @@ llm-observer budget get <project-id>
 ### `upgrade`
 Open checkout to upgrade to Pro or Team.
 ```bash
-llm-observer upgrade                    # Pro monthly ($19)
-llm-observer upgrade --plan pro-yearly  # Pro yearly ($190)
+llm-observer upgrade                    # Pro monthly ($9)
+llm-observer upgrade --plan pro-yearly  # Pro yearly ($79)
 llm-observer upgrade --plan team        # Team ($49/seat)
 llm-observer upgrade --india            # Razorpay (₹1,499/month)
 ```

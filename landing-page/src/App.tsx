@@ -248,7 +248,8 @@ const App: React.FC = () => {
                         <div className="p-10 rounded-[2.5rem] glass border-blue-500/20 relative overflow-hidden group">
                             <div className="absolute top-0 right-0 px-6 py-2 accent-gradient text-xs font-bold rounded-bl-2xl">POPULAR</div>
                             <span className="text-blue-400 font-semibold mb-2 uppercase tracking-widest text-xs">Professional</span>
-                            <h3 className="text-3xl font-bold mb-6">$19<span className="text-lg text-white/40">/mo</span></h3>
+                            <h3 className="text-3xl font-bold mb-1">$9<span className="text-lg text-white/40">/mo</span></h3>
+                            <p className="text-sm text-white/40 mb-6">or $79/year · ₹299/mo in India</p>
                             <ul className="space-y-4 mb-10 flex-grow">
                                 {['Unlimited Projects', '90-day retention', 'Priority Support', 'Team Auditing (Beta)'].map(f => (
                                     <li key={f} className="flex items-center gap-3 text-white">
@@ -262,7 +263,7 @@ const App: React.FC = () => {
                                     target="_blank" rel="noopener noreferrer"
                                     className="w-full h-14 rounded-2xl bg-white text-black font-bold hover:bg-white/90 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] flex items-center justify-center gap-2">
                                     <ArrowRight className="w-4 h-4" />
-                                    Upgrade to Pro — $19/mo
+                                    Upgrade to Pro — $9/mo
                                 </a>
                                 <RazorpayCheckout />
                             </div>

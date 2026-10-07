@@ -1,6 +1,8 @@
 import { getDb, getSetting, updateSetting } from '@llm-observer/database';
 import { createHash, createHmac } from 'crypto';
 import os from 'os';
+import { version as APP_VERSION } from '../package.json';
+import { isSignedKey, verifySignedKey, LEGACY_KEY_FORMAT } from './licenseKeys';
 
 /**
  * Generates a machine-specific HMAC key for signing locally stored license keys.
@@ -92,9 +94,11 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
         return cachedLicense;
     }
 
+    // Signed keys are re-verified on every check, so a key can't be made Pro by
+    // editing the database. Legacy PRO_ keys were verified by the license
+    // server (or dev mode) at activation and are guarded by the HMAC below.
     const isPro = !!licenseKey && (
-        licenseKey.startsWith('PRO_') ||
-        licenseKey.startsWith('sk_live_')
+        isSignedKey(licenseKey) ? verifySignedKey(licenseKey) !== null : licenseKey.startsWith('PRO_')
     );
 
     // Verify the stored key hasn't been tampered with (e.g. via direct DB edit)
@@ -119,66 +123,126 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
     return cachedLicense;
 }
 
-const VALIDATOR_URL = process.env.LICENSE_SERVER_URL || 'https://api.llmobserver.com/validate';
+/**
+ * Base URL of the license server (packages/license-server). LICENSE_SERVER_URL
+ * is the older name, which some setups pointed at the /license/validate path
+ * itself — both forms are accepted.
+ */
+export function licenseServerUrl(): string {
+    const raw = process.env.LLM_OBSERVER_LICENSE_SERVER || process.env.LICENSE_SERVER_URL || 'https://api.llm-observer.com';
+    return raw.replace(/\/+$/, '').replace(/\/(license\/)?validate$/, '');
+}
 
-export async function activateLicense(key: string): Promise<{ success: boolean; message: string }> {
-    if (!key.startsWith('PRO_') && !key.startsWith('sk_live_')) {
-        return { success: false, message: 'Invalid format. Keys should start with PRO_ or sk_live_.' };
-    }
+type ServerVerdict =
+    | { kind: 'valid' }
+    | { kind: 'revoked'; message: string }
+    | { kind: 'invalid'; message: string }
+    | { kind: 'unreachable' };
 
+/**
+ * Asks the license server about a key. Sends the key, the machine ID (a hash
+ * of hostname/CPU/OS — see getMachineId) and the app version; the server uses
+ * them to verify legacy keys, record which devices are activated, and report
+ * expired subscriptions.
+ */
+async function askLicenseServer(key: string): Promise<ServerVerdict> {
     try {
-        // PRO_ prefix is for local dev/testing — no seat enforcement
-        if (key.startsWith('PRO_')) {
-            updateSetting('license_key', key);
-            updateSetting('license_key_hmac', signLicenseKey(key));
-            updateSetting('license_status', 'active');
-            cachedLicense = null;
-            return { success: true, message: 'License activated successfully! (Dev Mode)' };
-        }
-
-        // FIX SEC-01: Send machine fingerprint to license server for seat enforcement
-        const machineId = getMachineId();
-        const keyHash = createHash('sha256').update(key).digest('hex');
-
-        console.log(`[LICENSE] Validating key ${key.substring(0, 8)}... via ${VALIDATOR_URL}`);
-
-        const response = await fetch(VALIDATOR_URL, {
+        const response = await fetch(`${licenseServerUrl()}/license/validate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            // Only send the hash and machine ID — never the raw key over the wire
-            body: JSON.stringify({ machine_id: machineId, key_hash: keyHash })
+            body: JSON.stringify({ license_key: key, machine_id: getMachineId(), version: APP_VERSION }),
+            signal: AbortSignal.timeout(10_000),
         });
-
-        const data = await response.json() as any;
-
-        if (response.ok && data.valid) {
-            updateSetting('license_key', key);
-            updateSetting('license_key_hmac', signLicenseKey(key));
-            updateSetting('license_status', 'active');
-            updateSetting('license_machine_id', machineId);
-            cachedLicense = null;
-            const seatsMsg = data.seats_used ? ` (Seat ${data.seats_used}/${data.max_seats})` : '';
-            return { success: true, message: `License activated successfully! Enjoy Pro features.${seatsMsg}` };
+        const data = await response.json().catch(() => ({})) as any;
+        if (response.ok && data.valid) return { kind: 'valid' };
+        if (data.revoked) return { kind: 'revoked', message: data.error || 'This subscription has ended.' };
+        if (response.status >= 400 && response.status < 500 && data.valid === false) {
+            return { kind: 'invalid', message: data.error || 'Invalid license key. Please check your key or contact support.' };
         }
-
-        if (response.status === 409) {
-            return {
-                success: false,
-                message: `Seat limit reached. This license is already active on ${data.seats_used} devices (max: ${data.max_seats}). Deactivate another device or upgrade your plan.`
-            };
-        }
-
-        return {
-            success: false,
-            message: data.error || 'Invalid license key. Please check your key or contact support.'
-        };
-    } catch (err) {
-        console.error('License validation failed:', err);
-        return {
-            success: false,
-            message: 'Validation server unreachable. Please try again later.'
-        };
+        return { kind: 'unreachable' };
+    } catch {
+        return { kind: 'unreachable' };
     }
+}
+
+function storeActiveLicense(key: string): void {
+    updateSetting('license_key', key);
+    updateSetting('license_key_hmac', signLicenseKey(key));
+    updateSetting('license_status', 'active');
+    updateSetting('license_machine_id', getMachineId());
+    updateSetting('license_checked_at', new Date().toISOString());
+    cachedLicense = null;
+}
+
+export async function activateLicense(rawKey: string): Promise<{ success: boolean; message: string }> {
+    const key = rawKey.trim();
+
+    // Signed keys: verified offline, so activation works even if the license
+    // server is down. The server is still told (to record the device and catch
+    // an already-expired subscription) but can only block on an explicit "revoked".
+    if (isSignedKey(key)) {
+        if (!verifySignedKey(key)) {
+            return { success: false, message: 'Invalid license key. Please copy the full key from your purchase email.' };
+        }
+        const verdict = await askLicenseServer(key);
+        if (verdict.kind === 'revoked') return { success: false, message: verdict.message };
+        storeActiveLicense(key);
+        return { success: true, message: 'License activated successfully! Enjoy Pro features.' };
+    }
+
+    // Legacy keys issued before 2.0.1 can only be verified by the license server.
+    if (LEGACY_KEY_FORMAT.test(key)) {
+        const verdict = await askLicenseServer(key);
+        if (verdict.kind === 'valid') {
+            storeActiveLicense(key);
+            return { success: true, message: 'License activated successfully! Enjoy Pro features.' };
+        }
+        if (verdict.kind === 'unreachable') {
+            return { success: false, message: 'Validation server unreachable. Please try again later.' };
+        }
+        return { success: false, message: verdict.message };
+    }
+
+    // Local development / tests only — never accepted in a normal install.
+    if (key.startsWith('PRO_') && process.env.LLM_OBSERVER_DEV_LICENSE === '1') {
+        storeActiveLicense(key);
+        return { success: true, message: 'License activated successfully! (Dev Mode)' };
+    }
+
+    return { success: false, message: 'Invalid license key. Keys start with LLMO1. — purchase at https://www.llm-observer.com/#pricing' };
+}
+
+const REVALIDATE_EVERY_MS = 24 * 60 * 60 * 1000;
+let revalidateTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Re-checks the stored key with the license server at most once a day, so a
+ * subscription that has ended drops back to Free. Network failures never
+ * downgrade anyone — only an explicit "revoked" or "invalid" answer does.
+ */
+export async function revalidateLicense(force = false): Promise<void> {
+    const key = getSetting('license_key');
+    if (!key || getSetting('license_status') !== 'active') return;
+    if (key.startsWith('PRO_') && !LEGACY_KEY_FORMAT.test(key)) return; // dev-mode / local-webhook key
+
+    const last = Date.parse(getSetting('license_checked_at') || '') || 0;
+    if (!force && Date.now() - last < REVALIDATE_EVERY_MS) return;
+
+    const verdict = await askLicenseServer(key);
+    if (verdict.kind === 'unreachable') return;
+    updateSetting('license_checked_at', new Date().toISOString());
+    if (verdict.kind === 'revoked' || verdict.kind === 'invalid') {
+        console.warn(`[LICENSE] ${verdict.message} Switching to the Free plan.`);
+        updateSetting('license_status', 'cancelled');
+        cachedLicense = null;
+    }
+}
+
+export function startLicenseRevalidation(): void {
+    if (revalidateTimer) clearInterval(revalidateTimer);
+    revalidateLicense().catch(() => { /* never let licensing crash the app */ });
+    revalidateTimer = setInterval(() => revalidateLicense().catch(() => {}), 60 * 60 * 1000);
+    revalidateTimer.unref?.();
 }
 
 export async function checkProjectLimit(): Promise<boolean> {

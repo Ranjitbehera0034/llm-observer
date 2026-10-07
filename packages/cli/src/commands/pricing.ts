@@ -4,9 +4,8 @@ import fetch from 'node-fetch';
 import { syncPricingToDb, addCustomPricing } from '@llm-observer/database';
 import path from 'path';
 
-// Just a placeholder URL. In reality, you'd host a pricing.json file somewhere like GitHub Pages.
-// For the sake of this prompt, we can fallback to the seed data locally.
-const PRICING_URL = 'https://raw.githubusercontent.com/run-llama/llm-observer/main/pricing.json';
+// The same registry the server syncs from on startup (packages/proxy/src/utils/pricing.ts)
+const PRICING_URL = 'https://raw.githubusercontent.com/Ranjitbehera0034/llm-observer/main/pricing.json';
 
 export function setupPricingCommands(program: Command) {
     const pricingCmd = program.command('pricing').description('Manage LLM pricing data');

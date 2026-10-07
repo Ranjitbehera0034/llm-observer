@@ -1,5 +1,5 @@
-import { generateLicenseKey, verifyWebhookSignature, getRawBody } from '../../src/keyGenerator.js';
-import { sendLicenseEmail } from '../../src/emailService.js';
+import { verifyWebhookSignature, getRawBody } from '../../src/keyGenerator.js';
+import { issueLicense, updateStatus, jsonResponse } from '../../src/issue.js';
 
 /**
  * POST /webhook/razorpay
@@ -7,11 +7,16 @@ import { sendLicenseEmail } from '../../src/emailService.js';
  * Vercel Serverless Function — Razorpay Payment Webhook
  *
  * Events handled:
- *   - subscription.activated → New subscriber activated
- *   - subscription.charged   → Renewal payment charged
- *   - payment.captured       → One-time payment captured
+ *   - subscription.activated                       → issue + email a signed license key
+ *   - payment.captured (one-time, e.g. Payment Link) → issue + email a signed license key
+ *   - subscription.charged / .resumed              → mark customer active
+ *   - subscription.cancelled / .halted / .completed → mark expired (the app drops to Free on its next check)
  *
- * Security: HMAC-SHA256 validated via X-Razorpay-Signature header.
+ * payment.captured for a subscription's own recurring charge is skipped (it
+ * carries an invoice_id) so subscribers don't get a new key every month.
+ *
+ * Security: HMAC-SHA256 validated via X-Razorpay-Signature header. Fails
+ * closed — with no secret configured every request is rejected.
  *
  * Razorpay Docs: https://razorpay.com/docs/webhooks/
  */
@@ -25,91 +30,58 @@ export default async function handler(req: Request): Promise<Response> {
 
     // ── Verify Razorpay HMAC-SHA256 Signature ─────────────────────────────────
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!secret) {
+        console.error('[RZP WEBHOOK] RAZORPAY_WEBHOOK_SECRET not configured — rejecting.');
+        return jsonResponse({ error: 'Webhook secret not configured' }, 503);
+    }
     const signature = req.headers.get('x-razorpay-signature') || '';
-
-    if (secret) {
-        const isValid = verifyWebhookSignature({ rawBody, signature, secret });
-        if (!isValid) {
-            console.warn('[RZP WEBHOOK] Invalid signature. Possible spoofing attempt.');
-            return jsonResponse({ error: 'Invalid signature' }, 401);
-        }
-    } else {
-        console.warn('[RZP WEBHOOK] RAZORPAY_WEBHOOK_SECRET not set — skipping in dev mode.');
+    if (!verifyWebhookSignature({ rawBody, signature, secret })) {
+        console.warn('[RZP WEBHOOK] Invalid signature. Possible spoofing attempt.');
+        return jsonResponse({ error: 'Invalid signature' }, 401);
     }
 
     // ── Parse the Razorpay payload ────────────────────────────────────────────
     const body = JSON.parse(rawBody.toString('utf-8'));
     const event: string = body?.event ?? '';
     const payload = body?.payload ?? {};
-
-    const ACTIVATABLE = ['subscription.activated', 'subscription.charged', 'payment.captured'];
-    if (!ACTIVATABLE.includes(event)) {
-        return jsonResponse({ received: true, action: 'ignored', event });
-    }
-
-    // ── Extract entity data (works for both subscription and payment events) ───
     const subscription = payload?.subscription?.entity ?? {};
     const payment = payload?.payment?.entity ?? {};
 
-    // Prefer subscription data; fall back to payment entity for one-time payments
-    const subscriptionId: string = subscription.id ?? payment.order_id ?? `rzp_${Date.now()}`;
-    const customerId: string = subscription.customer_id ?? payment.customer_id ?? 'unknown';
-    const amountCents: number = subscription.quantity
-        ? (subscription.quantity * (payment.amount ?? 0))
-        : (payment.amount ?? 0);
-    const currency: string = (subscription.currency ?? payment.currency ?? 'INR').toUpperCase();
-
-    // ── Get customer email ────────────────────────────────────────────────────
-    // Razorpay doesn't always provide email in the webhook payload.
-    // It's available in payment.email or from a supplementary API call.
-    // We use what's available in the payload, and fall back to customer_id.
-    const customerEmail: string =
+    // Razorpay doesn't always include an email; use what the payload has.
+    const email: string =
         payment.email ??
         subscription.notify_info?.notify_email ??
         body?.meta?.notify_email ??
         '';
+    const currency: string = String(subscription.currency ?? payment.currency ?? 'INR').toUpperCase();
+    const amount = ((payment.amount ?? 0) / 100).toFixed(2);
 
-    if (!customerEmail) {
-        // Without an email we can't deliver the key — log for manual follow-up
-        console.error(`[RZP WEBHOOK] No email found for subscription ${subscriptionId}. Manual key delivery needed.`);
-        // Still return 200 to stop Razorpay from retrying endlessly
-        return jsonResponse({
-            received: true,
-            action: 'pending_manual_delivery',
-            subscription_id: subscriptionId,
-        });
+    const issue = (sub: string) => {
+        if (!email) {
+            // Without an email we can't deliver the key — log for manual follow-up.
+            // 200 stops Razorpay from retrying endlessly.
+            console.error(`[RZP WEBHOOK] No email found for ${sub}. Manual key delivery needed.`);
+            return jsonResponse({ received: true, action: 'pending_manual_delivery', sub });
+        }
+        return issueLicense({ sub, provider: 'razorpay', email, amount, currency, event });
+    };
+
+    switch (event) {
+        case 'subscription.activated':
+            return issue(`rzp:${subscription.id}`);
+        case 'payment.captured':
+            if (payment.invoice_id || payload?.subscription) {
+                return jsonResponse({ received: true, action: 'ignored', reason: 'subscription_charge' });
+            }
+            return issue(`rzp:${payment.order_id ?? payment.id}`);
+        case 'subscription.charged':
+        case 'subscription.resumed':
+            return updateStatus(`rzp:${subscription.id}`, 'active', event);
+        case 'subscription.cancelled':
+        case 'subscription.halted':
+        case 'subscription.completed':
+            return updateStatus(`rzp:${subscription.id}`, 'expired', event);
+        default:
+            return jsonResponse({ received: true, action: 'ignored', event });
     }
-
-    // ── Generate signed license key ───────────────────────────────────────────
-    const licenseKey = generateLicenseKey({
-        provider: 'razorpay',
-        subscriptionId,
-        customerId,
-    });
-
-    console.log(`[RZP WEBHOOK] ✅ Key generated for ${subscriptionId}: ${licenseKey.substring(0, 16)}...`);
-
-    // ── Send the license email ─────────────────────────────────────────────────
-    try {
-        await sendLicenseEmail({
-            to: customerEmail,
-            licenseKey,
-            provider: 'razorpay',
-            amount: (amountCents / 100).toFixed(2),
-            currency,
-        });
-    } catch (err: any) {
-        console.error('[RZP WEBHOOK] Email send failed:', err.message);
-        // Return 500 so Razorpay retries
-        return jsonResponse({ received: true, action: 'email_failed', error: err.message }, 500);
-    }
-
-    return jsonResponse({ received: true, activated: true, key: licenseKey.substring(0, 16) + '...' });
-}
-
-function jsonResponse(body: Record<string, unknown>, status = 200): Response {
-    return new Response(JSON.stringify(body), {
-        status,
-        headers: { 'Content-Type': 'application/json' }
-    });
 }
