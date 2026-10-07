@@ -502,7 +502,7 @@ export default function Settings() {
 
                             <div className="card mt-6">
                                 <h2 className="text-xl font-bold text-white mb-2">Local Session Sources</h2>
-                                <p className="text-sm text-textMuted mb-6">Automatically detect and parse local AI tool usage history without routing traffic through the proxy.</p>
+                                <p className="text-sm text-textMuted mb-6">Automatically detect and parse local AI tool usage history without routing traffic through the proxy. Only Claude Code is verified against real recordings; the others are marked unverified or experimental until a real recording is checked in. Hover a badge for details.</p>
                                 
                                 <div className="space-y-4">
                                     {[
@@ -522,7 +522,22 @@ export default function Settings() {
                                                 <div className="flex items-center gap-3">
                                                     <tool.icon className={`w-5 h-5 ${isDetected ? 'text-primary' : 'text-textMuted'}`} />
                                                     <div>
-                                                        <h4 className="text-white font-medium text-sm">{tool.name}</h4>
+                                                        <h4 className="text-white font-medium text-sm flex items-center gap-2">
+                                                            {tool.name}
+                                                            {statusObj?.verification && statusObj.verification !== 'verified' && (
+                                                                <span
+                                                                    title={statusObj.note}
+                                                                    className="text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20"
+                                                                >
+                                                                    {statusObj.verification}
+                                                                </span>
+                                                            )}
+                                                            {statusObj?.verification === 'verified' && (
+                                                                <span title={statusObj.note} className="text-[10px] font-bold uppercase tracking-wider text-success bg-success/10 px-1.5 py-0.5 rounded border border-success/20">
+                                                                    verified
+                                                                </span>
+                                                            )}
+                                                        </h4>
                                                         <p className="text-xs text-textMuted mt-0.5">{tool.path}</p>
                                                     </div>
                                                 </div>

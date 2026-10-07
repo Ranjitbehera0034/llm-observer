@@ -12,6 +12,8 @@ jest.mock('@llm-observer/database', () => ({
     getSubagentsBySession: jest.fn(() => []),
     updateSessionTotals: jest.fn(),
     upsertToolUsage: jest.fn(),
+    fetchPricingFromDb: jest.fn(() => []),
+    invalidateEstimatedSessions: jest.fn(() => 0),
     getPricingForModel: jest.fn((provider: string, model: string) =>
         model === 'claude-sonnet-5' ? { input: 3, output: 15, cached: 0.3 } : undefined
     )

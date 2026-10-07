@@ -1,5 +1,6 @@
 import { getDb } from '../db';
-import { randomUUID } from 'crypto';
+import { createHash } from 'crypto';
+import { getSetting, updateSetting } from './settings.repo';
 
 export interface SessionRecord {
   id?: number;
@@ -29,7 +30,31 @@ export interface SessionRecord {
   file_path?: string;
   file_modified_at?: number;
   created_at?: string;
+  tool?: string; // display name of the tool, e.g. 'Claude Code'
+  is_estimated?: boolean | number; // cost is a guess, not an exact price-table match
+  cost_source?: string; // 'pricing_table' | 'reported' (price computed by the tool itself) | 'family_fallback' | 'unpriced' | 'estimated'
 }
+
+// Worst-first ordering used to merge the provenance of a parent and its subagents.
+const COST_SOURCE_RANK: Record<string, number> = { pricing_table: 0, reported: 0, estimated: 1, family_fallback: 2, unpriced: 3 };
+
+export const worstCostSource = (a: string | null | undefined, b: string | null | undefined): string | null => {
+  const ra = a ? (COST_SOURCE_RANK[a] ?? 0) : -1;
+  const rb = b ? (COST_SOURCE_RANK[b] ?? 0) : -1;
+  if (ra < 0 && rb < 0) return null;
+  return ra >= rb ? (a as string) : (b as string);
+};
+
+/**
+ * Removes the placeholder rows older versions of the Cursor parser inserted
+ * (`cursor-sync-<timestamp>`, project `mock/cursor/project`, cost 0). They were never real usage.
+ */
+export const deleteMockCursorSessions = (): number => {
+  const db = getDb();
+  return db.prepare(
+    "DELETE FROM sessions WHERE provider = 'cursor' AND project_path = 'mock/cursor/project' AND session_id LIKE 'cursor-sync-%'"
+  ).run().changes;
+};
 
 export const insertSession = (session: SessionRecord): number => {
   const db = getDb();
@@ -41,13 +66,15 @@ export const insertSession = (session: SessionRecord): number => {
       input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
       cache_hit_rate, estimated_cost_usd, session_type, tool_calls_json,
       has_subagents, subagent_count, raw_metadata_json, file_path, file_modified_at,
-      total_subagent_cost_usd, parent_cost_usd, deepest_agent_depth
+      total_subagent_cost_usd, parent_cost_usd, deepest_agent_depth,
+      tool, is_estimated, cost_source
     ) VALUES (
       ?, ?, ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
+      ?, ?, ?,
       ?, ?, ?
     )
     ON CONFLICT(provider, session_id) DO UPDATE SET
@@ -73,10 +100,16 @@ export const insertSession = (session: SessionRecord): number => {
       file_modified_at = excluded.file_modified_at,
       total_subagent_cost_usd = excluded.total_subagent_cost_usd,
       parent_cost_usd = excluded.parent_cost_usd,
-      deepest_agent_depth = excluded.deepest_agent_depth
+      deepest_agent_depth = excluded.deepest_agent_depth,
+      tool = excluded.tool,
+      is_estimated = excluded.is_estimated,
+      cost_source = excluded.cost_source
+    RETURNING id
   `);
 
-  const info = stmt.run(
+  // RETURNING id gives the real row id on both the insert and the upsert path;
+  // lastInsertRowid is stale when the conflict branch updates an existing row.
+  const row = stmt.get(
     session.provider,
     session.session_id,
     session.project_path || null,
@@ -101,10 +134,13 @@ export const insertSession = (session: SessionRecord): number => {
     session.file_modified_at || null,
     session.total_subagent_cost_usd || 0,
     session.parent_cost_usd || session.estimated_cost_usd || 0,
-    session.deepest_agent_depth || 0
-  );
+    session.deepest_agent_depth || 0,
+    session.tool || null,
+    session.is_estimated ? 1 : 0,
+    session.cost_source || null
+  ) as { id: number };
 
-  return info.lastInsertRowid as number;
+  return row.id;
 };
 
 export const getSessions = (filters: any = {}) => {
@@ -249,12 +285,66 @@ export const getMostExpensiveSessions = (limit: number = 10) => {
 
 export const updateSessionTotals = (id: number, subagentCost: number, subagentCount: number) => {
   const db = getDb();
-  db.prepare(`
-    UPDATE sessions 
-    SET total_subagent_cost_usd = ?, 
-        subagent_count = ?, 
-        has_subagents = ?,
-        estimated_cost_usd = parent_cost_usd + ?
-    WHERE id = ?
-  `).run(subagentCost, subagentCount, subagentCount > 0 ? 1 : 0, subagentCost, id);
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE sessions 
+      SET total_subagent_cost_usd = ?, 
+          subagent_count = ?, 
+          has_subagents = ?,
+          estimated_cost_usd = parent_cost_usd + ?
+      WHERE id = ?
+    `).run(subagentCost, subagentCount, subagentCount > 0 ? 1 : 0, subagentCost, id);
+
+    // A session is only as exact as its least exact part: fold subagent provenance into the parent.
+    const session = db.prepare('SELECT is_estimated, cost_source FROM sessions WHERE id = ?').get(id) as any;
+    if (!session) return;
+    const agents = db.prepare('SELECT is_estimated, cost_source FROM subagents WHERE parent_session_id = ?').all(id) as any[];
+    let isEstimated = session.is_estimated ? 1 : 0;
+    let costSource: string | null = session.cost_source;
+    for (const a of agents) {
+      if (a.is_estimated) isEstimated = 1;
+      costSource = worstCostSource(costSource, a.cost_source);
+    }
+    db.prepare('UPDATE sessions SET is_estimated = ?, cost_source = ? WHERE id = ?').run(isEstimated, costSource, id);
+  })();
+};
+
+// Stable digest of a provider's price rows. It changes when a pricing refresh adds or
+// changes a model, which is the signal that estimated sessions may deserve a re-price.
+export const getPricingFingerprint = (pricingProvider: string): string => {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT model, input_cost_per_1m, output_cost_per_1m, cached_input_cost_per_1m
+    FROM model_pricing WHERE provider = ? ORDER BY model
+  `).all(pricingProvider);
+  return createHash('sha1').update(JSON.stringify(rows)).digest('hex');
+};
+
+/**
+ * Re-price flagged (estimated) sessions of a tool after a pricing refresh, without the
+ * log files changing. Does nothing unless the pricing provider's price table differs from the one
+ * seen on the previous call. When it does differ, the parsed-file registry entries of every
+ * estimated session (and its subagents) are invalidated so the next parse re-reads and
+ * re-prices them. Returns the number of sessions queued for re-pricing.
+ */
+export const invalidateEstimatedSessions = (sessionProvider: string, pricingProvider: string): number => {
+  const db = getDb();
+  const key = `pricing_fingerprint:${sessionProvider}`;
+  const current = getPricingFingerprint(pricingProvider);
+  if (getSetting(key) === current) return 0;
+
+  const queued = db.transaction(() => {
+    const sessions = db.prepare(
+      'SELECT id, file_path FROM sessions WHERE provider = ? AND is_estimated = 1'
+    ).all(sessionProvider) as { id: number; file_path: string | null }[];
+    const resetRegistry = db.prepare('UPDATE parsed_files_registry SET last_modified_at = 0 WHERE file_path = ?');
+    const agentFiles = db.prepare('SELECT file_path FROM subagents WHERE parent_session_id = ? AND file_path IS NOT NULL');
+    for (const s of sessions) {
+      if (s.file_path) resetRegistry.run(s.file_path);
+      for (const a of agentFiles.all(s.id) as { file_path: string }[]) resetRegistry.run(a.file_path);
+    }
+    updateSetting(key, current);
+    return sessions.length;
+  })();
+  return queued;
 };

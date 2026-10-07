@@ -1,0 +1,14 @@
+{
+  "data": [
+    {
+      "model": "claude-sonnet-4-20250514",
+      "bucket_start": "2026-07-01T00:00:00Z",
+      "input_tokens": 10000,
+      "output_tokens": 5000,
+      "cache_read_input_tokens": 2000,
+      "cache_creation": { "ephemeral_1h_input_tokens": 100, "ephemeral_5m_input_tokens": 400 },
+      "num_requests": 12
+    }
+  ],
+  "has_more": false
+}

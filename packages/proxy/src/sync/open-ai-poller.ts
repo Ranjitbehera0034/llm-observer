@@ -2,6 +2,7 @@ import { getDb, decrypt } from '@llm-observer/database';
 import fetch from 'node-fetch';
 import { calculateSharedCost } from '../utils/pricing';
 import { BudgetService } from '../services/budget.service';
+import { SyncShapeError, normalizeOpenAIUsage, normalizeOpenAICost } from './response-shapes';
 
 const CIRCUIT_BREAKER_THRESHOLD = 10;
 const MAX_BACKOFF_SECONDS = 300;
@@ -100,11 +101,24 @@ export class OpenAIPoller {
     private async syncUsage(apiKey: string, startingAt: number) {
         const db = getDb();
         let nextCursor: string | null = null;
-        let latestBucketEnd = startingAt;
+        let latestBucketStart = startingAt;
+
+        const upsert = db.prepare(`
+            INSERT INTO usage_records 
+            (provider, model, bucket_start, bucket_width, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, num_requests, raw_json, api_key_id, workspace_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(provider, model, bucket_start, COALESCE(api_key_id, ''), COALESCE(workspace_id, '')) DO UPDATE SET
+            input_tokens = excluded.input_tokens,
+            output_tokens = excluded.output_tokens,
+            cache_read_tokens = excluded.cache_read_tokens,
+            cache_write_tokens = excluded.cache_write_tokens,
+            num_requests = excluded.num_requests,
+            raw_json = excluded.raw_json
+        `);
 
         do {
             let url = `https://api.openai.com/v1/organization/usage/completions?start_time=${startingAt}&bucket_width=1d&group_by[]=model`;
-            if (nextCursor) url += `&next_page=${encodeURIComponent(nextCursor)}`;
+            if (nextCursor) url += `&page=${encodeURIComponent(nextCursor)}`;
 
             const res = await fetch(url, {
                 headers: {
@@ -121,42 +135,27 @@ export class OpenAIPoller {
             }
 
             const data = await res.json() as any;
-            const records = data.data || [];
+            // Throws SyncShapeError before anything is written if the response is not a known shape.
+            const { records, latestBucketStart: pageLatest } = normalizeOpenAIUsage(data);
 
-            for (const rec of records) {
-                // OpenAI start_time is in seconds
-                const bucketStartIso = new Date(rec.start_time * 1000).toISOString();
-                
-                db.prepare(`
-                    INSERT INTO usage_records 
-                    (provider, model, bucket_start, bucket_width, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, num_requests, raw_json, api_key_id, workspace_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(provider, model, bucket_start, api_key_id, workspace_id) DO UPDATE SET
-                    input_tokens = excluded.input_tokens,
-                    output_tokens = excluded.output_tokens,
-                    cache_read_tokens = excluded.cache_read_tokens,
-                    cache_write_tokens = excluded.cache_write_tokens,
-                    num_requests = excluded.num_requests,
-                    raw_json = excluded.raw_json
-                `).run(
-                    'openai', rec.model, bucketStartIso, '1d',
-                    rec.input_tokens || 0,
-                    rec.output_tokens || 0,
-                    rec.input_cached_tokens || 0,
-                    0, // OpenAI doesn't explicitly expose "cache write" bits in this endpoint
-                    rec.num_model_requests || 0,
-                    JSON.stringify(rec),
-                    null, rec.project_id || null
-                );
-
-                if (rec.end_time > latestBucketEnd) {
-                    latestBucketEnd = rec.end_time;
+            db.transaction(() => {
+                for (const rec of records) {
+                    upsert.run(
+                        'openai', rec.model, rec.bucketStart, '1d',
+                        rec.inputTokens, rec.outputTokens, rec.cacheReadTokens, rec.cacheWriteTokens, rec.numRequests,
+                        JSON.stringify(rec.raw),
+                        null, null
+                    );
                 }
-            }
+            })();
+
+            // Checkpoint on the bucket START so the still-open day is fetched again on the next
+            // poll (the upsert makes that safe); the end would skip it until tomorrow.
+            if (pageLatest > latestBucketStart) latestBucketStart = pageLatest;
 
             // Update checkpoint after each page
-            if (latestBucketEnd !== startingAt) {
-                const latestBucketIso = new Date(latestBucketEnd * 1000).toISOString();
+            if (latestBucketStart !== startingAt) {
+                const latestBucketIso = new Date(latestBucketStart * 1000).toISOString();
                 db.prepare("INSERT OR REPLACE INTO poll_checkpoints (provider, last_usage_bucket, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
                     .run('openai', latestBucketIso);
             }
@@ -167,47 +166,53 @@ export class OpenAIPoller {
 
     private async syncCost(apiKey: string, startingAt: number) {
         const db = getDb();
-        
-        const res = await fetch(
-            `https://api.openai.com/v1/organization/costs?start_time=${startingAt}&bucket_width=1d&group_by[]=line_item`,
-            {
+        let nextCursor: string | null = null;
+        let latestCostTime = startingAt;
+
+        // SET from the whole day's figure, so re-fetching a day is harmless.
+        const setCost = db.prepare(`
+            UPDATE usage_records
+            SET cost_usd = ?
+            WHERE provider = 'openai' 
+              AND model = ?
+              AND date(bucket_start) = ?
+              AND bucket_width = '1d'
+              AND COALESCE(api_key_id, '') = ''
+              AND COALESCE(workspace_id, '') = ''
+        `);
+
+        do {
+            let url = `https://api.openai.com/v1/organization/costs?start_time=${startingAt}&bucket_width=1d&group_by[]=line_item`;
+            if (nextCursor) url += `&page=${encodeURIComponent(nextCursor)}`;
+
+            const res = await fetch(url, {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`
                 }
-            }
-        );
+            });
 
-        if (!res.ok) {
-            if (res.status === 404) {
-                console.warn(`[OpenAIPoller] Costs API returned 404. Falling back to estimated costs from token counts.`);
-                await this.estimateCostsFromUsage(startingAt);
+            if (!res.ok) {
+                if (res.status === 404) {
+                    console.warn(`[OpenAIPoller] Costs API returned 404. Falling back to estimated costs from token counts.`);
+                    await this.estimateCostsFromUsage(startingAt);
+                    return;
+                }
+                // Cost sync failure is non-fatal — log and continue
+                console.warn(`[OpenAIPoller] Cost report fetch failed (${res.status}). Will retry next cycle.`);
                 return;
             }
-            // Cost sync failure is non-fatal — log and continue
-            console.warn(`[OpenAIPoller] Cost report fetch failed (${res.status}). Will retry next cycle.`);
-            return;
-        }
 
-        const data = await res.json() as any;
-        const records = data.data || [];
-        let latestCostTime = startingAt;
+            const data = await res.json() as any;
+            // Several line items of one model-day are summed by normalisation.
+            const { costs, latestBucketStart } = normalizeOpenAICost(data);
 
-        for (const rec of records) {
-            const dateStr = new Date(rec.start_time * 1000).toISOString().split('T')[0];
-            const model = rec.line_item; 
+            db.transaction(() => {
+                for (const c of costs) setCost.run(c.usd, c.model, c.date);
+            })();
+            if (latestBucketStart > latestCostTime) latestCostTime = latestBucketStart;
 
-            // Upsert cost_usd into matching usage_record
-            db.prepare(`
-                UPDATE usage_records
-                SET cost_usd = ?
-                WHERE provider = 'openai' 
-                  AND model = ?
-                  AND date(bucket_start) = ?
-                  AND bucket_width = '1d'
-            `).run(rec.amount?.value || 0, model, dateStr);
-
-            if (rec.start_time > latestCostTime) latestCostTime = rec.start_time;
-        }
+            nextCursor = data.has_more ? data.next_page : null;
+        } while (nextCursor);
 
         // Update cost checkpoint
         if (latestCostTime !== startingAt) {
@@ -246,6 +251,13 @@ export class OpenAIPoller {
     private handleError(err: any): number {
         const db = getDb();
         const statusCode = err instanceof OpenAIAPIError ? err.statusCode : 0;
+
+        // A response we cannot read will not read better on retry. Stop with a visible error: an
+        // 'error' status also stops budgets treating this provider as covered by sync.
+        if (err instanceof SyncShapeError) {
+            this.stopWithError(db, `${err.message}. OpenAI may have changed its API; nothing was stored.`);
+            return Infinity;
+        }
 
         // Fatal errors — stop the poller permanently
         if (statusCode === 401) {

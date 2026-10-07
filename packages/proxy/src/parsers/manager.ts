@@ -6,22 +6,26 @@ import * as clineParser from './cline';
 import * as windsurfParser from './windsurf';
 import * as copilotParser from './copilot';
 import { aggregateToolUsage } from './toolAggregator';
+import { PARSER_VERIFICATION } from './verification';
 
 const STATE = {
     isRunning: false,
     intervalHandle: null as NodeJS.Timeout | null,
     providers: {
-        'claude-code': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
-        'cursor': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
-        'aider': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
-        'codex': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
-        'cline': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
-        'windsurf': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } },
-        'copilot': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 } }
+        'claude-code': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 }, ...PARSER_VERIFICATION['claude-code'] },
+        'cursor': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 }, ...PARSER_VERIFICATION['cursor'] },
+        'aider': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 }, ...PARSER_VERIFICATION['aider'] },
+        'codex': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 }, ...PARSER_VERIFICATION['codex'] },
+        'cline': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 }, ...PARSER_VERIFICATION['cline'] },
+        'windsurf': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 }, ...PARSER_VERIFICATION['windsurf'] },
+        'copilot': { status: 'not found', sessionCount: 0, progress: { current: 0, total: 0 }, ...PARSER_VERIFICATION['copilot'] }
     }
 };
 
 export const initParsers = () => {
+    // 0. Drop placeholder rows that older Cursor parsers inserted
+    cursorParser.purgeLegacyMockSessions();
+
     // 1. Detect available providers
     if (claudeParser.detector()) STATE.providers['claude-code'].status = 'found';
     if (cursorParser.detector()) STATE.providers['cursor'].status = 'found';

@@ -41,6 +41,31 @@ recorded real-shaped fixture files checked against a golden-output manifest,
 specifically to catch upstream log-format changes. Add a fixture + manifest
 entry rather than only testing against an inline mock when you can.
 
+### Capturing a real recording
+
+Only Claude Code is marked **verified**. Every other parser's fixtures are hand-written
+(the Aider ones are labelled synthetic in
+[`fixtures/aider/README.md`](packages/proxy/src/parsers/__tests__/fixtures/aider/README.md)),
+so those parsers agree with their fixtures, not necessarily with the real tool. A parser
+is promoted to verified only with a recording from a real install:
+
+1. Use the tool normally on a throwaway project for a few prompts (include a tool call or
+   edit if the tool supports them). For Aider, start it with
+   `aider --analytics-log ~/.aider/analytics.jsonl`; it writes no log otherwise.
+2. Copy the file(s) the parser reads (see the table in the README) into
+   `packages/proxy/src/parsers/__tests__/fixtures/<tool>/`. For SQLite stores, copy the
+   `.db`/`.vscdb` file after closing the editor.
+3. Scrub anything private: prompts, file contents, paths, emails, API keys, and user ids.
+   Keep structure, field names and numeric values. The parsers do not store prompt text,
+   and fixtures must not either.
+4. Note in a README next to the fixture the tool version, OS and date it was recorded.
+   Do not label hand-written files as recordings.
+5. Add the fixture to `format-matrix.json` with golden values computed by hand from the raw
+   file, plus an adapter in `formatMatrix.test.ts`, then flip the tool to `verified` in
+   `packages/proxy/src/parsers/verification.ts` and the README table.
+
+Never wire a hand-written fixture into the format matrix.
+
 ## Architecture Overview
 
 LLM Observer has four independent data-collection paths — most contributions touch one of them:

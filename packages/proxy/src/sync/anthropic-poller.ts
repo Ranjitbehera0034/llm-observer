@@ -1,6 +1,7 @@
 import { getDb, decrypt } from '@llm-observer/database';
 import fetch from 'node-fetch';
 import { BudgetService } from '../services/budget.service';
+import { SyncShapeError, normalizeAnthropicUsage, normalizeAnthropicCost } from './response-shapes';
 
 const CIRCUIT_BREAKER_THRESHOLD = 10;
 const MAX_BACKOFF_SECONDS = 300;
@@ -93,9 +94,22 @@ export class AnthropicPoller {
         let nextCursor: string | null = null;
         let latestBucket = startingAt;
 
+        const upsert = db.prepare(`
+            INSERT INTO usage_records 
+            (provider, model, bucket_start, bucket_width, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, num_requests, raw_json, api_key_id, workspace_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(provider, model, bucket_start, COALESCE(api_key_id, ''), COALESCE(workspace_id, '')) DO UPDATE SET
+            input_tokens = excluded.input_tokens,
+            output_tokens = excluded.output_tokens,
+            cache_read_tokens = excluded.cache_read_tokens,
+            cache_write_tokens = excluded.cache_write_tokens,
+            num_requests = excluded.num_requests,
+            raw_json = excluded.raw_json
+        `);
+
         do {
             let url = `https://api.anthropic.com/v1/organizations/usage_report/messages?starting_at=${encodeURIComponent(startingAt)}&bucket_width=1d&group_by[]=model`;
-            if (nextCursor) url += `&next_page=${encodeURIComponent(nextCursor)}`;
+            if (nextCursor) url += `&page=${encodeURIComponent(nextCursor)}`;
 
             const res = await fetch(url, {
                 headers: {
@@ -113,33 +127,23 @@ export class AnthropicPoller {
             }
 
             const data = await res.json() as any;
-            const records = data.data || [];
+            // Throws SyncShapeError before anything is written if the response is not a known shape.
+            const records = normalizeAnthropicUsage(data);
+
+            db.transaction(() => {
+                for (const rec of records) {
+                    upsert.run(
+                        'anthropic', rec.model, rec.bucketStart, '1d',
+                        rec.inputTokens, rec.outputTokens, rec.cacheReadTokens, rec.cacheWriteTokens, rec.numRequests,
+                        JSON.stringify(rec.raw),
+                        null, null
+                    );
+                }
+            })();
 
             for (const rec of records) {
-                db.prepare(`
-                    INSERT INTO usage_records 
-                    (provider, model, bucket_start, bucket_width, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, num_requests, raw_json, api_key_id, workspace_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(provider, model, bucket_start, api_key_id, workspace_id) DO UPDATE SET
-                    input_tokens = excluded.input_tokens,
-                    output_tokens = excluded.output_tokens,
-                    cache_read_tokens = excluded.cache_read_tokens,
-                    cache_write_tokens = excluded.cache_write_tokens,
-                    num_requests = excluded.num_requests,
-                    raw_json = excluded.raw_json
-                `).run(
-                    'anthropic', rec.model, rec.bucket_start, '1d',
-                    rec.input_tokens || 0,
-                    rec.output_tokens || 0,
-                    rec.cache_read_input_tokens || 0,
-                    (rec.cache_creation?.ephemeral_1h_input_tokens || 0) + (rec.cache_creation?.ephemeral_5m_input_tokens || 0),
-                    rec.num_requests || 0,
-                    JSON.stringify(rec),
-                    null, null
-                );
-
-                if (new Date(rec.bucket_start) > new Date(latestBucket)) {
-                    latestBucket = rec.bucket_start;
+                if (new Date(rec.bucketStart) > new Date(latestBucket)) {
+                    latestBucket = rec.bucketStart;
                 }
             }
 
@@ -156,47 +160,55 @@ export class AnthropicPoller {
     private async syncCost(apiKey: string, startingAt: string) {
         const db = getDb();
         const endingAt = new Date().toISOString().split('T')[0];
+        let nextCursor: string | null = null;
+        let latestCostDate = startingAt;
 
-        const res = await fetch(
-            `https://api.anthropic.com/v1/organizations/cost_report?starting_at=${encodeURIComponent(startingAt)}&ending_at=${encodeURIComponent(endingAt)}&group_by[]=description`,
-            {
+        // Each cost row is set from the whole day's figure (SET, never "+="), so re-fetching a day
+        // is harmless. Only the NULL-key rows the usage sync writes are touched.
+        const setCost = db.prepare(`
+            UPDATE usage_records
+            SET cost_usd = ?
+            WHERE provider = 'anthropic' 
+              AND model = ?
+              AND date(bucket_start) = ?
+              AND bucket_width = '1d'
+              AND COALESCE(api_key_id, '') = ''
+              AND COALESCE(workspace_id, '') = ''
+        `);
+
+        do {
+            // The documented date-time format is RFC 3339; the checkpoint is stored as a bare date.
+            const start = /^\d{4}-\d{2}-\d{2}$/.test(startingAt) ? `${startingAt}T00:00:00Z` : startingAt;
+            let url = `https://api.anthropic.com/v1/organizations/cost_report?starting_at=${encodeURIComponent(start)}&ending_at=${encodeURIComponent(endingAt)}&group_by[]=description`;
+            if (nextCursor) url += `&page=${encodeURIComponent(nextCursor)}`;
+
+            const res = await fetch(url, {
                 headers: {
                     'x-api-key': apiKey,
                     'anthropic-version': '2023-06-01'
                 }
+            });
+
+            if (!res.ok) {
+                // Cost sync failure is non-fatal — log and continue
+                console.warn(`[AnthropicPoller] Cost report fetch failed (${res.status}). Will retry next cycle.`);
+                return;
             }
-        );
 
-        if (!res.ok) {
-            // Cost sync failure is non-fatal — log and continue
-            console.warn(`[AnthropicPoller] Cost report fetch failed (${res.status}). Will retry next cycle.`);
-            return;
-        }
+            const data = await res.json() as any;
+            // A day's cost arrives as several rows (one per token type); normalisation sums them
+            // and converts the documented cents to USD.
+            const costs = normalizeAnthropicCost(data);
 
-        const data = await res.json() as any;
-        const records = data.data || [];
-        let latestCostDate = startingAt;
+            db.transaction(() => {
+                for (const c of costs) setCost.run(c.usd, c.model, c.date);
+            })();
+            for (const c of costs) {
+                if (c.date > latestCostDate) latestCostDate = c.date;
+            }
 
-        for (const rec of records) {
-            // rec.start_time is the date string, rec.cost is in USD, rec.description contains model info
-            const date = rec.start_time ? rec.start_time.split('T')[0] : null;
-            if (!date) continue;
-
-            const model = rec.model || (rec.description ? parseModelFromDescription(rec.description) : null);
-            if (!model) continue;
-
-            // Upsert cost_usd into any matching usage_record for that date+model
-            db.prepare(`
-                UPDATE usage_records
-                SET cost_usd = ?
-                WHERE provider = 'anthropic' 
-                  AND model = ?
-                  AND date(bucket_start) = ?
-                  AND bucket_width = '1d'
-            `).run(rec.cost || 0, model, date);
-
-            if (date > latestCostDate) latestCostDate = date;
-        }
+            nextCursor = data.has_more ? data.next_page : null;
+        } while (nextCursor);
 
         // Update cost checkpoint
         if (latestCostDate !== startingAt) {
@@ -212,6 +224,13 @@ export class AnthropicPoller {
     private handleError(err: any): number {
         const db = getDb();
         const statusCode = err instanceof AnthropicAPIError ? err.statusCode : 0;
+
+        // A response we cannot read will not read better on retry. Stop with a visible error: an
+        // 'error' status also stops budgets treating this provider as covered by sync.
+        if (err instanceof SyncShapeError) {
+            this.stopWithError(db, `${err.message}. Anthropic may have changed its API; nothing was stored.`);
+            return Infinity;
+        }
 
         // Fatal errors — stop the poller permanently
         if (statusCode === 401) {
@@ -258,11 +277,4 @@ export class AnthropicPoller {
         db.prepare("UPDATE usage_sync_configs SET status = 'error', last_error = ? WHERE id = 'anthropic'").run(message);
         console.error(`[AnthropicPoller] Stopped with error: ${message}`);
     }
-}
-
-/** Attempts to extract a model name from an Anthropic cost report description string */
-function parseModelFromDescription(description: string): string | null {
-    // Description format varies, but typically looks like "claude-sonnet-4" or contains the model slug
-    const match = description.match(/claude-[\w.-]+/i);
-    return match ? match[0].toLowerCase() : null;
 }

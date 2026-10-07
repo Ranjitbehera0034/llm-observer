@@ -2,9 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import readline from 'readline';
-import { getParsedFile, upsertParsedFile, insertSession, insertSubagent, getSubagentsBySession, updateSessionTotals } from '@llm-observer/database';
-import { getPricingForModel } from '@llm-observer/database';
+import { insertSession, insertSubagent, getSubagentsBySession, updateSessionTotals, invalidateEstimatedSessions } from '@llm-observer/database';
 import { upsertToolUsage } from '@llm-observer/database';
+import { findFilesRecursive, shouldParseFile, markFileParsed } from './utils';
+import { UsageTotals, emptyTotals, loadPricingRows, priceUsageByModel } from './claudePricing';
 
 const getClaudeDir = () => {
     const home = os.homedir();
@@ -18,35 +19,7 @@ export const detector = (): boolean => {
     return fs.existsSync(getClaudeDir());
 };
 
-const findFilesRecursive = (dir: string, pattern: RegExp): string[] => {
-    let results: string[] = [];
-    if (!fs.existsSync(dir)) return results;
-    
-    const list = fs.readdirSync(dir);
-    for (const file of list) {
-        const filePath = path.join(dir, file);
-        const stat = fs.statSync(filePath);
-        if (stat && stat.isDirectory()) {
-            if (file === 'subagents') continue; // Subagents handled explicitly by parents
-            results = results.concat(findFilesRecursive(filePath, pattern));
-        } else if (pattern.test(filePath)) {
-            results.push(filePath);
-        }
-    }
-    return results;
-};
-
 /* PRIVACY RULE: This parser extracts ONLY metadata (token counts, duration, tool counts). It MUST NOT extract or store prompt text or raw conversational content to preserve developer privacy. */
-
-interface UsageTotals {
-    input: number;
-    output: number;
-    cacheRead: number;
-    cacheWrite: number;
-    cacheWrite1h: number;
-}
-
-const emptyTotals = (): UsageTotals => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0 });
 
 // Current Claude Code JSONL nests the API message under `message`; legacy formats had usage/model top-level.
 const getEventMessage = (event: any): any | null =>
@@ -57,7 +30,7 @@ const extractModel = (event: any): string | undefined =>
 
 // One API response can span multiple JSONL lines (one per content block), each repeating
 // the same usage object. Summing naively over-counts ~2x; billing is per (message.id, requestId).
-const accumulateUsage = (event: any, totals: UsageTotals, seenRequests: Set<string>): void => {
+const accumulateUsage = (event: any, buckets: Map<string, UsageTotals>, seenRequests: Set<string>): void => {
     const msg = getEventMessage(event);
     const usage = msg?.usage || event.usage;
     if (!usage) return;
@@ -65,6 +38,13 @@ const accumulateUsage = (event: any, totals: UsageTotals, seenRequests: Set<stri
     if (dedupeKey !== ':') {
         if (seenRequests.has(dedupeKey)) return;
         seenRequests.add(dedupeKey);
+    }
+    // Usage is bucketed per model so a session that mixes models is priced per model, not at the dominant one.
+    const model = extractModel(event) || '';
+    let totals = buckets.get(model);
+    if (!totals) {
+        totals = emptyTotals();
+        buckets.set(model, totals);
     }
     totals.input += usage.input_tokens || usage.prompt_tokens || 0;
     totals.output += usage.output_tokens || usage.completion_tokens || 0;
@@ -90,30 +70,42 @@ const countToolUses = (event: any, toolCalls: Record<string, number>): void => {
     }
 };
 
-const resolvePricing = (model: string) => {
-    return getPricingForModel('anthropic', model)
-        || getPricingForModel('anthropic', model.replace(/-\d{8}$/, ''));
+const CLAUDE_TOOL_NAME = 'Claude Code';
+
+// Subagent transcripts live in <project>/<sessionId>/subagents/agent-*.jsonl.
+const isSubagentPath = (claudeDir: string, filePath: string): boolean =>
+    path.relative(claudeDir, filePath).split(path.sep).includes('subagents');
+
+const findSubagentFiles = (sessionFilePath: string): string[] => {
+    const sessionId = path.basename(sessionFilePath, '.jsonl');
+    const dir = path.join(path.dirname(sessionFilePath), sessionId, 'subagents');
+    try {
+        return fs.readdirSync(dir)
+            .filter(f => f.endsWith('.jsonl'))
+            .map(f => path.join(dir, f));
+    } catch {
+        return [];
+    }
 };
 
-// Anthropic bills cache writes at 1.25x input (5-minute TTL) and 2x input (1-hour TTL).
-const computeCost = (model: string, totals: UsageTotals): number => {
-    if (!model) return 0;
-    const pricing = resolvePricing(model);
-    if (!pricing) return 0;
-    const cacheWrite5m = Math.max(0, totals.cacheWrite - totals.cacheWrite1h);
-    const inputCost = (totals.input / 1_000_000) * pricing.input;
-    const outputCost = (totals.output / 1_000_000) * pricing.output;
-    const cacheReadCost = pricing.cached ? (totals.cacheRead / 1_000_000) * pricing.cached : 0;
-    const cacheWriteCost = (cacheWrite5m / 1_000_000) * pricing.input * 1.25
-        + (totals.cacheWrite1h / 1_000_000) * pricing.input * 2;
-    return inputCost + outputCost + cacheReadCost + cacheWriteCost;
+const safeMtime = (filePath: string): number => {
+    try { return fs.statSync(filePath).mtimeMs; } catch { return 0; }
 };
+
 export const parse = async (onProgress?: (current: number, total: number) => void): Promise<void> => {
     const claudeDir = getClaudeDir();
     if (!fs.existsSync(claudeDir)) return;
 
-    // Find all JSONL files
-    const jsonlFiles = findFilesRecursive(claudeDir, /\.jsonl$/);
+    // A pricing refresh may have given exact prices to models that were only estimated before.
+    try {
+        invalidateEstimatedSessions('claude-code', 'anthropic');
+    } catch (err) {
+        console.error('[Claude Parser] Could not queue estimated sessions for re-pricing:', err);
+    }
+    loadPricingRows();
+
+    // Find all session JSONL files (subagent files are handled by their parent session)
+    const jsonlFiles = findFilesRecursive(claudeDir, /\.jsonl$/).filter(f => !isSubagentPath(claudeDir, f));
     const total = jsonlFiles.length;
     let current = 0;
     
@@ -125,85 +117,117 @@ export const parse = async (onProgress?: (current: number, total: number) => voi
             await parseSessionFile(filePath);
         } catch (err) {
             console.error(`[Claude Parser] Failed to parse ${filePath}:`, err);
-            upsertParsedFile({
-                file_path: filePath,
-                provider: 'claude-code',
-                last_modified_at: fs.statSync(filePath).mtimeMs,
-                last_parsed_at: new Date().toISOString(),
-                status: 'error',
-                error_message: String(err)
-            });
+            markFileParsed(filePath, 'claude-code', safeMtime(filePath), 'error', String(err));
         }
     }
 };
 
-const parseSessionFile = async (filePath: string) => {
-    const stat = fs.statSync(filePath);
-    const mtime = stat.mtimeMs;
-    
-    const registryEntry = getParsedFile(filePath);
-    if (registryEntry && registryEntry.last_modified_at >= mtime) {
-        // Skip unchanged file
-        return;
-    }
+interface FileScan {
+    started_at: string | null;
+    ended_at: string | null;
+    buckets: Map<string, UsageTotals>;
+    totals: UsageTotals;
+    totalLines: number;
+    conversationMessages: number;
+    sidechainEvents: number;
+    toolCalls: Record<string, number>;
+    modelCounts: Record<string, number>;
+}
 
-    // Determine basic session details from path
-    const isSubagent = filePath.includes('subagents');
-    const fileName = path.basename(filePath, '.jsonl');
-    const sessionId = fileName; // 'agent-123' or 'UUID'
-    
-    // The project hash is the parent dir (if main session) or parent of parent (if subagent)
-    const dirSegments = filePath.split(path.sep);
-    const projectHash = isSubagent ? dirSegments[dirSegments.length - 3] : dirSegments[dirSegments.length - 2];
-    
-    // Read the file line by line
-    let started_at: string | null = null;
-    let ended_at: string | null = null;
-    const totals = emptyTotals();
+const scanFile = async (filePath: string): Promise<FileScan> => {
+    const scan: FileScan = {
+        started_at: null,
+        ended_at: null,
+        buckets: new Map(),
+        totals: emptyTotals(),
+        totalLines: 0,
+        conversationMessages: 0,
+        sidechainEvents: 0,
+        toolCalls: {},
+        modelCounts: {}
+    };
     const seenRequests = new Set<string>();
-    let totalLines = 0;
-    let conversationMessages = 0;
-    let toolCalls: Record<string, number> = {};
-    const modelCounts: Record<string, number> = {};
 
     const rl = readline.createInterface({
         input: fs.createReadStream(filePath),
         crlfDelay: Infinity
     });
 
-    let sidechainEvents = 0;
-
     for await (const line of rl) {
         if (!line.trim()) continue;
         try {
             const event = JSON.parse(line);
-            totalLines++;
+            scan.totalLines++;
             if (event.type === 'user' || event.type === 'assistant') {
-                conversationMessages++;
+                scan.conversationMessages++;
             }
             if (event.isSidechain === true) {
-                sidechainEvents++;
+                scan.sidechainEvents++;
             }
 
-            if (!started_at && event.timestamp) {
-                started_at = new Date(event.timestamp).toISOString();
+            if (!scan.started_at && event.timestamp) {
+                scan.started_at = new Date(event.timestamp).toISOString();
             }
             if (event.timestamp) {
-                ended_at = new Date(event.timestamp).toISOString();
+                scan.ended_at = new Date(event.timestamp).toISOString();
             }
 
             const model = extractModel(event);
             if (model) {
-                modelCounts[model] = (modelCounts[model] || 0) + 1;
+                scan.modelCounts[model] = (scan.modelCounts[model] || 0) + 1;
             }
 
-            accumulateUsage(event, totals, seenRequests);
-            countToolUses(event, toolCalls);
+            accumulateUsage(event, scan.buckets, seenRequests);
+            countToolUses(event, scan.toolCalls);
 
         } catch (e) {
             // Skip malformed line
         }
     }
+
+    for (const t of scan.buckets.values()) {
+        scan.totals.input += t.input;
+        scan.totals.output += t.output;
+        scan.totals.cacheRead += t.cacheRead;
+        scan.totals.cacheWrite += t.cacheWrite;
+        scan.totals.cacheWrite1h += t.cacheWrite1h;
+    }
+    return scan;
+};
+
+const dominantModel = (modelCounts: Record<string, number>): string => {
+    let primaryModel = '';
+    let maxCount = 0;
+    for (const [model, count] of Object.entries(modelCounts)) {
+        if (count > maxCount) {
+            maxCount = count;
+            primaryModel = model;
+        }
+    }
+    return primaryModel;
+};
+
+const parseSessionFile = async (filePath: string) => {
+    const stat = fs.statSync(filePath);
+    const mtime = stat.mtimeMs;
+    
+    // Subagent files are checked too: they change independently of the parent, and an
+    // errored one must be retried. Errored files are never skipped (shouldParseFile).
+    const agentFiles = findSubagentFiles(filePath);
+    const staleAgentFiles = agentFiles.filter(f => shouldParseFile(f, safeMtime(f)));
+    if (!shouldParseFile(filePath, mtime) && staleAgentFiles.length === 0) {
+        // Skip unchanged file
+        return;
+    }
+
+    // Determine basic session details from path: <project>/<sessionId>.jsonl
+    const sessionId = path.basename(filePath, '.jsonl');
+    const projectHash = path.basename(path.dirname(filePath));
+    
+    // Read the file line by line
+    const scan = await scanFile(filePath);
+    let { started_at } = scan;
+    const { ended_at, totals, totalLines, conversationMessages, toolCalls, sidechainEvents } = scan;
 
     // Files with typed user/assistant lines get a true conversation count; legacy files fall back to line count
     const messageCount = conversationMessages > 0 ? conversationMessages : totalLines;
@@ -220,18 +244,9 @@ const parseSessionFile = async (filePath: string) => {
         durationSeconds = Math.round((new Date(ended_at).getTime() - new Date(started_at).getTime()) / 1000);
     }
 
-    // Determine primary model
-    let primaryModel = '';
-    let maxCount = 0;
-    for (const [model, count] of Object.entries(modelCounts)) {
-        if (count > maxCount) {
-            maxCount = count;
-            primaryModel = model;
-        }
-    }
-
-    // Determine estimated cost ('anthropic' as provider since it's claude-code)
-    const estimatedCost = computeCost(primaryModel, totals);
+    // Primary model is the most frequent one; cost is priced per model, not at the primary model
+    const primaryModel = dominantModel(scan.modelCounts);
+    const { costUsd: estimatedCost, isEstimated, costSource } = priceUsageByModel(scan.buckets, primaryModel);
 
     // Determine session type
     const toolCallCount = Object.values(toolCalls).reduce((a, b) => a + b, 0);
@@ -239,29 +254,21 @@ const parseSessionFile = async (filePath: string) => {
 
     const cacheHitRate = cacheReadTokens + inputTokens > 0 ? cacheReadTokens / (cacheReadTokens + inputTokens) : 0;
 
-    // Subagent counting. Legacy layout: separate files under subagents/.
-    // Current layout: subagent turns live inline in the parent file as
-    // isSidechain events, one spawn per Task tool call.
-    let subagentCount = 0;
-    let hasSubagents = false;
-    if (!isSubagent) {
-        const subagentsDir = path.join(path.dirname(filePath), 'subagents');
-        if (fs.existsSync(subagentsDir)) {
-            const list = fs.readdirSync(subagentsDir).filter(f => f.endsWith('.jsonl'));
-            subagentCount = list.length;
-            hasSubagents = subagentCount > 0;
-        }
-        if (subagentCount === 0) {
-            const taskSpawns = toolCalls['Task'] || toolCalls['Agent'] || 0;
-            if (taskSpawns > 0 || sidechainEvents > 0) {
-                subagentCount = Math.max(taskSpawns, sidechainEvents > 0 ? 1 : 0);
-                hasSubagents = true;
-            }
+    // Subagent counting. Separate files under <sessionId>/subagents/ when present; otherwise
+    // subagent turns live inline in the parent file as isSidechain events, one spawn per Task tool call.
+    let subagentCount = agentFiles.length;
+    let hasSubagents = subagentCount > 0;
+    if (subagentCount === 0) {
+        const taskSpawns = toolCalls['Task'] || toolCalls['Agent'] || 0;
+        if (taskSpawns > 0 || sidechainEvents > 0) {
+            subagentCount = Math.max(taskSpawns, sidechainEvents > 0 ? 1 : 0);
+            hasSubagents = true;
         }
     }
 
     const parentId = insertSession({
         provider: 'claude-code',
+        tool: CLAUDE_TOOL_NAME,
         session_id: sessionId,
         project_path: projectHash, 
         project_name: projectHash, 
@@ -276,6 +283,8 @@ const parseSessionFile = async (filePath: string) => {
         cache_write_tokens: cacheWriteTokens,
         cache_hit_rate: cacheHitRate,
         estimated_cost_usd: estimatedCost,
+        is_estimated: isEstimated,
+        cost_source: costSource,
         session_type: sessionType,
         tool_calls_json: JSON.stringify(toolCalls),
         has_subagents: hasSubagents,
@@ -285,22 +294,18 @@ const parseSessionFile = async (filePath: string) => {
         parent_cost_usd: estimatedCost // Initial parent cost matches session cost
     });
 
-    if (hasSubagents) {
-        const subagentsDir = path.join(path.dirname(filePath), 'subagents');
-        if (fs.existsSync(subagentsDir)) {
-            const agentFiles = fs.readdirSync(subagentsDir).filter(f => f.endsWith('.jsonl'));
-            for (const agentFile of agentFiles) {
-                const subagentFilePath = path.join(subagentsDir, agentFile);
-                const subagentStat = fs.statSync(subagentFilePath);
-                const subagentRegistryEntry = getParsedFile(subagentFilePath);
-                
-                if (!subagentRegistryEntry || subagentRegistryEntry.last_modified_at < subagentStat.mtimeMs) {
-                    await parseSubagentFile(subagentFilePath, parentId);
-                }
+    if (agentFiles.length > 0) {
+        for (const subagentFilePath of staleAgentFiles) {
+            try {
+                await parseSubagentFile(subagentFilePath, parentId);
+            } catch (err) {
+                // One bad agent file must not lose the parent; it stays 'error' and is retried next cycle.
+                console.error(`[Claude Parser] Failed to parse subagent ${subagentFilePath}:`, err);
+                markFileParsed(subagentFilePath, 'claude-code', safeMtime(subagentFilePath), 'error', String(err));
             }
-            // After parsing/checking all subagents, update parent with totals and perform consistency check
-            updateParentWithSubagentTotals(parentId, estimatedCost);
         }
+        // After parsing/checking all subagents, update parent with totals and perform consistency check
+        updateParentWithSubagentTotals(parentId, estimatedCost);
     }
 
     // Daily tool usage aggregation (simplified for now)
@@ -316,13 +321,7 @@ const parseSessionFile = async (filePath: string) => {
         });
     }
 
-    upsertParsedFile({
-        file_path: filePath,
-        provider: 'claude-code',
-        last_modified_at: mtime,
-        last_parsed_at: new Date().toISOString(),
-        status: 'success'
-    });
+    markFileParsed(filePath, 'claude-code', mtime, 'success');
 };
 
 const parseSubagentFile = async (filePath: string, parentId: number) => {
@@ -331,69 +330,34 @@ const parseSubagentFile = async (filePath: string, parentId: number) => {
     const fileName = path.basename(filePath, '.jsonl');
     const agentId = fileName.replace('agent-', '');
 
-    let started_at: string | null = null;
-    let ended_at: string | null = null;
-    const totals = emptyTotals();
-    const seenRequests = new Set<string>();
-    let totalLines = 0;
-    let conversationMessages = 0;
-    let toolCalls: Record<string, number> = {};
-    const modelCounts: Record<string, number> = {};
-
-    const rl = readline.createInterface({
-        input: fs.createReadStream(filePath),
-        crlfDelay: Infinity
-    });
-
-    for await (const line of rl) {
-        if (!line.trim()) continue;
-        try {
-            const event = JSON.parse(line);
-            totalLines++;
-            if (event.type === 'user' || event.type === 'assistant') conversationMessages++;
-            if (!started_at && event.timestamp) started_at = new Date(event.timestamp).toISOString();
-            if (event.timestamp) ended_at = new Date(event.timestamp).toISOString();
-            const model = extractModel(event);
-            if (model) modelCounts[model] = (modelCounts[model] || 0) + 1;
-            accumulateUsage(event, totals, seenRequests);
-            countToolUses(event, toolCalls);
-        } catch (e) {}
-    }
-
-    if (!started_at) started_at = new Date(stat.birthtimeMs).toISOString();
-    const messageCount = conversationMessages > 0 ? conversationMessages : totalLines;
-    const inputTokens = totals.input;
-    const outputTokens = totals.output;
-    const cacheReadTokens = totals.cacheRead;
-    const cacheWriteTokens = totals.cacheWrite;
-    let primaryModel = Object.entries(modelCounts).sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-    const agentCost = computeCost(primaryModel, totals);
+    const scan = await scanFile(filePath);
+    const { ended_at, totals, toolCalls } = scan;
+    const started_at = scan.started_at || new Date(stat.birthtimeMs).toISOString();
+    const messageCount = scan.conversationMessages > 0 ? scan.conversationMessages : scan.totalLines;
+    const primaryModel = dominantModel(scan.modelCounts);
+    const { costUsd: agentCost, isEstimated, costSource } = priceUsageByModel(scan.buckets, primaryModel);
 
     insertSubagent({
         parent_session_id: parentId,
         agent_id: agentId,
-        agent_type: classifyAgentType(toolCalls, inputTokens, outputTokens),
+        agent_type: classifyAgentType(toolCalls, totals.input, totals.output),
         model: primaryModel,
         started_at,
         ended_at: ended_at || undefined,
-        duration_seconds: started_at && ended_at ? Math.round((new Date(ended_at).getTime() - new Date(started_at).getTime()) / 1000) : 0,
+        duration_seconds: ended_at ? Math.round((new Date(ended_at).getTime() - new Date(started_at).getTime()) / 1000) : 0,
         message_count: messageCount,
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        cache_read_tokens: cacheReadTokens,
-        cache_write_tokens: cacheWriteTokens,
+        input_tokens: totals.input,
+        output_tokens: totals.output,
+        cache_read_tokens: totals.cacheRead,
+        cache_write_tokens: totals.cacheWrite,
         estimated_cost_usd: agentCost,
+        is_estimated: isEstimated,
+        cost_source: costSource,
         tool_calls_json: JSON.stringify(toolCalls),
         file_path: filePath
     });
 
-    upsertParsedFile({
-        file_path: filePath,
-        provider: 'claude-code',
-        last_modified_at: mtime,
-        last_parsed_at: new Date().toISOString(),
-        status: 'success'
-    });
+    markFileParsed(filePath, 'claude-code', mtime, 'success');
 };
 
 export const classifyAgentType = (toolCalls: Record<string, number>, input: number, output: number): string => {

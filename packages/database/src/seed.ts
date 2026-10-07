@@ -97,7 +97,8 @@ const initialPricing: PricingEntry[] = [
 
     // Claude 4.5 Series
     { provider: 'anthropic', model: 'claude-opus-4-5-20251101', input: 5.00, output: 25.00, cached: 0.50 },
-    { provider: 'anthropic', model: 'claude-sonnet-4-5-20241022', input: 3.00, output: 15.00, cached: 0.30 },
+    { provider: 'anthropic', model: 'claude-sonnet-4-5', input: 3.00, output: 15.00, cached: 0.30 },
+    { provider: 'anthropic', model: 'claude-sonnet-4-5-20250929', input: 3.00, output: 15.00, cached: 0.30 },
     { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', input: 1.00, output: 5.00, cached: 0.10 },
 
     // Claude 4 Series

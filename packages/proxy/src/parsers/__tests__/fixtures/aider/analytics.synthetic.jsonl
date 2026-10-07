@@ -1,0 +1,5 @@
+{"event":"launched","properties":{"python_version":"3.12.4","os_platform":"Linux","os_release":"6.8.0","machine":"x86_64","aider_version":"0.86.0"},"user_id":"00000000-0000-4000-8000-000000000000","time":1760000000}
+{"event":"message_send","properties":{"main_model":"claude-3-5-sonnet-20241022","weak_model":"claude-3-5-haiku-20241022","editor_model":"claude-3-5-sonnet-20241022","edit_format":"diff","prompt_tokens":1200,"completion_tokens":300,"total_tokens":1500,"cost":0.0081,"total_cost":0.0081},"user_id":"00000000-0000-4000-8000-000000000000","time":1760000060}
+{"event":"command_add","properties":{},"user_id":"00000000-0000-4000-8000-000000000000","time":1760000090}
+{"event":"message_send","properties":{"main_model":"gpt-4o","weak_model":"gpt-4o-mini","editor_model":"gpt-4o","edit_format":"whole","prompt_tokens":2000,"completion_tokens":500,"total_tokens":2500,"cost":0,"total_cost":0.0081},"user_id":"00000000-0000-4000-8000-000000000000","time":1760000120}
+{"event":"exit","properties":{"reason":"Control-C"},"user_id":"00000000-0000-4000-8000-000000000000","time":1760000200}
