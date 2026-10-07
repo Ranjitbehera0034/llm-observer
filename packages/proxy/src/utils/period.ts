@@ -44,6 +44,17 @@ export function getPeriodStart(period: string, now: Date = new Date()): string {
     return getPeriodStartDate(period, now).toISOString();
 }
 
+/**
+ * Period start as a calendar-date label, for tables bucketed by UTC day (usage_records from the
+ * admin-API sync). Returns '<local y>-<local m>-<local d>T00:00:00.000Z' for the local period
+ * start, so "the UTC bucket labelled with today's local date" counts as today in every time zone.
+ */
+export function getPeriodStartLabel(period: string, now: Date = new Date()): string {
+    const start = getPeriodStartDate(period, now);
+    const pad = (n: number, w = 2) => String(n).padStart(w, '0');
+    return `${pad(start.getFullYear(), 4)}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}T00:00:00.000Z`;
+}
+
 export function getSecondsUntilPeriodReset(period: string, now: Date = new Date()): number {
     return Math.max(0, Math.floor((getNextPeriodStartDate(period, now).getTime() - now.getTime()) / 1000));
 }

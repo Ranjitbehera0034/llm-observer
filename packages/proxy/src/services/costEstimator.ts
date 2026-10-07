@@ -96,32 +96,64 @@ export const estimateRequestTokens = (body: any): number => {
 // Local providers have no per-token price; the proxy logs their cost as $0.
 const FREE_PROVIDERS = new Set(['ollama']);
 
+/** Ceiling on the output tokens guessed from input x multiplier when the request declares no cap. */
+export const MAX_ESTIMATED_OUTPUT_TOKENS = 64_000;
+
+/** The request's own output cap (Anthropic/OpenAI/Responses/Gemini spellings), if it declares one. */
+export const extractMaxOutputTokens = (body: any): number | undefined => {
+    if (!body || typeof body !== 'object') return undefined;
+    const candidates = [
+        body.max_tokens,
+        body.max_completion_tokens,
+        body.max_output_tokens,
+        body.generationConfig?.maxOutputTokens,
+    ];
+    for (const c of candidates) {
+        if (typeof c === 'number' && Number.isFinite(c) && c > 0) return c;
+    }
+    return undefined;
+};
+
 /**
- * Estimates the total cost of a request based on input tokens and a multiplier for output.
+ * Output tokens to assume for the pre-flight estimate: the declared cap when present (the worst
+ * case the request can actually cost), else input x multiplier bounded by a sane ceiling.
+ */
+export const estimateOutputTokens = (
+    inputTokens: number,
+    multiplier: number = 3.0,
+    maxOutputTokens?: number
+): number => {
+    if (maxOutputTokens && maxOutputTokens > 0) return maxOutputTokens;
+    return Math.min(inputTokens * multiplier, MAX_ESTIMATED_OUTPUT_TOKENS);
+};
+
+/**
+ * Estimates the total cost of a request based on input tokens and either the request's declared
+ * output cap or, when absent, a multiplier of the input for output.
  */
 export const estimateRequestCost = (
     provider: string,
     model: string,
     inputTokens: number,
-    multiplier: number = 3.0
+    multiplier: number = 3.0,
+    maxOutputTokens?: number
 ): number => {
     if (FREE_PROVIDERS.has(provider)) return 0;
 
     const pricing = getPricingWithFuzzy(provider, model);
+    const estimatedOutput = estimateOutputTokens(inputTokens, multiplier, maxOutputTokens);
     
     if (!pricing) {
         // Fallback: If no pricing found, use a conservative default 
         // (approx $15/MTok input, $75/MTok output - Claude 3 Opus levels)
         const fallbackInput = 15 / 1_000_000;
         const fallbackOutput = 75 / 1_000_000;
-        const estimatedOutput = inputTokens * multiplier;
         return (inputTokens * fallbackInput) + (estimatedOutput * fallbackOutput);
     }
 
     // Pricing from cache might have input_cost_per_1m or input keys
     const inputPrice = (pricing.input_cost_per_1m || pricing.input || 0) / 1_000_000;
     const outputPrice = (pricing.output_cost_per_1m || pricing.output || 0) / 1_000_000;
-    const estimatedOutput = inputTokens * multiplier;
 
     return (inputTokens * inputPrice) + (estimatedOutput * outputPrice);
 };

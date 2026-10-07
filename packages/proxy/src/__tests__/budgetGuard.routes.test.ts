@@ -129,6 +129,40 @@ describe('RM-7 budgets through createApp()', () => {
         });
     });
 
+    describe('pre-flight estimate honours the declared output cap', () => {
+        const bigAnthropic = (extra: Record<string, any>) => ({
+            model: 'claude-3-5-sonnet-20241022',
+            messages: [{ role: 'user', content: 'x'.repeat(400_000) }], // ~100k input tokens
+            ...extra,
+        });
+
+        it('does not falsely block a 100k-token request with max_tokens 1000 at 70% utilisation', async () => {
+            addBudget({ scope: 'provider', scope_value: 'anthropic', limit_usd: 10, safety_buffer_usd: 0.001 });
+            addRequest('anthropic', 'claude-3-5-sonnet-20241022', 7); // 70% of $10, $3 remaining
+
+            // worst case: 100k*$3/M + 1000*$15/M = ~$0.315 (was ~$4.80 with 3x input as output)
+            const res = await request(app).post('/v1/anthropic/messages').send(bigAnthropic({ max_tokens: 1000 }));
+            expect(res.status).toBe(200);
+        });
+
+        it('still blocks when the capped worst case really does not fit', async () => {
+            addBudget({ scope: 'provider', scope_value: 'anthropic', limit_usd: 10, safety_buffer_usd: 0.001 });
+            addRequest('anthropic', 'claude-3-5-sonnet-20241022', 9.8); // $0.20 remaining < ~$0.315
+            const res = await request(app).post('/v1/anthropic/messages').send(bigAnthropic({ max_tokens: 1000 }));
+            expect(res.status).toBe(429);
+            expect(res.body.error.type).toBe('budget_insufficient');
+        });
+
+        it('applies the same cap to the project-level guard', async () => {
+            const db = getDb();
+            db.prepare("UPDATE projects SET daily_budget = 10, kill_switch = 1 WHERE id = 'default'").run();
+            addRequest('anthropic', 'claude-3-5-sonnet-20241022', 7);
+            _getCacheForTest().clear();
+            const res = await request(app).post('/v1/anthropic/messages').send(bigAnthropic({ max_tokens: 1000 }));
+            expect(res.status).toBe(200);
+        });
+    });
+
     describe('Gemini', () => {
         it('matches a model budget using the URL model and counts contents', async () => {
             addBudget({ scope: 'model', scope_value: 'gemini-1.5-flash', limit_usd: 1 });

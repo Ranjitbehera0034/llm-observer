@@ -200,11 +200,15 @@ describe('usage sync idempotency and shapes', () => {
         });
 
         it('BudgetService reports the same spend after 1 poll and after 60 polls', async () => {
-            const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+            // Sync buckets are UTC-day labels; the budget window matches them by the LOCAL calendar
+            // date, so label the bucket with today's local date to be deterministic in any TZ.
+            const now = new Date();
+            const pad = (n: number) => String(n).padStart(2, '0');
+            const label = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T00:00:00Z`;
             const usage = fixture('anthropic-usage-report.nested.json');
             const cost = fixture('anthropic-cost-report.nested.json');
-            usage.data[0].starting_at = today.toISOString();
-            cost.data[0].starting_at = today.toISOString();
+            usage.data[0].starting_at = label;
+            cost.data[0].starting_at = label;
             routeFetch({ [ANTHROPIC.usage]: usage, [ANTHROPIC.cost]: cost });
 
             await pollOnce(anthropic);
@@ -214,6 +218,32 @@ describe('usage sync idempotency and shapes', () => {
             for (let i = 0; i < 59; i++) await pollOnce(anthropic);
             const afterSixty = await BudgetService.calculateCurrentSpend('global', undefined, 'daily');
             expect(afterSixty).toBeCloseTo(afterOne, 9);
+        });
+
+        it("requests the cost report through the end of today's UTC day, as RFC 3339, so today's cost_usd is filled", async () => {
+            const todayUtc = new Date().toISOString().slice(0, 10);
+            const bucketEnd = new Date(`${todayUtc}T00:00:00Z`).getTime() + 24 * 3600 * 1000;
+            const usage = { data: [{ starting_at: `${todayUtc}T00:00:00Z`, ending_at: new Date(bucketEnd).toISOString(), results: [{ model: 'claude-sonnet-4-20250514', uncached_input_tokens: 100, output_tokens: 50, cache_read_input_tokens: 0, cache_creation: {} }] }], has_more: false };
+            const costBody = { data: [{ starting_at: `${todayUtc}T00:00:00Z`, ending_at: new Date(bucketEnd).toISOString(), results: [{ model: 'claude-sonnet-4-20250514', amount: '250', currency: 'USD', cost_type: 'tokens', description: 'x' }] }], has_more: false };
+            const costUrls: string[] = [];
+            fetchMock.mockImplementation(async (url: string) => {
+                if (url.includes(ANTHROPIC.cost)) {
+                    costUrls.push(url);
+                    // Documented: buckets that END before ending_at are returned (RFC 3339 timestamp).
+                    const endingAt = new URL(url).searchParams.get('ending_at') || '';
+                    const ok = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(endingAt) && Date.parse(endingAt) >= bucketEnd;
+                    return okResponse(ok ? costBody : { data: [], has_more: false });
+                }
+                return okResponse(usage);
+            });
+
+            await pollOnce(anthropic);
+
+            expect(costUrls.length).toBeGreaterThan(0);
+            const endingAt = new URL(costUrls[0]).searchParams.get('ending_at') || '';
+            expect(endingAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+            const row = rows(db, 'anthropic')[0];
+            expect(row.cost_usd).toBeCloseTo(2.5, 6);
         });
 
         it('upserts when api_key_id / workspace_id are populated, and treats NULL and empty as one key', () => {

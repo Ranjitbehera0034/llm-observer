@@ -159,7 +159,12 @@ export class AnthropicPoller {
 
     private async syncCost(apiKey: string, startingAt: string) {
         const db = getDb();
-        const endingAt = new Date().toISOString().split('T')[0];
+        // ending_at is an RFC 3339 timestamp and only buckets that END before it are returned. Today's
+        // daily bucket ends at the next UTC midnight, so ask for one second past it; otherwise the open
+        // day is never reported and its cost_usd stays NULL (invisible to budgets) until tomorrow.
+        const endOfToday = new Date();
+        endOfToday.setUTCHours(24, 0, 1, 0);
+        const endingAt = endOfToday.toISOString().replace(/\.\d{3}Z$/, 'Z');
         let nextCursor: string | null = null;
         let latestCostDate = startingAt;
 

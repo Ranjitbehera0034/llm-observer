@@ -1,4 +1,4 @@
-import { normalizeModelId, parseFamily, resolveClaudePricing, loadPricingRows } from '../claudePricing';
+import { normalizeModelId, parseFamily, resolveClaudePricing, loadPricingRows, priceUsageByModel, emptyTotals } from '../claudePricing';
 
 const rows = [
     ['claude-opus-4-20250514', 15, 75], ['claude-opus-4-5-20251101', 5, 25], ['claude-opus-4-8', 5, 25],
@@ -51,5 +51,26 @@ describe('claude pricing resolution', () => {
         expect(resolveClaudePricing('claude-fable-9')).toBeNull();
         expect(resolveClaudePricing('gpt-5')).toBeNull();
         expect(resolveClaudePricing('')).toBeNull();
+    });
+});
+
+describe('cache-read pricing when the price row has no cached rate', () => {
+    beforeEach(() => loadPricingRows());
+
+    it('prices cache reads at 0.1x the input rate and marks the result estimated', () => {
+        // claude-3-opus-20240229 is an exact row ($15 in / $75 out) with cached: null
+        const totals = { ...emptyTotals(), input: 1_000_000, cacheRead: 1_000_000 };
+        const r = priceUsageByModel(new Map([['claude-3-opus-20240229', totals]]), 'claude-3-opus-20240229');
+        expect(r.costUsd).toBeCloseTo(15 + 1.5, 6);
+        expect(r.isEstimated).toBe(true);
+        expect(r.costSource).toBe('estimated');
+    });
+
+    it('does not flag a session with no cache reads', () => {
+        const totals = { ...emptyTotals(), input: 1_000_000, output: 1_000_000 };
+        const r = priceUsageByModel(new Map([['claude-3-opus-20240229', totals]]), 'claude-3-opus-20240229');
+        expect(r.costUsd).toBeCloseTo(90, 6);
+        expect(r.isEstimated).toBe(false);
+        expect(r.costSource).toBe('pricing_table');
     });
 });
