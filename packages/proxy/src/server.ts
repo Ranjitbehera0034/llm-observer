@@ -1,161 +1,32 @@
-import express from 'express';
-import cors from 'cors';
-import path from 'path';
-import fs from 'fs';
-import { handleProxyRequest } from './proxy';
-import { initDb, seedPricing, getDb, seedDefaultApiKey, seedSyncProviders } from '@llm-observer/database';
+import { initDb, seedPricing, seedDefaultApiKey, seedSyncProviders } from '@llm-observer/database';
 import { initPricingCache } from './utils/pricing';
-import { GoogleProvider } from './providers/google';
-import { budgetGuard } from './budgetGuard';
-import { rateLimitGuard } from './rateLimitGuard';
 import { startAnomalyDetection } from './anomalyDetector';
 import { startRetentionCleanup } from './retentionManager';
 import { startCostOptimizer } from './costOptimizer';
 import { startStatsAggregation } from './utils/statsAggregator';
 import { startRateLimitPoller } from './rate-limits/poller';
+import { startRateLimitPersistence } from './rateLimitGuard';
 import { syncManager } from './syncManager';
 import { usageSyncManager } from './sync';
 import { networkMonitor } from './services/networkMonitor';
 import { initParsers } from './parsers/manager';
 import { startLicenseRevalidation } from './licenseManager';
 import { startTelemetry } from './telemetry';
+import { createApp, createDashboardApp } from './app';
 import './types';
 
-const app = express();
-
-const corsOptions = {
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4001', 'http://127.0.0.1:4001', process.env.DASHBOARD_URL].filter(Boolean) as string[],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
-};
-
-app.use(cors(corsOptions));
-
-// Health check
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', service: 'llm-observer-proxy' });
-});
-
-// We need JSON to parse the models, but we need to forward it carefully
-// FIX SEC-06: Reduced from 50MB to prevent memory-exhaustion DoS
-app.use(express.json({ limit: '5mb' }));
-
-// Apply budget guard globally before proxying
-app.use(budgetGuard);
-// Apply rate limit guard globally before proxying
-app.use(rateLimitGuard);
-
-// Route handlers based on provider path
-app.all('/v1/openai/*', (req, res) => {
-    // Strip /v1/openai from the path if needed, wait, OpenAI base url doesn't include the path.
-    // Actually, target URL is "https://api.openai.com". The path will be appended.
-    // `req.url` includes `/v1/openai/...`, so we need to rewrite it:
-    req.url = req.url.replace('/v1/openai', '/v1');
-    handleProxyRequest(req, res, 'openai');
-});
-
-app.all('/v1/anthropic/*', (req, res) => {
-    req.url = req.url.replace('/v1/anthropic', '/v1');
-    handleProxyRequest(req, res, 'anthropic');
-});
-
-app.all('/v1/google/*', (req, res) => {
-    req.url = req.url.replace('/v1/google', '/v1beta'); // Map to correct API version
-    handleProxyRequest(req, res, 'google');
-});
-
-app.all('/v1/mistral/*', (req, res) => {
-    req.url = req.url.replace('/v1/mistral', '/v1');
-    handleProxyRequest(req, res, 'mistral');
-});
-
-app.all('/v1/groq/*', (req, res) => {
-    // Groq's OpenAI-compatible API lives at api.groq.com/openai/v1/*
-    // The provider base URL already includes /openai, so we map /v1/groq → /v1
-    req.url = req.url.replace('/v1/groq', '/v1');
-    handleProxyRequest(req, res, 'groq');
-});
-
-// Ollama — first-class provider (dedicated route + parser, not the generic
-// custom fallback). Talks to Ollama's OpenAI-compatible surface; base URL
-// defaults to http://localhost:11434 and is overridable via Settings.
-app.all('/v1/ollama/*', (req, res) => {
-    req.url = req.url.replace('/v1/ollama', '/v1');
-    handleProxyRequest(req, res, 'ollama');
-});
-
-// Custom/Local provider route
-// Example: http://localhost:4000/v1/custom/http%3A%2F%2Flocalhost%3A11434/v1/chat/completions
-app.all('/v1/custom/:targetBaseUrl/*', (req, res) => {
-    const encodedUrl = req.params.targetBaseUrl;
-    try {
-        const decodedUrl = decodeURIComponent(encodedUrl);
-        // The rest of the path is in req.url after the parameter
-        // Original req.url like: /v1/custom/http%3A%2F%2Flocalhost%3A11434/v1/chat/completions
-        // We want to rewrite req.url to just the suffix
-        req.url = req.url.replace(`/v1/custom/${encodedUrl}`, '');
-
-        // Pass the target URL through req object
-        req.customTargetUrl = decodedUrl;
-        handleProxyRequest(req, res, 'custom');
-    } catch (e) {
-        res.status(400).json({ error: 'Invalid targetBaseUrl encoding' });
-    }
-});
+// The app factories live in ./app and are re-exported so tests (and anything
+// else) can build the real guard/route chain. Importing this module has no side
+// effects: servers, timers and the database only start from main() below.
+export { createApp, createDashboardApp } from './app';
 
 // LLM_OBSERVER_* are the documented names; PROXY_PORT/DASHBOARD_PORT kept for backward compatibility
 const PORT = process.env.LLM_OBSERVER_PROXY_PORT || process.env.PROXY_PORT || 4000;
 const DASHBOARD_PORT = process.env.LLM_OBSERVER_PORT || process.env.DASHBOARD_PORT || 4001;
 const HOST = process.env.LLM_OBSERVER_HOST || '127.0.0.1';
 
-import { dashboardApi } from './dashboardApi';
-
-// Create a separate app for the dashboard API
-const dashboardApp = express();
-dashboardApp.use(cors(corsOptions));
-dashboardApp.use(express.json());
-// Mount the dashboard API router
-dashboardApp.use('/api', dashboardApi);
-
-// Import and register sync routes
-import syncRoutes from './routes/sync.routes';
-import subscriptionRoutes from './routes/subscriptions.routes';
-import overviewRoutes from './routes/overview.routes';
-import sessionsRoutes from './routes/sessions.routes';
-import toolRoutes from './routes/tools.routes';
-import agentRoutes from './routes/agents.routes';
-import limitRoutes from './routes/limits.routes';
-import heatmapRoutes from './routes/heatmap.routes';
-
-dashboardApp.use('/api/sync', syncRoutes);
-dashboardApp.use('/api/subscriptions', subscriptionRoutes);
-dashboardApp.use('/api/overview', overviewRoutes);
-dashboardApp.use('/api/sessions', sessionsRoutes);
-dashboardApp.use('/api/tools', toolRoutes);
-dashboardApp.use('/api/agents', agentRoutes);
-dashboardApp.use('/api/limits', limitRoutes);
-dashboardApp.use('/api/heatmap', heatmapRoutes);
-
-// Fallback to static Dashboard build if not hitting API
-// In development: ../../dashboard/dist
-// In bundled package: ./dashboard
-const devDashboardDist = path.join(__dirname, '../../dashboard/dist');
-const bundledDashboardDist = path.join(__dirname, 'dashboard');
-const dashboardDist = fs.existsSync(bundledDashboardDist) ? bundledDashboardDist : devDashboardDist;
-
-dashboardApp.use(express.static(dashboardDist));
-
-dashboardApp.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api')) return next();
-    if (fs.existsSync(path.join(dashboardDist, 'index.html'))) {
-        res.sendFile(path.join(dashboardDist, 'index.html'));
-    } else {
-        res.status(404).send('Dashboard assets not found. Run npm build in dashboard package.');
-    }
-});
-
 // --- Boot Sequence ---
-async function bootstrap() {
+function bootstrap() {
     try {
         // 1. Initialize DB and run migrations FIRST
         const db = initDb();
@@ -175,11 +46,12 @@ async function bootstrap() {
         }
 
         // 4. Start accepting Proxy Traffic
-        app.listen(Number(PORT), HOST, () => {
+        createApp().listen(Number(PORT), HOST, () => {
             console.log(`🚀 LLM Observer Proxy running on http://${HOST}:${PORT}`);
         });
 
         // 5. Start background tasks
+        startRateLimitPersistence();
         startAnomalyDetection();
         startRetentionCleanup();
         startCostOptimizer();
@@ -198,9 +70,18 @@ async function bootstrap() {
     }
 }
 
-bootstrap();
+function main() {
+    bootstrap();
 
-// FIX SEC-03: Bind to 127.0.0.1 by default — dashboard must not be reachable from LAN unless LLM_OBSERVER_HOST is set explicitly
-dashboardApp.listen(Number(DASHBOARD_PORT), HOST, () => {
-    console.log(`📊 Dashboard API running on http://${HOST}:${DASHBOARD_PORT}`);
-});
+    // FIX SEC-03: Bind to 127.0.0.1 by default — dashboard must not be reachable from LAN unless LLM_OBSERVER_HOST is set explicitly
+    createDashboardApp().listen(Number(DASHBOARD_PORT), HOST, () => {
+        console.log(`📊 Dashboard API running on http://${HOST}:${DASHBOARD_PORT}`);
+    });
+}
+
+// Only start when run as the entry point (node dist/server.js, ts-node src/server.ts).
+// LLM_OBSERVER_AUTOSTART=1 starts it when the bundle is require()d by another
+// script (packages/proxy/scripts/build-sidecar.js traces dependencies that way).
+if (require.main === module || process.env.LLM_OBSERVER_AUTOSTART === '1') {
+    main();
+}

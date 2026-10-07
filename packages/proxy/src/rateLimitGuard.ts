@@ -49,11 +49,14 @@ const saveBucketsToDb = () => {
     } catch (e) { /* Silent fail — rate limit persistence is best-effort */ }
 };
 
-// Schedule persistence
-setTimeout(() => {
+/**
+ * Restore persisted buckets and start the periodic save. Called from the boot
+ * sequence (not at import time) so importing the app has no timers.
+ */
+export const startRateLimitPersistence = () => {
     loadBucketsFromDb();
     setInterval(saveBucketsToDb, 30_000);
-}, 2000); // Delay 2s to wait for DB init
+};
 
 export const rateLimitGuard = (req: Request, res: Response, next: NextFunction) => {
     // Rely on project_id resolved by budgetGuard which runs right before this

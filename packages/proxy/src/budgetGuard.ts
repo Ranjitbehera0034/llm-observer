@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { getDb, validateApiKey } from '@llm-observer/database';
 import { randomUUID } from 'crypto';
 import { BudgetService } from './services/budget.service';
-import { estimateTokenCount, estimateRequestCost } from './services/costEstimator';
+import { estimateRequestTokens, estimateRequestCost } from './services/costEstimator';
+import { getPeriodStart } from './utils/period';
 import './types';
 
 interface ProjectCache {
@@ -23,10 +24,10 @@ const getSpendFromDb = (projectId: string) => {
   const spendStmt = db.prepare(`
       SELECT sum(cost_usd) as total 
       FROM requests 
-      WHERE project_id = ? AND date(created_at, 'localtime') = date('now', 'localtime')
+      WHERE project_id = ? AND datetime(created_at) >= datetime(?)
         AND status != 'blocked_budget'
     `);
-  const row = spendStmt.get(projectId) as any;
+  const row = spendStmt.get(projectId, getPeriodStart('daily')) as any;
   return row?.total || 0;
 };
 
@@ -67,11 +68,13 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
   req.projectId = project.id;
   req.cacheKey = cacheKey;
 
-  const provider = (req.headers['x-provider'] as string) || (req.body?.provider) || 'unknown';
-  const model = (req.body?.model) || (req.headers['x-model'] as string) || 'unknown';
+  // req.provider/req.model come from the /v1/<provider> path (resolveRequestContext);
+  // the header/body fallbacks only matter for routes mounted outside that prefix.
+  const provider = req.provider || (req.headers['x-provider'] as string) || (req.body?.provider) || 'unknown';
+  const model = req.model || (req.body?.model) || (req.headers['x-model'] as string) || 'unknown';
   
-  // v1.7.0: Enhanced Token and Cost Estimation
-  const inputTokens = estimateTokenCount(req.body?.messages || []);
+  // v1.7.0: Enhanced Token and Cost Estimation (reads system/tools/contents/input, not just messages)
+  const inputTokens = estimateRequestTokens(req.body);
   const estimatedCost = estimateRequestCost(provider, model, inputTokens, project.estimate_multiplier);
 
   // 1. LEGACY: Project-level Budget Check (v1.0.x)
@@ -83,7 +86,7 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
 
       // Layer 1: Exceeded
       if (spent >= limit) {
-          const msg = `Project budget exceeded: $${spent.toFixed(2)} spent of $${limit.toFixed(2)} limit.`;
+          const msg = `Daily project budget exceeded: $${spent.toFixed(2)} spent of $${limit.toFixed(2)} limit.`;
           logBlockedRequest(db, project.id, req.path, msg, provider, model);
           return res.status(429).json({ 
               error: { 
@@ -96,7 +99,7 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
 
       // Layer 2: Buffer
       if (spent >= (limit - buffer)) {
-          const msg = `Project budget nearly exhausted. $${(limit - spent).toFixed(4)} remaining (buffer: $${buffer.toFixed(2)}).`;
+          const msg = `Daily project budget nearly exhausted. $${(limit - spent).toFixed(4)} remaining (buffer: $${buffer.toFixed(2)}).`;
           logBlockedRequest(db, project.id, req.path, msg, provider, model);
           return res.status(429).json({
               error: {
@@ -109,7 +112,7 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
 
       // Layer 3: Pre-estimation (Threshold 60%)
       if (utilization >= 0.60 && spent + estimatedCost >= limit) {
-          const msg = `Insufficient project budget. $${(limit - spent).toFixed(4)} remaining, estimated cost ~$${estimatedCost.toFixed(4)}.`;
+          const msg = `Insufficient daily project budget. $${(limit - spent).toFixed(4)} remaining, estimated cost ~$${estimatedCost.toFixed(4)}.`;
           logBlockedRequest(db, project.id, req.path, msg, provider, model);
           return res.status(429).json({
               error: {
@@ -156,7 +159,7 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
   try {
       const status = await BudgetService.getBudgetStatus(provider, model);
       if (status && status.percent >= 0.80) {
-          res.setHeader('X-Budget-Warning', `${status.name} spend at ${(status.percent * 100).toFixed(0)}% of daily budget ($${status.spent.toFixed(2)} / $${status.limit.toFixed(2)})`);
+          res.setHeader('X-Budget-Warning', `${status.name} spend at ${(status.percent * 100).toFixed(0)}% of ${status.period} budget ($${status.spent.toFixed(2)} / $${status.limit.toFixed(2)})`);
           res.setHeader('X-Budget-Spent', status.spent.toFixed(2));
           res.setHeader('X-Budget-Limit', status.limit.toFixed(2));
           res.setHeader('X-Budget-Remaining', (status.limit - status.spent).toFixed(2));
