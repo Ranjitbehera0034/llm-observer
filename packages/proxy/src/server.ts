@@ -1,4 +1,5 @@
-import { initDb, seedPricing, seedDefaultApiKey, seedSyncProviders } from '@llm-observer/database';
+import type { Server } from 'http';
+import { initDb, closeDb, seedPricing, seedDefaultApiKey, seedSyncProviders } from '@llm-observer/database';
 import { initPricingCache } from './utils/pricing';
 import { startAnomalyDetection } from './anomalyDetector';
 import { startRetentionCleanup } from './retentionManager';
@@ -13,6 +14,7 @@ import { initParsers } from './parsers/manager';
 import { startLicenseRevalidation } from './licenseManager';
 import { startTelemetry } from './telemetry';
 import { createApp, createDashboardApp } from './app';
+import { internalLogger } from './internalLogger';
 import './types';
 
 // The app factories live in ./app and are re-exported so tests (and anything
@@ -25,7 +27,89 @@ const PORT = process.env.LLM_OBSERVER_PROXY_PORT || process.env.PROXY_PORT || 40
 const DASHBOARD_PORT = process.env.LLM_OBSERVER_PORT || process.env.DASHBOARD_PORT || 4001;
 const HOST = process.env.LLM_OBSERVER_HOST || '127.0.0.1';
 
+const SHUTDOWN_GRACE_MS = 5000;
+
+/**
+ * Listen, and turn a bind failure into an actionable message instead of an
+ * unhandled 'error' event. A busy port exits non-zero so supervisors notice.
+ */
+export function listenOrExit(
+    app: { listen: (port: number, host: string, cb: () => void) => Server },
+    label: string,
+    port: number,
+    host: string,
+    envVar: string,
+    onListening: () => void,
+    exit: (code: number) => void = (code) => process.exit(code)
+): Server {
+    const server = app.listen(port, host, onListening);
+    server.once('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE') {
+            console.error(
+                `${label} cannot start: port ${port} on ${host} is already in use. ` +
+                `Another LLM Observer (or a different program) is listening there. ` +
+                `Stop it (run "llm-observer stop"), or choose a free port with ${envVar}=<port>.`
+            );
+        } else {
+            console.error(`${label} failed to listen on ${host}:${port}: ${err.message}`);
+        }
+        exit(1);
+    });
+    return server;
+}
+
+export interface ShutdownDeps {
+    servers: Server[];
+    flush: () => Promise<void>;
+    closeDatabase: () => void;
+    exit: (code: number) => void;
+    graceMs?: number;
+}
+
+/**
+ * Build a once-only shutdown routine: stop accepting connections, flush queued
+ * request rows to SQLite, close the database (checkpointing the WAL), then exit.
+ * A hard timer guarantees exit even if a keep-alive connection never drains.
+ */
+export function createShutdownHandler(deps: ShutdownDeps): (signal: string) => Promise<void> {
+    let started = false;
+    return async (signal: string) => {
+        if (started) return;
+        started = true;
+        console.log(`Received ${signal}, flushing and shutting down...`);
+
+        const hardExit = setTimeout(() => {
+            console.error('Shutdown timed out; exiting.');
+            deps.exit(1);
+        }, deps.graceMs ?? SHUTDOWN_GRACE_MS);
+        hardExit.unref?.();
+
+        let code = 0;
+        // Stop accepting new connections; do not wait on open ones, the flush matters more.
+        for (const server of deps.servers) {
+            try { server.close(); } catch { /* not listening */ }
+            (server as any).closeIdleConnections?.();
+        }
+        try {
+            await deps.flush();
+        } catch (err) {
+            console.error('Failed to flush queued requests on shutdown:', err);
+            code = 1;
+        }
+        try {
+            deps.closeDatabase();
+        } catch (err) {
+            console.error('Failed to close database on shutdown:', err);
+            code = 1;
+        }
+        clearTimeout(hardExit);
+        deps.exit(code);
+    };
+}
+
 // --- Boot Sequence ---
+const servers: Server[] = [];
+
 function bootstrap() {
     try {
         // 1. Initialize DB and run migrations FIRST
@@ -46,9 +130,9 @@ function bootstrap() {
         }
 
         // 4. Start accepting Proxy Traffic
-        createApp().listen(Number(PORT), HOST, () => {
+        servers.push(listenOrExit(createApp(), 'LLM Observer Proxy', Number(PORT), HOST, 'LLM_OBSERVER_PROXY_PORT', () => {
             console.log(`🚀 LLM Observer Proxy running on http://${HOST}:${PORT}`);
-        });
+        }));
 
         // 5. Start background tasks
         startRateLimitPersistence();
@@ -74,9 +158,18 @@ function main() {
     bootstrap();
 
     // FIX SEC-03: Bind to 127.0.0.1 by default — dashboard must not be reachable from LAN unless LLM_OBSERVER_HOST is set explicitly
-    createDashboardApp().listen(Number(DASHBOARD_PORT), HOST, () => {
+    servers.push(listenOrExit(createDashboardApp(), 'LLM Observer Dashboard', Number(DASHBOARD_PORT), HOST, 'LLM_OBSERVER_PORT', () => {
         console.log(`📊 Dashboard API running on http://${HOST}:${DASHBOARD_PORT}`);
+    }));
+
+    const shutdown = createShutdownHandler({
+        servers,
+        flush: () => internalLogger.flush(),
+        closeDatabase: closeDb,
+        exit: (code) => process.exit(code),
     });
+    process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
+    process.on('SIGINT', () => { void shutdown('SIGINT'); });
 }
 
 // Only start when run as the entry point (node dist/server.js, ts-node src/server.ts).

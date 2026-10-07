@@ -22,7 +22,6 @@ import { initDb } from '@llm-observer/database';
 import { checkForUpdate } from './updateNotice';
 import { version } from '../package.json';
 
-initDb();
 checkForUpdate('llm-observer', version);
 
 export const banner = `
@@ -42,6 +41,15 @@ program
   .name('llm-observer')
   .description('CLI Management Tool for LLM Observer Proxy & Dashboard')
   .version(version);
+
+// Open (and migrate) the local database only when a command actually runs, never
+// at import: --help, --version and unknown commands must not touch any database.
+// `start` and `stop` skip it too: the server child owns the database, and `stop`
+// only signals it.
+program.hook('preAction', (_thisCommand, actionCommand) => {
+  if (['start', 'stop'].includes(actionCommand.name())) return;
+  initDb();
+});
 
 // Register modular commands
 setupStatusCommands(program);

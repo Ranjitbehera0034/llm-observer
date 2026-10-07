@@ -1,10 +1,18 @@
-import { initDb, getDb } from '../index';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { initDb, getDb, closeDb } from '../index';
 import { createProject, getProject, deleteProject } from '../repositories/projects.repo';
 import { createBudgetLimit, getBudgetLimits, deleteBudgetLimit } from '../repositories/budgets.repo';
 
 describe('Database Layer Repositories', () => {
     beforeAll(() => {
+        closeDb();
         initDb(':memory:');
+    });
+
+    afterAll(() => {
+        closeDb();
     });
 
     describe('Projects', () => {
@@ -45,7 +53,21 @@ describe('Database Layer Repositories', () => {
     });
 
     it('verifies migration idempotency', () => {
-        // Run initDb again should not fail
-        expect(() => initDb(':memory:')).not.toThrow();
+        // initDb(':memory:') returns the cached singleton, so reopen a real file twice instead.
+        closeDb();
+        const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'llmo-idem-')), 'data.db');
+        const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+        try {
+            const first = initDb(file);
+            const count = () => (first.prepare('SELECT count(*) AS n FROM _schema_version_v2').get() as any).n;
+            const applied = count();
+            expect(applied).toBeGreaterThan(0);
+            closeDb();
+            const second = initDb(file);
+            expect((second.prepare('SELECT count(*) AS n FROM _schema_version_v2').get() as any).n).toBe(applied);
+        } finally {
+            log.mockRestore();
+            closeDb();
+        }
     });
 });
