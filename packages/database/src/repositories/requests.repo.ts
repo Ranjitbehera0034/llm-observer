@@ -57,7 +57,10 @@ export const insertRequest = (req: Omit<RequestRecord, 'id'>): string => {
   return id;
 };
 
-export const bulkInsertRequests = (requests: Omit<RequestRecord, 'id'>[]) => {
+/** A record to insert. A caller that already told someone the id (SSE, alerts) supplies it. */
+export type NewRequestRecord = Omit<RequestRecord, 'id'> & { id?: string };
+
+export const bulkInsertRequests = (requests: NewRequestRecord[]) => {
   const db = getDb();
 
   const insertStmt = db.prepare(`
@@ -72,9 +75,9 @@ export const bulkInsertRequests = (requests: Omit<RequestRecord, 'id'>[]) => {
     )
   `);
 
-  const insertMany = db.transaction((reqs: Omit<RequestRecord, 'id'>[]) => {
+  const insertMany = db.transaction((reqs: NewRequestRecord[]) => {
     for (const req of reqs) {
-      const id = randomUUID();
+      const id = req.id || randomUUID();
       insertStmt.run(
         id, req.project_id, req.provider, req.model, req.endpoint || null,
         req.prompt_tokens || null, req.completion_tokens || null, req.total_tokens || null,

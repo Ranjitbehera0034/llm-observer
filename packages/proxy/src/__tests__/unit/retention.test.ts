@@ -102,8 +102,66 @@ describe('runCleanup', () => {
         jest.spyOn(os, 'hostname').mockReturnValue('another-host');
         seed();
         await runCleanup();
-        expect(requestIds()).toEqual(['r-10d', 'r-30d']);  // still the 90-day window
+        // Unresolved licence: nothing is deleted at all, not even down to the last good window.
+        expect(requestIds()).toEqual(['r-100d', 'r-10d', 'r-30d']);
+        expect(alertIds()).toEqual(['a-100d', 'a-10d', 'a-1d']);
         expect((await getLicenseInfo(true)).notice).toMatch(/could not be verified/i);
+    });
+
+    it('deletes nothing on a legacy-key HMAC mismatch even when no good window was ever recorded', async () => {
+        process.env.LLM_OBSERVER_DEV_LICENSE = '1';
+        try {
+            expect((await activateLicense('PRO_LS_ABCD1234_SUB1')).success).toBe(true);
+        } finally { delete process.env.LLM_OBSERVER_DEV_LICENSE; }
+        settings.delete('last_good_retention_days');   // first 2.0.2 run after an upgrade
+
+        jest.spyOn(os, 'hostname').mockReturnValue('recreated-container');
+        seed();
+        await runCleanup();
+        expect(requestIds()).toEqual(['r-100d', 'r-10d', 'r-30d']);
+        expect(alertIds()).toEqual(['a-100d', 'a-10d', 'a-1d']);
+        expect((await getLicenseInfo(true)).integrityMismatch).toBe(true);
+        expect((await getLicenseInfo(true)).notice).toMatch(/could not be verified/i);
+        expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('could not be verified'));
+    });
+
+    it('records the Pro window when a licence is activated', async () => {
+        expect(settings.get('last_good_retention_days')).toBeUndefined();
+        expect((await activateLicense(sign('ls:seed'))).success).toBe(true);
+        expect(settings.get('last_good_retention_days')).toBe('90');
+    });
+
+    it('deletes nothing when a stored signed key cannot be verified and was never cancelled', async () => {
+        settings.set('license_key', 'LLMO1.corrupted.payload');
+        settings.set('license_status', 'active');
+        seed();
+        await runCleanup();
+        expect(requestIds()).toEqual(['r-100d', 'r-10d', 'r-30d']);
+        const info = await getLicenseInfo(true);
+        expect(info.integrityMismatch).toBe(true);
+        expect(info.isPro).toBe(false);
+        expect(info.notice).toBeTruthy();
+    });
+
+    it('keeps budget alerts (the dedupe rows) and their acknowledged state past the window', async () => {
+        const db = getDb();
+        db.prepare("INSERT INTO alerts (id, project_id, type, message, budget_id, period_start, acknowledged, created_at) VALUES ('b-old', 'default', 'budget_exceeded', 'x', 7, '2026-10-01', 1, ?)")
+            .run(daysAgo(40));
+        await runCleanup();
+        expect(alertIds()).toEqual(['a-1d', 'b-old']);   // ordinary old alerts go, the budget alert stays
+        const row = db.prepare("SELECT acknowledged FROM alerts WHERE id = 'b-old'").get() as any;
+        expect(row.acknowledged).toBe(1);
+    });
+
+    it('deletes requests just past the cutoff on the same calendar date (ISO vs datetime text)', async () => {
+        const db = getDb();
+        const ins = db.prepare("INSERT INTO requests (id, project_id, provider, model, cost_usd, created_at) VALUES (?, 'default', 'openai', 'gpt-4', 0.01, ?)");
+        ins.run('r-just-over', new Date(Date.now() - 7 * 86400_000 - 60_000).toISOString());
+        ins.run('r-just-under', new Date(Date.now() - 7 * 86400_000 + 3600_000).toISOString());
+        // A row written by the column default (space-separated) must compare correctly too.
+        db.prepare("INSERT INTO requests (id, project_id, provider, model, cost_usd, created_at) VALUES ('r-sqlite-fmt', 'default', 'openai', 'gpt-4', 0.01, datetime('now', '-8 days'))").run();
+        await runCleanup();
+        expect(requestIds()).toEqual(['r-just-under']);
     });
 
     it('does shorten retention once the licence is confirmed cancelled', async () => {

@@ -100,6 +100,8 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
     }, (err) => {
         console.error('Proxy Error:', err);
         const errorRecord = {
+            // Minted here so the alert and the stored row share one id (see the success path).
+            id: crypto.randomUUID(),
             project_id: projectId,
             provider: providerName,
             model: requestInfo.model || 'unknown',
@@ -321,6 +323,9 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
             }
 
             const reqRecord = {
+                // Minted here, not at insert, so the alert metadata, the SSE event
+                // and the stored row all carry the same id.
+                id: crypto.randomUUID(),
                 project_id: projectId,
                 provider: providerName,
                 model: requestInfo.model,

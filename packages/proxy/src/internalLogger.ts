@@ -1,4 +1,4 @@
-import { RequestRecord, bulkInsertRequests, getAlertRules, createAlert } from '@llm-observer/database';
+import { NewRequestRecord, bulkInsertRequests, getAlertRules, createAlert } from '@llm-observer/database';
 
 const BATCH_SIZE = 10;
 const BATCH_TIMEOUT = 5000; // 5 seconds
@@ -14,7 +14,7 @@ export function __resetAlertCooldownsForTests(): void {
     lastAlertAt.clear();
 }
 
-let queue: Omit<RequestRecord, 'id'>[] = [];
+let queue: NewRequestRecord[] = [];
 let timeout: NodeJS.Timeout | null = null;
 
 /**
@@ -22,7 +22,7 @@ let timeout: NodeJS.Timeout | null = null;
  * This replaces the Redis/BullMQ dependency for a zero-config local experience.
  */
 export const internalLogger = {
-    add: async (requestData: Omit<RequestRecord, 'id'>) => {
+    add: async (requestData: NewRequestRecord) => {
         queue.push(requestData);
 
         // Instant alert evaluation (non-blocking)

@@ -38,6 +38,16 @@ describe('alert evaluation', () => {
         expect(data).toMatchObject({ project_id: 'p1', model: 'gpt-4', status: 'error', cost_usd: 2, latency_ms: 9000 });
     });
 
+    it('links the alert to the request id the record was given, and stores the record under that id', async () => {
+        getAlertRules.mockReturnValue([{ id: 'r1', name: 'slow', is_active: 1, condition_type: 'latency_spike', threshold: 100, webhook_url: null }]);
+        await internalLogger.add(record({ id: 'req-abc-123' }) as any);
+        await settle();
+        expect(JSON.parse(createAlert.mock.calls[0][0].data).request_id).toBe('req-abc-123');
+        await internalLogger.flush();
+        const { bulkInsertRequests } = require('@llm-observer/database');
+        expect(bulkInsertRequests.mock.calls.at(-1)[0][0].id).toBe('req-abc-123');
+    });
+
     it('fires a rule at most once per 5 minutes per project', async () => {
         getAlertRules.mockReturnValue([{ id: 'r1', name: 'slow', is_active: 1, condition_type: 'latency_spike', threshold: 100, webhook_url: null }]);
         const now = jest.spyOn(Date, 'now');

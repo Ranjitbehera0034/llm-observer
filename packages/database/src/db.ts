@@ -28,14 +28,24 @@ const isLlmObserverDb = (file: string): boolean => {
     }
 };
 
-const migrateLegacyDb = (newPath: string) => {
+const LEGACY_SUFFIX = '.legacy.bak';
+
+// Default places an old install may have left its database.
+const defaultLegacyPaths = () => [
+    path.join(__dirname, '..', 'data.db'), // e.g. packages/proxy/data.db or dist/../data.db
+    path.join(__dirname, 'data.db')
+];
+
+/**
+ * Seed `newPath` from an old install-dir database. The copy goes through SQLite
+ * (VACUUM INTO) rather than a file copy, so rows still sitting in the legacy
+ * -wal are included, and it is written to a temporary name and renamed so an
+ * interrupted copy can never look like a populated database on the next start.
+ */
+export const migrateLegacyDb = (newPath: string, legacyPaths: string[] = defaultLegacyPaths()) => {
     // Old install locations only. The current working directory is deliberately
     // NOT probed: running the CLI from a directory that happens to hold some other
     // data.db must never move or copy that file.
-    const legacyPaths = [
-        path.join(__dirname, '..', 'data.db'), // e.g. packages/proxy/data.db or dist/../data.db
-        path.join(__dirname, 'data.db')
-    ];
 
     // Never overwrite an existing database that holds anything. A new database is
     // only seeded from a legacy one when there is no file (or an empty file) yet.
@@ -50,15 +60,32 @@ const migrateLegacyDb = (newPath: string) => {
         }
 
         console.log(`[MIGRATION] Found legacy database at ${oldPath}. Moving to ${newPath}...`);
+        const partial = `${newPath}.migrating`;
         try {
             const newDir = path.dirname(newPath);
             if (!fs.existsSync(newDir)) fs.mkdirSync(newDir, { recursive: true });
+            fs.rmSync(partial, { force: true });
 
-            fs.copyFileSync(oldPath, newPath);
-            fs.renameSync(oldPath, `${oldPath}.legacy.bak`); // Keep a backup of the old one
+            const legacy = new Database(oldPath, { fileMustExist: true });
+            try {
+                // Opening replays a pending -wal; VACUUM INTO then writes one consistent file.
+                legacy.exec(`VACUUM INTO '${partial.replace(/'/g, "''")}'`);
+            } finally {
+                legacy.close(); // last connection: checkpoints and normally removes -wal/-shm
+            }
+            fs.renameSync(partial, newPath);
+
+            fs.renameSync(oldPath, `${oldPath}${LEGACY_SUFFIX}`); // Keep a backup of the old one
+            // Anything the close left behind belongs to the old file: keep it paired with
+            // the renamed file rather than orphaned beside a path a new database may reuse.
+            for (const ext of ['-wal', '-shm']) {
+                if (!fs.existsSync(oldPath + ext)) continue;
+                try { fs.renameSync(oldPath + ext, `${oldPath}${LEGACY_SUFFIX}${ext}`); } catch { /* best effort */ }
+            }
             console.log(`[MIGRATION] Successfully moved database. Old file renamed to .legacy.bak`);
             return;
         } catch (err) {
+            try { fs.rmSync(partial, { force: true }); } catch { /* ignore */ }
             console.error(`[MIGRATION] Failed to move legacy database:`, err);
         }
     }
@@ -66,23 +93,117 @@ const migrateLegacyDb = (newPath: string) => {
 
 const BACKUP_INFIX = '.pre-migrate-';
 const BACKUP_SUFFIX = '.bak';
+const BACKUP_PARTIAL_SUFFIX = '.partial';
 const BACKUPS_TO_KEEP = 2;
+const BACKUP_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
+export const SKIP_MIGRATION_BACKUP_ENV = 'LLM_OBSERVER_SKIP_MIGRATION_BACKUP';
 
-// Snapshot the database before applying pending migrations (VACUUM INTO writes a
-// consistent, standalone copy even in WAL mode) and keep only the newest few.
-const backupBeforeMigrating = (database: Database.Database): string => {
-    const dbFile = database.name;
-    const stamp = new Date().toISOString().replace(/[-:.]/g, '');
-    const backupPath = `${dbFile}${BACKUP_INFIX}${stamp}${BACKUP_SUFFIX}`;
-    database.exec(`VACUUM INTO '${backupPath.replace(/'/g, "''")}'`);
+const backupPrefix = (dbFile: string) => `${path.basename(dbFile)}${BACKUP_INFIX}`;
 
+const listBackups = (dbFile: string): string[] => {
     const dir = path.dirname(dbFile);
-    const prefix = `${path.basename(dbFile)}${BACKUP_INFIX}`;
-    const backups = fs.readdirSync(dir)
-        .filter(f => f.startsWith(prefix) && f.endsWith(BACKUP_SUFFIX))
-        .sort();
-    for (const old of backups.slice(0, Math.max(0, backups.length - BACKUPS_TO_KEEP))) {
-        try { fs.unlinkSync(path.join(dir, old)); } catch { /* best effort */ }
+    const prefix = backupPrefix(dbFile);
+    try {
+        return fs.readdirSync(dir)
+            .filter(f => f.startsWith(prefix) && f.endsWith(BACKUP_SUFFIX))
+            .sort((a, b) => stampOf(a).localeCompare(stampOf(b)) || a.localeCompare(b))
+            .map(f => path.join(dir, f));
+    } catch {
+        return [];
+    }
+};
+
+// 'data.db.pre-migrate-v016-20261007T165400370Z.bak' -> '20261007T165400370Z'
+const stampOf = (file: string) => /(\d{8}T\d+Z)\.bak$/.exec(file)?.[1] ?? '';
+
+/**
+ * Expire pre-migration backups: they are full copies of the database (proxy
+ * bodies included), so keep only the newest few and nothing older than 14 days.
+ * `protect` is a backup that must survive regardless (the one in use by an upgrade).
+ */
+export const pruneMigrationBackups = (dbFile: string, now: number = Date.now(), protect: string | null = null): void => {
+    const backups = listBackups(dbFile);
+    const keep = new Set(backups.slice(Math.max(0, backups.length - BACKUPS_TO_KEEP)));
+    for (const file of backups) {
+        if (protect && path.resolve(file) === path.resolve(protect)) continue; // the upgrade in progress relies on it
+        let expired = false;
+        try { expired = now - fs.statSync(file).mtimeMs > BACKUP_MAX_AGE_MS; } catch { /* vanished */ }
+        if (keep.has(file) && !expired) continue;
+        try { fs.unlinkSync(file); } catch { /* best effort */ }
+    }
+};
+
+/**
+ * Remove the database file and everything kept beside it that holds a copy of
+ * its data: -wal/-shm/-journal, pre-migration backups (and half-written ones)
+ * and the .legacy.bak left by a legacy relocation. Returns the files removed.
+ */
+export const removeDatabaseFiles = (dbFile: string): string[] => {
+    const dir = path.dirname(dbFile);
+    const base = path.basename(dbFile);
+    const removed: string[] = [];
+    let names: string[] = [];
+    try { names = fs.readdirSync(dir); } catch { return removed; }
+    for (const name of names) {
+        const isOurs = name === base
+            || name === `${base}-wal` || name === `${base}-shm` || name === `${base}-journal`
+            || name.startsWith(`${base}${BACKUP_INFIX}`)
+            || name === `${base}${LEGACY_SUFFIX}` || name.startsWith(`${base}${LEGACY_SUFFIX}-`);
+        if (!isOurs) continue;
+        try {
+            fs.rmSync(path.join(dir, name), { force: true });
+            removed.push(path.join(dir, name));
+        } catch { /* best effort */ }
+    }
+    return removed;
+};
+
+/**
+ * Snapshot the database before applying pending migrations (VACUUM INTO writes a
+ * consistent, standalone copy even in WAL mode). Returns the backup path, or null
+ * when backups are switched off. The copy is written under a temporary name and
+ * renamed on success, so a failure never leaves a truncated file that looks like
+ * a backup. The file name carries the schema version the upgrade starts from and
+ * only one backup is taken per starting version: retrying a failed upgrade must
+ * never replace the one true pre-migration copy with an already half-migrated one.
+ * That copy is reused only while it is younger than the backup retention window.
+ */
+const backupBeforeMigrating = (database: Database.Database, startVersion: string): string | null => {
+    if (process.env[SKIP_MIGRATION_BACKUP_ENV] === '1') {
+        console.log(`Skipping the pre-migration backup (${SKIP_MIGRATION_BACKUP_ENV}=1).`);
+        return null;
+    }
+    const dbFile = database.name;
+    const versionTag = `v${startVersion}-`;
+
+    // Only a recent copy counts: an older one is about to expire and would no longer be a usable rollback point.
+    const now = Date.now();
+    const existing = listBackups(dbFile).reverse().find(f => {
+        if (!path.basename(f).startsWith(`${backupPrefix(dbFile)}${versionTag}`)) return false;
+        try { return now - fs.statSync(f).mtimeMs <= BACKUP_MAX_AGE_MS; } catch { return false; }
+    });
+    if (existing) return existing;
+
+    const stamp = new Date().toISOString().replace(/[-:.]/g, '');
+    const backupPath = `${dbFile}${BACKUP_INFIX}${versionTag}${stamp}${BACKUP_SUFFIX}`;
+    const partialPath = `${backupPath}${BACKUP_PARTIAL_SUFFIX}`;
+    try {
+        fs.rmSync(partialPath, { force: true });
+        // Created owner-only up front (VACUUM INTO accepts an empty target), so the
+        // copy is never readable by others while it is being written.
+        fs.writeFileSync(partialPath, '', { mode: 0o600 });
+        database.exec(`VACUUM INTO '${partialPath.replace(/'/g, "''")}'`);
+        try { fs.chmodSync(partialPath, 0o600); } catch { /* not supported on this platform */ }
+        fs.renameSync(partialPath, backupPath);
+    } catch (err: any) {
+        try { fs.rmSync(partialPath, { force: true }); } catch { /* ignore */ }
+        let size = '';
+        try { size = ` (about ${Math.ceil(fs.statSync(dbFile).size / (1024 * 1024))} MB)`; } catch { /* ignore */ }
+        throw new Error(
+            `Could not back up the database before migrating it: ${err.message}. ` +
+            `The backup is a full copy of the database${size}, so check that the disk has enough free space. ` +
+            `To upgrade without a backup, set ${SKIP_MIGRATION_BACKUP_ENV}=1 and start again. The database was not modified.`
+        );
     }
     return backupPath;
 };
@@ -112,7 +233,10 @@ export const runMigrations = (database: Database.Database, migrationsDir: string
         .sort();
     const isApplied = database.prepare('SELECT 1 FROM _schema_version_v2 WHERE name = ?');
     const pending = files.filter(f => !isApplied.get(f));
-    if (pending.length === 0) return [];
+    if (pending.length === 0) {
+        if (!database.memory) pruneMigrationBackups(database.name); // backups expire even without an upgrade
+        return [];
+    }
 
     let backupPath: string | null = null;
     if (!database.memory) {
@@ -120,8 +244,11 @@ export const runMigrations = (database: Database.Database, migrationsDir: string
             "SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != '_schema_version_v2'"
         ).get() as { n: number };
         if (existing.n > 0) {
-            backupPath = backupBeforeMigrating(database);
-            console.log(`Database backed up before migrating: ${backupPath}`);
+            const last = (database.prepare('SELECT max(name) AS name FROM _schema_version_v2').get() as { name: string | null }).name;
+            const startVersion = (last ? last.split('_')[0].replace(/[^A-Za-z0-9]/g, '') : '') || 'none';
+            backupPath = backupBeforeMigrating(database, startVersion);
+            if (backupPath) console.log(`Database backed up before migrating: ${backupPath}`);
+            pruneMigrationBackups(database.name, Date.now(), backupPath);
         }
     }
 

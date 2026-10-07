@@ -14,7 +14,7 @@ router.get('/', (req, res) => {
             COUNT(*) AS session_count,
             SUM(estimated_cost_usd) AS total_cost
         FROM sessions
-        WHERE started_at >= datetime('now', ?)
+        WHERE datetime(started_at) >= datetime('now', ?)
         GROUP BY day_of_week, hour
     `);
     

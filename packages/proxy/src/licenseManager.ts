@@ -42,7 +42,7 @@ export interface LicenseInfo {
     isPro: boolean;
     licenseKey?: string;
     status: 'active' | 'cancelled' | 'free';
-    /** A stored legacy key could not be checked against this machine; limits fall back to Free but nothing is deleted on that basis. */
+    /** A stored key could not be verified (machine mismatch for a legacy key, unverifiable signed key); limits fall back to Free but nothing is deleted on that basis. */
     integrityMismatch?: boolean;
     /** Human-readable explanation for the dashboard when something needs the user's attention. */
     notice?: string;
@@ -104,6 +104,20 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
     const isPro = !!licenseKey && (
         isSignedKey(licenseKey) ? verifySignedKey(licenseKey) !== null : licenseKey.startsWith('PRO_')
     );
+
+    // A signed key that is stored, not cancelled, yet fails verification (damaged
+    // setting, key from another build) is unresolved, not revoked: keep Free limits
+    // but flag it so retention does not delete on that basis.
+    if (licenseKey && isSignedKey(licenseKey) && !isPro) {
+        console.warn('[LICENSE] The stored license key could not be verified. Treating as free tier.');
+        cachedLicense = {
+            isPro: false, licenseKey: undefined, status: 'free', limits: FREE_LIMITS,
+            integrityMismatch: true,
+            notice: 'Your stored license key could not be verified (it may be damaged or from an incompatible version). Re-enter your license key to restore Pro.'
+        };
+        lastCheckTime = now;
+        return cachedLicense;
+    }
 
     // Legacy keys carry no signature, so they are bound to this machine with an
     // HMAC to catch direct DB edits. Signed keys are already verified above and
@@ -181,6 +195,9 @@ function storeActiveLicense(key: string): void {
     updateSetting('license_status', 'active');
     updateSetting('license_machine_id', getMachineId());
     updateSetting('license_checked_at', new Date().toISOString());
+    // Seed the retention window now, so a licence that cannot be verified before
+    // the first cleanup after activation or upgrade still has a known-good window.
+    updateSetting('last_good_retention_days', String(PRO_LIMITS.logRetentionDays));
     cachedLicense = null;
 }
 

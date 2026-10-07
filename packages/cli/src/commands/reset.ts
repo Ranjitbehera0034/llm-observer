@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import fs from 'fs';
 import path from 'path';
-import { getDbPath } from '@llm-observer/database';
+import { getDbPath, closeDb, removeDatabaseFiles } from '@llm-observer/database';
 
 export const setupResetCommands = (program: Command) => {
   program
@@ -23,11 +23,21 @@ export const setupResetCommands = (program: Command) => {
       }
 
       try {
-        if (fs.existsSync(dbPath)) {
-            fs.unlinkSync(dbPath);
+        // The CLI opens the database before every command; release it so the
+        // -wal/-shm files are checkpointed and can be removed with the rest.
+        closeDb();
+
+        // The database plus its -wal/-shm, the pre-upgrade backups and any
+        // .legacy.bak: every one of them holds a full copy of the data.
+        const removed = removeDatabaseFiles(dbPath);
+        if (removed.includes(dbPath)) {
             console.log(chalk.green('✔ Database deleted successfully.'));
         } else {
             console.log(chalk.gray('Database file not found. Nothing to reset.'));
+        }
+        const extras = removed.filter(f => f !== dbPath).map(f => path.basename(f));
+        if (extras.length > 0) {
+            console.log(chalk.green(`✔ Removed ${extras.length} backup/journal file(s): ${extras.join(', ')}`));
         }
 
         // Also clear any logs if they exist
