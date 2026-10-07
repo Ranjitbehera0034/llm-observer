@@ -1,5 +1,5 @@
 import { initDb, getDb } from '../index';
-import { insertSession, getSessionById, updateSessionTotals } from '../repositories/sessions.repo';
+import { insertSession, getSessionById, updateSessionTotals, deleteMockCursorSessions } from '../repositories/sessions.repo';
 
 const base = (session_id: string) => ({
     provider: 'claude-code',
@@ -56,5 +56,24 @@ describe('sessions repository', () => {
         expect(row.is_estimated).toBe(1);
         expect(row.cost_source).toBe('family_fallback');
         expect(row.estimated_cost_usd).toBeCloseTo(1.5);
+    });
+});
+
+describe('deleteMockCursorSessions', () => {
+    beforeAll(() => {
+        initDb(':memory:');
+    });
+
+    it('removes only the legacy Cursor placeholder rows', () => {
+        const db = getDb();
+        db.prepare('DELETE FROM sessions').run();
+        insertSession({ provider: 'cursor', session_id: 'cursor-sync-1760000000000', project_path: 'mock/cursor/project', started_at: '2026-07-01T10:00:00.000Z' });
+        insertSession({ provider: 'cursor', session_id: 'real-1', project_path: '/work/app', started_at: '2026-07-01T10:00:00.000Z', estimated_cost_usd: 2 });
+        insertSession({ provider: 'aider', session_id: 'cursor-sync-9', project_path: 'mock/cursor/project', started_at: '2026-07-01T10:00:00.000Z' });
+
+        expect(deleteMockCursorSessions()).toBe(1);
+        const left = (db.prepare('SELECT provider, session_id FROM sessions ORDER BY id').all() as any[]).map(r => `${r.provider}:${r.session_id}`);
+        expect(left).toEqual(['cursor:real-1', 'aider:cursor-sync-9']);
+        expect(deleteMockCursorSessions()).toBe(0);
     });
 });

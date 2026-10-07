@@ -55,9 +55,10 @@ interface MatrixEntry {
  * format still sitting on someone's disk, this fails loudly here instead of
  * a user silently seeing a $0 session.
  *
- * Other editors' parsers (Cursor/Aider/Cline/Codex) are not yet wired into
- * this matrix — their fixture tests are being built in a separate effort
- * and can be added as sibling entries once landed.
+ * Other editors' parsers are deliberately NOT in this matrix: their fixtures are
+ * hand-written, not recordings, and a matrix of hand-written fixtures would only
+ * prove the parser agrees with itself. Add an entry only with a real recording
+ * (see CONTRIBUTING.md, "Capturing a real recording").
  */
 describe('Claude parser — recorded format matrix', () => {
     let tmpHome: string;

@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  See every dollar across 7 AI coding tools: Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI — without changing how you work.
+  See every dollar across your AI coding tools — without changing how you work. Claude Code is verified against real recordings; Aider, Cursor, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI have parsers that are still unverified or experimental (see [Auto-Detected Session Files](#auto-detected-session-files)).
 </p>
 
 <p align="center">
@@ -60,7 +60,7 @@ On first launch, LLM Observer automatically detects your installed AI tools, par
 
 ### Session Tracking (Zero Config)
 
-- **Auto-Detection** — Automatically finds Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI data on your machine
+- **Auto-Detection** — Automatically finds Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI data on your machine (only Claude Code is verified against real recordings; the rest are marked unverified or experimental)
 - **Session Explorer** — Browse every AI conversation with cost, duration, tokens, model, and project
 - **Incremental Parsing** — Only new/modified files are re-parsed on startup (fast after first run)
 - **Session Type Labels** — Automatically classifies sessions as "interactive" or "agentic"
@@ -131,7 +131,7 @@ On first launch, LLM Observer automatically detects your installed AI tools, par
 
 - **Per-App Attribution** — See which app (Cursor, Claude Code, scripts) drives your cost
 - **Zero Setup for Apps** — Uses OS-level connection detection (`lsof` / `ss`), no per-app config
-- **Subscription Insight** — Estimates API-equivalent cost for subscription tools like Cursor Pro
+- **Subscription Insight** — Estimates API-equivalent cost for subscription tools, from tools whose usage is actually read
 
 ### Unified Dashboard
 
@@ -253,15 +253,17 @@ LLM_OBSERVER_PORT=3000 llm-observer start
 
 ### Auto-Detected Session Files
 
-| Tool | Location | Format |
-|------|----------|--------|
-| Claude Code | `~/.claude/projects/` | JSONL |
-| Cursor IDE | `~/.cursor/ai-tracking/ai-code-tracking.db` | SQLite |
-| Aider | `~/.aider/analytics.jsonl` | JSONL |
-| GitHub Copilot | `~/Library/.../github.copilot-chat/state.vscdb` | SQLite |
-| Windsurf | `~/Library/.../Windsurf/User/globalStorage/*/state.vscdb` | SQLite |
-| Cline / Roo Code | `~/Library/.../globalStorage/{extensionId}/tasks/*/api_conversation_history.json` | JSON |
-| OpenAI Codex CLI | `~/.codex/sessions/*.jsonl` | JSONL |
+| Tool | Location | Format | Status |
+|------|----------|--------|--------|
+| Claude Code | `~/.claude/projects/` | JSONL | **Verified**: recorded fixtures, golden-output tests |
+| Cursor IDE | `~/.cursor/ai-tracking/ai-code-tracking.db` | SQLite | **Experimental**: Cursor logs no token counts locally; detected, but no usage is read and no sessions are created |
+| Aider | `~/.aider/analytics.jsonl` | JSONL | **Experimental**: fixtures are synthetic, derived from upstream source. Aider only writes this file if started with `--analytics-log ~/.aider/analytics.jsonl` |
+| GitHub Copilot | `~/Library/.../github.copilot-chat/state.vscdb` | SQLite | **Unverified**: hand-written fixtures |
+| Windsurf | `~/Library/.../Windsurf/User/globalStorage/*/state.vscdb` | SQLite | **Unverified**: hand-written fixtures |
+| Cline / Roo Code | `~/Library/.../globalStorage/{extensionId}/tasks/*/api_conversation_history.json` | JSON | **Unverified**: hand-written fixtures |
+| OpenAI Codex CLI | `~/.codex/sessions/*.jsonl` | JSONL | **Unverified**: hand-written fixtures |
+
+**Verified** means the parser is tested against a real recording of the tool's own files. **Unverified** parsers read real data but were written against the tool's docs or source, so their numbers may not match what the tool actually bills; the dashboard labels them too. **Experimental** parsers have a known gap on top of that. A tool is promoted only once a real recording is checked in (see [CONTRIBUTING.md](CONTRIBUTING.md#capturing-a-real-recording)).
 
 All files are read in **read-only mode**. LLM Observer never modifies any AI tool's data.
 
@@ -414,7 +416,7 @@ npm test             # Run all tests
 | SAML (Phase 2 of SSO) | For IdPs that require it specifically, once OIDC (Phase 1) has real usage |
 | Team dashboard UI (Phase 3 of SSO) | A "Team" tab in Settings talking to `team-server` |
 | Wire CLI `activate`/`billing`/`team` to the real backend | Currently placeholders; the dashboard already does this correctly |
-| Format-drift fixture matrix for Cursor, Aider, Cline, Codex | Extending the pattern already live for Claude Code |
+| Real recordings and a format-drift fixture matrix for Aider, Cline, Codex, Copilot, Windsurf | Extending the pattern already live for Claude Code; needs recordings from a real install of each tool |
 | Homebrew formula | For the desktop app |
 | More editor parsers | JetBrains AI, Continue, Gemini Code Assist |
 | Enterprise: audit logging, cost allocation | Depends on the team-auth foundation above |
@@ -467,7 +469,7 @@ The parser handles known format variations (current and legacy) and is checked a
 Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Help needed with:**
-- Format-drift fixture tests for Cursor, Aider, Cline, and Codex parsers
+- Real recordings (see [CONTRIBUTING.md](CONTRIBUTING.md#capturing-a-real-recording)) for the Aider, Cline, Codex, Copilot, and Windsurf parsers
 - Session file parsers for new tools (JetBrains AI, Continue, Gemini Code Assist)
 - Optimization rules
 - Dashboard UI improvements

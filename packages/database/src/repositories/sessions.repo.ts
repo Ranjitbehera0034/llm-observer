@@ -32,17 +32,28 @@ export interface SessionRecord {
   created_at?: string;
   tool?: string; // display name of the tool, e.g. 'Claude Code'
   is_estimated?: boolean | number; // cost is a guess, not an exact price-table match
-  cost_source?: string; // 'pricing_table' | 'family_fallback' | 'unpriced' | 'estimated'
+  cost_source?: string; // 'pricing_table' | 'reported' (price computed by the tool itself) | 'family_fallback' | 'unpriced' | 'estimated'
 }
 
 // Worst-first ordering used to merge the provenance of a parent and its subagents.
-const COST_SOURCE_RANK: Record<string, number> = { pricing_table: 0, estimated: 1, family_fallback: 2, unpriced: 3 };
+const COST_SOURCE_RANK: Record<string, number> = { pricing_table: 0, reported: 0, estimated: 1, family_fallback: 2, unpriced: 3 };
 
 export const worstCostSource = (a: string | null | undefined, b: string | null | undefined): string | null => {
   const ra = a ? (COST_SOURCE_RANK[a] ?? 0) : -1;
   const rb = b ? (COST_SOURCE_RANK[b] ?? 0) : -1;
   if (ra < 0 && rb < 0) return null;
   return ra >= rb ? (a as string) : (b as string);
+};
+
+/**
+ * Removes the placeholder rows older versions of the Cursor parser inserted
+ * (`cursor-sync-<timestamp>`, project `mock/cursor/project`, cost 0). They were never real usage.
+ */
+export const deleteMockCursorSessions = (): number => {
+  const db = getDb();
+  return db.prepare(
+    "DELETE FROM sessions WHERE provider = 'cursor' AND project_path = 'mock/cursor/project' AND session_id LIKE 'cursor-sync-%'"
+  ).run().changes;
 };
 
 export const insertSession = (session: SessionRecord): number => {

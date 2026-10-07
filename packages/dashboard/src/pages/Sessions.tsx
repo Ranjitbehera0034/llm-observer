@@ -25,7 +25,18 @@ interface SessionRow {
     tool_calls_json: string;
     is_estimated?: number | boolean;
     cost_source?: string | null;
+    tool?: string | null;
 }
+
+// Display name of a tool (sessions.tool) to its parser id, for tools whose provider column is the model vendor.
+const TOOL_TO_PARSER: Record<string, string> = {
+    'Aider': 'aider',
+    'GitHub Copilot': 'copilot',
+    'Windsurf': 'windsurf',
+    'OpenAI Codex CLI': 'codex',
+    'Cline': 'cline',
+    'Roo Code': 'cline'
+};
 
 export default function Sessions() {
     const [sessions, setSessions] = useState<SessionRow[]>([]);
@@ -205,8 +216,8 @@ export default function Sessions() {
                 >
                     <option value="">All Tools</option>
                     <option value="claude-code">Claude Code</option>
-                    <option value="cursor">Cursor IDE</option>
-                    <option value="aider">Aider</option>
+                    <option value="cursor">Cursor IDE (experimental)</option>
+                    <option value="aider">Aider (experimental)</option>
                 </select>
 
                 <select
@@ -282,6 +293,18 @@ export default function Sessions() {
                                     <td className="py-4 px-6">
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm text-white font-medium capitalize">{session.provider.replace('-', ' ')}</span>
+                                            {(() => {
+                                                const info = providers[providers[session.provider] ? session.provider : TOOL_TO_PARSER[session.tool || '']];
+                                                if (!info || info.verification === 'verified') return null;
+                                                return (
+                                                    <span
+                                                        title={info.note}
+                                                        className="px-1.5 py-0.5 rounded bg-zinc-500/10 text-zinc-400 text-[10px] font-bold uppercase tracking-wider border border-zinc-500/20"
+                                                    >
+                                                        {info.verification}
+                                                    </span>
+                                                );
+                                            })()}
                                             {session.session_type === 'agentic' && (
                                                 <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[10px] font-bold uppercase tracking-wider">Agent</span>
                                             )}
