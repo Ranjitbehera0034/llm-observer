@@ -1,4 +1,5 @@
 import { OptimizationRule, OptimizationResult, RuleContext } from '../../types';
+import { sessionSavingsAt } from '../../dedupe';
 
 export const c4LargeInputRatio: OptimizationRule = {
     id: "large-input-small-output",
@@ -22,6 +23,8 @@ export const c4LargeInputRatio: OptimizationRule = {
             category: this.category,
             impact: "low",
             estimatedMonthlySavings,
+            basis: "heuristic",
+            sessionSavings: sessionSavingsAt(wastefulSessions, 0.3),
             action: "Try smaller, focused prompts or only include relevant snippets instead of entire files.",
             dataPoints: {
                 wastefulCount: wastefulSessions.length

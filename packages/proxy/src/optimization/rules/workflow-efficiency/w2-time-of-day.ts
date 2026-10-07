@@ -14,10 +14,14 @@ export const w2TimeOfDay: OptimizationRule = {
             sessionsByHour[hour].count++;
         });
 
-        const dayAvg = Object.values(sessionsByHour).reduce((acc, curr) => acc + (curr.cost / curr.count), 0) / Object.keys(sessionsByHour).length;
-        
         // Late night (11 PM - 4 AM)
         const lateNightHours = [23, 0, 1, 2, 3, 4];
+
+        // Daytime baseline: average per-session cost over the other hours
+        const dayHours = Object.keys(sessionsByHour).map(Number).filter(h => !lateNightHours.includes(h));
+        if (dayHours.length === 0) return null;
+        const dayAvg = dayHours.reduce((acc, h) => acc + (sessionsByHour[h].cost / sessionsByHour[h].count), 0) / dayHours.length;
+
         let lateNightCostSum = 0;
         let lateNightCount = 0;
         lateNightHours.forEach(h => {
@@ -29,14 +33,15 @@ export const w2TimeOfDay: OptimizationRule = {
 
         const lateNightAvg = lateNightCount > 0 ? lateNightCostSum / lateNightCount : 0;
 
-        if (lateNightAvg > dayAvg * 1.5) {
+        if (dayAvg > 0 && lateNightAvg > dayAvg * 1.5) {
             return {
                 ruleId: this.id,
                 title: "Late-night fatigue is increasing costs",
-                description: `Your sessions between 11 PM and 4 AM cost ${Math.round(lateNightAvg / dayAvg * 10)}% more than your average daytime session.`,
+                description: `Your sessions between 11 PM and 4 AM cost ${Math.round((lateNightAvg / dayAvg - 1) * 100)}% more than your average daytime session.`,
                 category: this.category,
                 impact: "low",
                 estimatedMonthlySavings: lateNightCostSum * 0.2,
+                basis: "heuristic",
                 action: "Tired coding is expensive coding. Save complex tasks for when you're alert to reduce retries.",
                 dataPoints: {
                     lateNightAvg,

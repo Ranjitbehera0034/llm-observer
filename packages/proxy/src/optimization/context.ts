@@ -1,5 +1,6 @@
 import { getDb, getSessions, getSubagentsBySession, getSubscriptions, getBudgetLimits, getRequests } from '@llm-observer/database';
 import { RuleContext } from './types';
+import { DAY_MS } from '../utils/time';
 
 export async function buildRuleContext(days: number = 30): Promise<RuleContext> {
     const db = getDb();
@@ -50,8 +51,27 @@ export async function buildRuleContext(days: number = 30): Promise<RuleContext> 
         spend_usd: d.cost || 0
     }));
 
+    // Days of data actually present: span back to the oldest session or request
+    // in the window (at least 1 once any data exists), capped at the window.
+    // Rules are gated on this, not on the requested window, so a fresh install
+    // asked for 30 days is still a one-day install.
+    const stamps = [
+        ...sessions.map(s => Date.parse(s.started_at)),
+        ...usageRecords.map(r => Date.parse(r.created_at as string)),
+    ].filter(t => Number.isFinite(t));
+    const dataDays = stamps.length === 0
+        ? 0
+        : Math.min(days, Math.max(1, Math.ceil((Date.now() - Math.min(...stamps)) / DAY_MS)));
+
+    const anthropicSpendUsd = (db.prepare(`
+        SELECT COALESCE(SUM(cost_usd), 0) as cost FROM requests
+        WHERE provider = 'anthropic' AND created_at >= ?
+    `).get(dateStr) as any)?.cost || 0;
+
     return {
         days,
+        dataDays,
+        anthropicSpendUsd,
         sessions,
         subagents,
         toolUsage,

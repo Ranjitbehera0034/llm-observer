@@ -27,6 +27,7 @@ export const m2CheapComplex: OptimizationRule = {
             category: this.category,
             impact: "medium",
             estimatedMonthlySavings: 0, // Quality improvement, not direct savings
+            basis: "heuristic",
             action: "Consider using Sonnet/GPT-4o for complex tasks to reduce retries and save time.",
             dataPoints: {
                 affectedSessions: complexSessions.length,

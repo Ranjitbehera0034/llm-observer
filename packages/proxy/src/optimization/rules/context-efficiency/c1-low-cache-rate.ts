@@ -1,4 +1,5 @@
 import { OptimizationRule, OptimizationResult, RuleContext } from '../../types';
+import { sessionSavingsAt } from '../../dedupe';
 
 export const c1LowCacheRate: OptimizationRule = {
     id: "low-cache-hit-rate",
@@ -31,6 +32,8 @@ export const c1LowCacheRate: OptimizationRule = {
             category: this.category,
             impact: "high",
             estimatedMonthlySavings,
+            basis: "heuristic",
+            sessionSavings: sessionSavingsAt(anthropicSessions, 0.7 * (0.5 - cacheHitRate)),
             action: "Ensure your system prompts are identical across sessions and keep sessions focused on specific files to maximize caching.",
             dataPoints: {
                 cacheHitRate,

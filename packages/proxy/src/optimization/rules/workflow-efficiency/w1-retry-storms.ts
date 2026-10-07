@@ -1,4 +1,5 @@
 import { OptimizationRule, OptimizationResult, RuleContext } from '../../types';
+import { sessionSavingsAt } from '../../dedupe';
 
 export const w1RetryStorms: OptimizationRule = {
     id: "workflow-retry-storms",
@@ -17,6 +18,8 @@ export const w1RetryStorms: OptimizationRule = {
             category: this.category,
             impact: "medium",
             estimatedMonthlySavings: totalRetryCost * 0.15,
+            basis: "heuristic",
+            sessionSavings: sessionSavingsAt(retrySessions, 0.15),
             action: "If the model isn't getting it right after 3 tries, stop and rephrase instead of repeating.",
             dataPoints: {
                 retrySessions: retrySessions.length

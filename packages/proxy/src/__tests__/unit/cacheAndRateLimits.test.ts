@@ -10,7 +10,7 @@ jest.mock('@llm-observer/database', () => {
     };
 });
 jest.mock('../../optimization/context', () => ({
-    buildRuleContext: jest.fn().mockResolvedValue({ days: 30, dailyCosts: [], sessions: [], subagents: [], toolUsage: [], usageRecords: [], roiData: [], budgetAlerts: [], subscriptions: [] }),
+    buildRuleContext: jest.fn().mockResolvedValue({ days: 30, dataDays: 0, anthropicSpendUsd: 0, dailyCosts: [], sessions: [], subagents: [], toolUsage: [], usageRecords: [], roiData: [], budgetAlerts: [], subscriptions: [] }),
 }));
 
 import { getDb, insertRateLimitSnapshot } from '@llm-observer/database';

@@ -22,6 +22,7 @@ export const c3RedundantReads: OptimizationRule = {
             category: this.category,
             impact: "medium",
             estimatedMonthlySavings: totalWaste,
+            basis: "heuristic",
             action: "Add frequently read file contents to your CLAUDE.md or system prompt context to avoid constant re-reading.",
             dataPoints: {
                 redundantTools

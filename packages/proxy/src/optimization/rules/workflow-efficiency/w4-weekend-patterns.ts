@@ -22,6 +22,7 @@ export const w4WeekendPatterns: OptimizationRule = {
             category: this.category,
             impact: "low",
             estimatedMonthlySavings: 0,
+            basis: "measured",
             action: "Check your ROI dashboard (ROI page) to see if weekend work is significantly less efficient than weekday work.",
             dataPoints: {
                 weekendCost

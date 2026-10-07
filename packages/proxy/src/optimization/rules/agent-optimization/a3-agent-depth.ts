@@ -1,4 +1,5 @@
 import { OptimizationRule, OptimizationResult, RuleContext } from '../../types';
+import { sessionSavingsAt } from '../../dedupe';
 
 export const a3AgentDepth: OptimizationRule = {
     id: "agent-depth-inefficiency",
@@ -17,6 +18,8 @@ export const a3AgentDepth: OptimizationRule = {
             category: this.category,
             impact: "medium",
             estimatedMonthlySavings: totalCostOfDeep * 0.2,
+            basis: "heuristic",
+            sessionSavings: sessionSavingsAt(deepSessions, 0.2),
             action: "Monitor sessions that go very deep. They may be stuck or struggling with a task that needs human intervention.",
             dataPoints: {
                 deepSessionCount: deepSessions.length

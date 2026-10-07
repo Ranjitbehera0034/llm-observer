@@ -5,6 +5,12 @@ import { computeOptimizationScore } from './score';
 import { computePlanValue, PlanValue } from './planValue';
 import { getDb } from '@llm-observer/database';
 import { sqlAfter } from '../utils/time';
+import { dedupeSessionSavings } from './dedupe';
+
+/** Fewest days of data before any optimizer result is considered meaningful. */
+export const MIN_DATA_DAYS = 3;
+/** Sessions a rule needs by default (rules working from request data override via minSessions). */
+export const DEFAULT_MIN_SESSIONS = 10;
 
 export interface OptimizationRun {
     score: number;
@@ -12,6 +18,11 @@ export interface OptimizationRun {
     results: OptimizationResult[];
     computedAt: string;
     daysAnalyzed: number;
+    /** Days of data actually present in the window. */
+    dataDays: number;
+    sessionCount: number;
+    /** False when there is too little history for the score and savings to mean anything. */
+    sufficientData: boolean;
     planValue: PlanValue;
 }
 
@@ -20,13 +31,17 @@ export async function runOptimizationEngine(days: number = 30, useCache: boolean
 
     if (useCache) {
         const cached = db.prepare(`SELECT * FROM optimization_cache WHERE ${sqlAfter('expires_at')} AND days_analyzed = ? ORDER BY computed_at DESC LIMIT 1`).get(new Date().toISOString(), days) as any;
-        if (cached) {
+        const stored = cached ? parseCachedResults(cached.results_json) : null;
+        if (cached && stored) {
             return {
                 score: cached.score,
                 totalSavingsUsd: cached.total_savings_usd,
-                results: JSON.parse(cached.results_json),
+                results: stored.results,
                 computedAt: cached.computed_at,
                 daysAnalyzed: cached.days_analyzed,
+                dataDays: stored.dataDays,
+                sessionCount: stored.sessionCount,
+                sufficientData: stored.sufficientData,
                 // Computed on read, not cached, so a plan-price change takes
                 // effect immediately instead of waiting for cache expiry.
                 planValue: computePlanValue(cached.total_savings_usd)
@@ -35,22 +50,32 @@ export async function runOptimizationEngine(days: number = 30, useCache: boolean
     }
 
     const context = await buildRuleContext(days);
-    const results: OptimizationResult[] = [];
+    const sessionCount = context.sessions.length;
+    const sufficientData = context.dataDays >= MIN_DATA_DAYS && sessionCount >= DEFAULT_MIN_SESSIONS;
+    let results: OptimizationResult[] = [];
 
+    // Gate on the days of data actually present (and sessions seen), not the
+    // requested window: a one-day install asked for 30 days is a one-day install.
     for (const rule of allRules) {
         try {
-            if (context.days >= rule.minDataDays) {
+            const minSessions = rule.minSessions ?? DEFAULT_MIN_SESSIONS;
+            if (context.dataDays < rule.minDataDays) {
+                console.log(`[OptimizationEngine] Skipping rule ${rule.id}: Needs ${rule.minDataDays} days of data, have ${context.dataDays}`);
+            } else if (sessionCount < minSessions) {
+                console.log(`[OptimizationEngine] Skipping rule ${rule.id}: Needs ${minSessions} sessions, have ${sessionCount}`);
+            } else {
                 const result = rule.evaluate(context);
                 if (result) {
                     results.push(result);
                 }
-            } else {
-                console.log(`[OptimizationEngine] Skipping rule ${rule.id}: Needs ${rule.minDataDays} days, have ${context.days}`);
             }
         } catch (error) {
             console.error(`[OptimizationEngine] Error running rule ${rule.id}:`, error);
         }
     }
+
+    // Overlapping rules can claim the same sessions; count each session once.
+    results = dedupeSessionSavings(results);
 
     // Sort results by savings descending
     results.sort((a, b) => b.estimatedMonthlySavings - a.estimatedMonthlySavings);
@@ -65,6 +90,9 @@ export async function runOptimizationEngine(days: number = 30, useCache: boolean
         results,
         computedAt: new Date().toISOString(),
         daysAnalyzed: days,
+        dataDays: context.dataDays,
+        sessionCount,
+        sufficientData,
         planValue: computePlanValue(totalSavings)
     };
 
@@ -75,7 +103,23 @@ export async function runOptimizationEngine(days: number = 30, useCache: boolean
     db.prepare(`
         INSERT INTO optimization_cache (computed_at, days_analyzed, score, total_savings_usd, results_json, expires_at)
         VALUES (?, ?, ?, ?, ?, ?)
-    `).run(run.computedAt, run.daysAnalyzed, run.score, run.totalSavingsUsd, JSON.stringify(run.results), expiresAt.toISOString());
+    `).run(run.computedAt, run.daysAnalyzed, run.score, run.totalSavingsUsd, JSON.stringify({ results: run.results, dataDays: run.dataDays, sessionCount: run.sessionCount, sufficientData: run.sufficientData }), expiresAt.toISOString());
 
     return run;
+}
+
+interface CachedRun {
+    results: OptimizationResult[];
+    dataDays: number;
+    sessionCount: number;
+    sufficientData: boolean;
+}
+
+/** Null for entries cached by an older version (bare array of ungated results). */
+function parseCachedResults(json: string): CachedRun | null {
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed)) {
+        return parsed.length === 0 ? { results: [], dataDays: 0, sessionCount: 0, sufficientData: false } : null;
+    }
+    return parsed;
 }

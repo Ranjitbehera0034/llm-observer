@@ -14,6 +14,8 @@ import { RuleContext } from '../../optimization/types';
 function makeCtx(overrides: Partial<RuleContext> = {}): RuleContext {
     return {
         days: 30,
+        dataDays: 30,
+        anthropicSpendUsd: 0,
         sessions: [],
         subagents: [],
         toolUsage: [],
@@ -273,8 +275,8 @@ describe('Rule W2 (workflow-late-night-fatigue)', () => {
 // ─── allRules completeness check ─────────────────────────────────────────────
 
 describe('allRules index', () => {
-    it('exports exactly 20 rules', () => {
-        expect(allRules).toHaveLength(20);
+    it('exports exactly 17 rules', () => {
+        expect(allRules).toHaveLength(17);
     });
 
     it('every rule has a unique id', () => {
@@ -301,7 +303,7 @@ describe('allRules index', () => {
 
     it('every rule returns null on a completely empty context (insufficient data / no threshold met)', () => {
         // With an empty context all rules should either skip (minDataDays check in engine) or return null
-        const emptyCtx = makeCtx({ days: 100 }); // override days to bypass minDataDays
+        const emptyCtx = makeCtx({ days: 100, dataDays: 100 }); // override days to bypass minDataDays
         allRules.forEach(rule => {
             const result = rule.evaluate(emptyCtx);
             // Either null (rule didn't fire) or an OptimizationResult — both are valid here

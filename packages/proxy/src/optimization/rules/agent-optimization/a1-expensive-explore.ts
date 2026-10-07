@@ -19,6 +19,7 @@ export const a1ExpensiveExplore: OptimizationRule = {
             category: this.category,
             impact: "medium",
             estimatedMonthlySavings: exploreCost * 0.3,
+            basis: "heuristic",
             action: "Be more specific in your initial prompts. Tell Claude exactly which files to read to minimize exploration time.",
             dataPoints: {
                 exploreCost,

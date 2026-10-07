@@ -22,6 +22,7 @@ export const w3ProjectSprawl: OptimizationRule = {
             category: this.category,
             impact: "low",
             estimatedMonthlySavings: 0,
+            basis: "measured",
             action: "Try to group tasks by project to minimize the overhead of re-contextualizing the AI.",
             dataPoints: {
                 sprawlDays: daysWithSprawl.length

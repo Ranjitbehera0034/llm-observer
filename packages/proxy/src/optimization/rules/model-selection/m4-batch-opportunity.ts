@@ -1,4 +1,5 @@
 import { OptimizationRule, OptimizationResult, RuleContext } from '../../types';
+import { sessionSavingsAt } from '../../dedupe';
 
 export const m4BatchOpportunity: OptimizationRule = {
     id: "batch-api-opportunity",
@@ -30,6 +31,8 @@ export const m4BatchOpportunity: OptimizationRule = {
             category: this.category,
             impact: "medium",
             estimatedMonthlySavings,
+            basis: "heuristic",
+            sessionSavings: sessionSavingsAt(openaiSessions, 0.5),
             action: "Consider using the OpenAI Batch API for repetitive tasks to save 50% on costs.",
             dataPoints: {
                 batchOpportunity
