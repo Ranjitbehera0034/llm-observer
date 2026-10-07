@@ -1,14 +1,15 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import fs from 'fs';
-import path from 'path';
+import { getPidPath } from '../pidFile';
 
 export function setupStopCommands(program: Command) {
     program
         .command('stop')
         .description('Graceful shutdown utilizing local PID file')
         .action(async () => {
-            const pidPath = path.join(process.cwd(), '.llm-observer.pid');
+            // Same file `llm-observer start` writes (~/.llm-observer/observer.pid)
+            const pidPath = getPidPath();
             if (fs.existsSync(pidPath)) {
                 const pidStr = fs.readFileSync(pidPath, 'utf8');
                 const pid = parseInt(pidStr.trim(), 10);

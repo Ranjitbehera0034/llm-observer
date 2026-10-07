@@ -48,6 +48,9 @@ router.post('/ai/analyze', async (_req, res) => {
         if (error.code === 'NO_KEY') {
             return res.status(400).json({ error: 'Add an Anthropic API key first.' });
         }
+        if (error.code === 'SDK_MISSING') {
+            return res.status(501).json({ error: error.message });
+        }
         res.status(502).json({ error: error.message });
     }
 });

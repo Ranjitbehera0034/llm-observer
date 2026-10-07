@@ -1,4 +1,5 @@
 import { OptimizationRule, OptimizationResult, RuleContext } from '../../types';
+import { sessionSavingsAt } from '../../dedupe';
 
 export const a2TooManySubagents: OptimizationRule = {
     id: "agent-sprawl-in-sessions",
@@ -18,6 +19,8 @@ export const a2TooManySubagents: OptimizationRule = {
             category: this.category,
             impact: "medium",
             estimatedMonthlySavings: totalCostOfSprawl * 0.25,
+            basis: "heuristic",
+            sessionSavings: sessionSavingsAt(sprawlSessions, 0.25),
             action: "Try breaking your tasks into smaller, more focused requests to keep agent hierarchies manageable.",
             dataPoints: {
                 sprawlSessions: sprawlSessions.length

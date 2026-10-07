@@ -106,7 +106,7 @@ export class AppCorrelator {
             period,
             apps,
             unattributed_usd: Math.max(0, totalSyncCostInPeriod - totalAttributedCost),
-            note: "Attribution is estimated based on connection frequency. Accuracy: ~85-90%."
+            note: "Attribution is estimated from how often each app connected to each provider. Accuracy has not been measured."
         };
     }
 

@@ -1,4 +1,5 @@
 import { OptimizationRule, OptimizationResult, RuleContext } from '../../types';
+import { sessionSavingsAt } from '../../dedupe';
 
 export const c2SessionTooLong: OptimizationRule = {
     id: "session-context-bloat",
@@ -23,6 +24,8 @@ export const c2SessionTooLong: OptimizationRule = {
             category: this.category,
             impact: "medium",
             estimatedMonthlySavings,
+            basis: "heuristic",
+            sessionSavings: sessionSavingsAt(expensiveLongSessions, 0.2),
             action: "Start new sessions every 20-25 turns to keep context small and costs low.",
             dataPoints: {
                 longSessionCount: expensiveLongSessions.length,

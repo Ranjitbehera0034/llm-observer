@@ -1,4 +1,5 @@
 import { OptimizationRule, OptimizationResult, RuleContext } from '../../types';
+import { sessionSavingsAt } from '../../dedupe';
 
 export const m1ExpensiveSimple: OptimizationRule = {
     id: "model-downgrade-simple-tasks",
@@ -31,6 +32,8 @@ export const m1ExpensiveSimple: OptimizationRule = {
             category: this.category,
             impact: "high",
             estimatedMonthlySavings,
+            basis: "heuristic",
+            sessionSavings: sessionSavingsAt(expensiveSessions, 0.75),
             action: "Switch to Sonnet/Haiku or GPT-4o-mini for autocomplete in your IDE settings",
             configSnippet: "Model settings for Continue/Cursor: claude-3-5-haiku-20241022 or gpt-4o-mini",
             dataPoints: {

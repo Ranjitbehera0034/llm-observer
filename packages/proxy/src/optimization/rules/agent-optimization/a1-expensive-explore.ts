@@ -1,4 +1,4 @@
-import { OptimizationRule, OptimizationResult, RuleContext } from '../../types';
+import { OptimizationRule, OptimizationResult, RuleContext, sessionKey } from '../../types';
 
 export const a1ExpensiveExplore: OptimizationRule = {
     id: "agent-expensive-explore",
@@ -12,6 +12,14 @@ export const a1ExpensiveExplore: OptimizationRule = {
 
         if (totalAgentCost === 0 || (exploreCost / totalAgentCost) < 0.4) return null;
 
+        // Attribute the saving to the parent sessions so it is not stacked on
+        // rules that already claim those sessions.
+        const sessionSavings: Record<string, number> = {};
+        for (const a of exploreAgents) {
+            const key = sessionKey({ id: a.parent_session_id });
+            sessionSavings[key] = (sessionSavings[key] || 0) + (a.estimated_cost_usd || 0) * 0.3;
+        }
+
         return {
             ruleId: this.id,
             title: "High cost for 'Explore' subagents",
@@ -19,6 +27,8 @@ export const a1ExpensiveExplore: OptimizationRule = {
             category: this.category,
             impact: "medium",
             estimatedMonthlySavings: exploreCost * 0.3,
+            basis: "heuristic",
+            sessionSavings,
             action: "Be more specific in your initial prompts. Tell Claude exactly which files to read to minimize exploration time.",
             dataPoints: {
                 exploreCost,
