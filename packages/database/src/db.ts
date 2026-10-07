@@ -119,11 +119,13 @@ const stampOf = (file: string) => /(\d{8}T\d+Z)\.bak$/.exec(file)?.[1] ?? '';
 /**
  * Expire pre-migration backups: they are full copies of the database (proxy
  * bodies included), so keep only the newest few and nothing older than 14 days.
+ * `protect` is a backup that must survive regardless (the one in use by an upgrade).
  */
-export const pruneMigrationBackups = (dbFile: string, now: number = Date.now()): void => {
+export const pruneMigrationBackups = (dbFile: string, now: number = Date.now(), protect: string | null = null): void => {
     const backups = listBackups(dbFile);
     const keep = new Set(backups.slice(Math.max(0, backups.length - BACKUPS_TO_KEEP)));
     for (const file of backups) {
+        if (protect && path.resolve(file) === path.resolve(protect)) continue; // the upgrade in progress relies on it
         let expired = false;
         try { expired = now - fs.statSync(file).mtimeMs > BACKUP_MAX_AGE_MS; } catch { /* vanished */ }
         if (keep.has(file) && !expired) continue;
@@ -164,6 +166,7 @@ export const removeDatabaseFiles = (dbFile: string): string[] => {
  * a backup. The file name carries the schema version the upgrade starts from and
  * only one backup is taken per starting version: retrying a failed upgrade must
  * never replace the one true pre-migration copy with an already half-migrated one.
+ * That copy is reused only while it is younger than the backup retention window.
  */
 const backupBeforeMigrating = (database: Database.Database, startVersion: string): string | null => {
     if (process.env[SKIP_MIGRATION_BACKUP_ENV] === '1') {
@@ -173,7 +176,12 @@ const backupBeforeMigrating = (database: Database.Database, startVersion: string
     const dbFile = database.name;
     const versionTag = `v${startVersion}-`;
 
-    const existing = listBackups(dbFile).find(f => path.basename(f).startsWith(`${backupPrefix(dbFile)}${versionTag}`));
+    // Only a recent copy counts: an older one is about to expire and would no longer be a usable rollback point.
+    const now = Date.now();
+    const existing = listBackups(dbFile).reverse().find(f => {
+        if (!path.basename(f).startsWith(`${backupPrefix(dbFile)}${versionTag}`)) return false;
+        try { return now - fs.statSync(f).mtimeMs <= BACKUP_MAX_AGE_MS; } catch { return false; }
+    });
     if (existing) return existing;
 
     const stamp = new Date().toISOString().replace(/[-:.]/g, '');
@@ -240,7 +248,7 @@ export const runMigrations = (database: Database.Database, migrationsDir: string
             const startVersion = (last ? last.split('_')[0].replace(/[^A-Za-z0-9]/g, '') : '') || 'none';
             backupPath = backupBeforeMigrating(database, startVersion);
             if (backupPath) console.log(`Database backed up before migrating: ${backupPath}`);
-            pruneMigrationBackups(database.name);
+            pruneMigrationBackups(database.name, Date.now(), backupPath);
         }
     }
 

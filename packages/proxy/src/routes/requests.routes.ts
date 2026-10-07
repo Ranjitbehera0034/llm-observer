@@ -189,7 +189,7 @@ requestsRouter.post('/:id/sync', express.json({ limit: '10mb' }), (req, res) => 
         if (!Array.isArray(requests)) {
             return res.status(400).json({ error: 'Payload must contain a "requests" array' });
         }
-        const normalizedRequests = requests.map(r => ({ ...r, project_id: teamId }));
+        const normalizedRequests = requests.map(r => ({ ...r, id: undefined, project_id: teamId })); // ids are always server-generated
         bulkInsertRequests(normalizedRequests);
         res.json({ message: 'Synchronized successfully', count: normalizedRequests.length });
     } catch (err) {

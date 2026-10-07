@@ -100,6 +100,8 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
     }, (err) => {
         console.error('Proxy Error:', err);
         const errorRecord = {
+            // Minted here so the alert and the stored row share one id (see the success path).
+            id: crypto.randomUUID(),
             project_id: projectId,
             provider: providerName,
             model: requestInfo.model || 'unknown',

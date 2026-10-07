@@ -308,6 +308,32 @@ describe('pre-migration backups', () => {
         db.close();
     });
 
+    it('does not reuse a same-version backup older than 14 days: takes a fresh one that survives the prune', () => {
+        const { db, dataDir, base } = seededDb();
+        const aged = fakeBackup(dataDir, 'data.db.pre-migrate-v002-20200101T000000000Z.bak', 20 * DAY);
+        runMigrations(db, nextMigration(base));
+        expect(fs.existsSync(aged)).toBe(false);
+        const left = backupsIn(dataDir);
+        expect(left).toHaveLength(1);
+        expect(left[0]).toMatch(/^data\.db\.pre-migrate-v002-/);
+        expect(left[0]).not.toContain('20200101');
+        // a real copy of the pre-migration database, not the stale fake
+        const copy = new Database(path.join(dataDir, left[0]), { readonly: true });
+        expect(versions(copy)).toEqual(base);
+        copy.close();
+        db.close();
+    });
+
+    it('never prunes the backup it is protecting the running upgrade with', () => {
+        const { db, dataDir, base } = seededDb();
+        // The in-use backup is a recent same-version one, but three newer backups of other versions exist.
+        const inUse = fakeBackup(dataDir, 'data.db.pre-migrate-v002-20260101T000000000Z.bak', 2 * DAY);
+        for (const v of ['v003', 'v004', 'v005']) fakeBackup(dataDir, `data.db.pre-migrate-${v}-2026020${v.slice(-1)}T000000000Z.bak`, DAY);
+        runMigrations(db, nextMigration(base));
+        expect(fs.existsSync(inUse)).toBe(true);
+        db.close();
+    });
+
     it('the failed-upgrade error names the backup that is still on disk', () => {
         const { db, dataDir, base } = seededDb();
         const failing = nextMigration(base, 'INSERT INTO no_such_table VALUES (1);');
