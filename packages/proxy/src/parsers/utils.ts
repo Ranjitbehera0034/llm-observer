@@ -42,9 +42,11 @@ export const safeReadSQLite = async (sourcePath: string): Promise<Database.Datab
     let retries = 0;
     while (retries < 3) {
         try {
-            const db = new Database(sourcePath, { readonly: true, fileMustExist: true });
-            db.pragma('busy_timeout = 5000');
+            // Bound the wait per attempt (better-sqlite3 defaults to 5s). The worst case is then ~3.5s
+            // on every OS before the copy fallback, instead of 3 x 5s + sleeps where the lock is held.
+            const db = new Database(sourcePath, { readonly: true, fileMustExist: true, timeout: 500 });
             db.prepare('SELECT 1').get();
+            db.pragma('busy_timeout = 5000'); // later reads may wait longer for a writer
             return db;
         } catch (err: any) {
             if (err.code === 'SQLITE_BUSY' || err.code === 'SQLITE_LOCKED') {

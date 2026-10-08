@@ -64,7 +64,7 @@ describe('llm-observer stop', () => {
 
         expect(await waitForExit(pid, 5000)).toBe(true);
         expect(fs.existsSync(pidPath)).toBe(false);
-    });
+    }, 30000);
 
     it('does not signal an unrelated process whose pid is in a stale pid file', async () => {
         // A reused pid: alive, but not an llm-observer server.

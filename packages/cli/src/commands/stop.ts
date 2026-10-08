@@ -24,7 +24,17 @@ function readCommandLine(pid: number): string[] | null {
             const out = execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', timeout: 3000 }).trim();
             return out ? [out] : null;
         }
-    } catch { /* process vanished or ps unavailable */ }
+        if (process.platform === 'win32') {
+            // Windows has no /proc and no ps. PowerShell ships with every supported Windows; `pid` is a
+            // validated integer, so nothing user-controlled reaches the command string.
+            const out = execFileSync(
+                'powershell.exe',
+                ['-NoProfile', '-NonInteractive', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${Math.trunc(pid)}").CommandLine`],
+                { encoding: 'utf8', timeout: 15000, windowsHide: true }
+            ).trim();
+            return out ? [out] : null;
+        }
+    } catch { /* process vanished, or ps / PowerShell unavailable */ }
     return null;
 }
 
@@ -46,7 +56,12 @@ async function healthAnswersAsObserver(): Promise<boolean> {
  */
 async function isObserverServer(pid: number, serverPath: string): Promise<boolean> {
     const args = readCommandLine(pid);
-    if (args) return args.some(a => a.includes(path.resolve(serverPath)));
+    if (args) {
+        // Windows paths are case-insensitive.
+        const norm = (v: string) => (process.platform === 'win32' ? v.toLowerCase() : v);
+        const wanted = norm(path.resolve(serverPath));
+        return args.some(a => norm(a).includes(wanted));
+    }
     return healthAnswersAsObserver();
 }
 
@@ -78,6 +93,11 @@ export function setupStopCommands(program: Command, opts: StopOptions = {}) {
             }
 
             console.log(chalk.yellow(`Stopping LLM Observer process (PID ${pid})...`));
+            if (process.platform === 'win32') {
+                // Node cannot deliver a catchable signal to a detached Windows process: kill() ends it at once, so up
+                // to ~5 seconds of queued proxy rows are not flushed. Ctrl+C in the terminal running `start` is clean.
+                console.log(chalk.gray('Note: on Windows this ends the server immediately; press Ctrl+C in the window running "llm-observer start" for a clean shutdown.'));
+            }
             try {
                 process.kill(pid, 'SIGINT'); // Or SIGTERM
                 removePidFile();
