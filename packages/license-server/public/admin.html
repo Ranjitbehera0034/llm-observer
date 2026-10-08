@@ -41,7 +41,7 @@
     <div class="tiles" id="tiles"></div>
     <h2>Paying customers</h2>
     <div class="wrap"><table>
-      <thead><tr><th>Email</th><th>Status</th><th>Provider</th><th>Amount</th><th>Since</th><th>Last event</th><th>Devices</th><th>Last seen</th></tr></thead>
+      <thead><tr><th>Email</th><th>Status</th><th>Plan</th><th>Seats</th><th>Provider</th><th>Amount</th><th>Since</th><th>Last event</th><th>Devices</th><th>Last seen</th></tr></thead>
       <tbody id="customers"></tbody>
     </table></div>
     <h2>Active installs (last 30 days, opted-in only)</h2>
@@ -83,9 +83,9 @@
     $('customers').innerHTML = c.map(x => {
       const last = x.activations.map(a => a.last_seen).sort().pop();
       return `<tr><td>${esc(x.email)}</td><td><span class="pill ${esc(x.status)}">${esc(x.status)}</span></td>
-        <td>${esc(x.provider)}</td><td>${esc(x.amount)} ${esc(x.currency)}</td><td>${day(x.created_at)}</td>
+        <td>${esc(x.plan || 'pro')}</td><td>${x.seats ? esc(x.seats) : '<span class="muted">—</span>'}</td><td>${esc(x.provider)}</td><td>${esc(x.amount)} ${esc(x.currency)}</td><td>${day(x.created_at)}</td>
         <td class="muted">${esc(x.last_event)}</td><td>${x.activations.length}</td><td>${day(last)}</td></tr>`;
-    }).join('') || '<tr><td class="muted" colspan="8">No paying customers yet</td></tr>';
+    }).join('') || '<tr><td class="muted" colspan="10">No paying customers yet</td></tr>';
 
     $('tier').innerHTML = rows(data.installs.by_tier);
     $('ver').innerHTML = rows(data.installs.by_version);

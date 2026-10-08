@@ -16,7 +16,7 @@ import { getCustomerStatus, recordActivation } from '../../src/store.js';
  * legacy PRO_ keys by re-deriving their HMAC fingerprint.
  *
  * Response:
- *   { valid: true, tier: 'pro', status: 'active' | 'cancelled' | 'unknown' }
+ *   { valid: true, tier: 'pro', plan: 'pro' | 'team', seats?, status: 'active' | 'cancelled' | 'unknown' }
  *   { valid: false, revoked: true, error }   — subscription expired: the app drops to Free
  *   { valid: false, error }                  — not a genuine key
  */
@@ -53,10 +53,12 @@ export default async function handler(req: Request): Promise<Response> {
     const version = typeof body.version === 'string' ? body.version.slice(0, 32) : 'unknown';
 
     let sub: string | null = null;
+    let plan: 'pro' | 'team' = 'pro';
+    let seats: number | undefined;
     if (key.startsWith(`${SIGNED_KEY_PREFIX}.`)) {
         const pub = configuredPublicKeyPem();
         const payload = pub ? verifySignedKey(key, pub) : null;
-        if (payload) sub = payload.sub;
+        if (payload) { sub = payload.sub; plan = payload.plan; seats = payload.seats; }
     } else if (key.startsWith('PRO_') && verifyLicenseKey(key)) {
         // Legacy key: PRO_{LS|RZP}_{FP}_{SUBID} — keyed by a hash so it can't be
         // reconstructed from the admin view
@@ -76,5 +78,6 @@ export default async function handler(req: Request): Promise<Response> {
         await recordActivation(sub, machineId, version).catch(err => console.error('[VALIDATE] activation not recorded:', err.message));
     }
 
-    return reply({ valid: true, tier: 'pro', status: status ?? 'unknown', message: 'License verified. Enjoy Pro features!' });
+    // tier stays 'pro' for both plans (Pro limits apply to Team); `plan` and `seats` say which was bought.
+    return reply({ valid: true, tier: 'pro', plan, ...(seats !== undefined ? { seats } : {}), status: status ?? 'unknown', message: 'License verified. Enjoy Pro features!' });
 }

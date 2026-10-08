@@ -21,9 +21,15 @@ export const SIGNED_KEY_PREFIX = 'LLMO1';
 export interface LicensePayload {
     v: 1;
     sub: string;
-    plan: 'pro';
+    /** 'team' gets the same limits as 'pro'. */
+    plan: LicensePlan;
+    /** Seats bought (team plan). Informational: nothing enforces it offline. */
+    seats?: number;
     iat: number;
 }
+
+export type LicensePlan = 'pro' | 'team';
+const MAX_SEATS = 100_000;
 
 let publicKey: crypto.KeyObject = crypto.createPublicKey(LICENSE_PUBLIC_KEY_PEM);
 
@@ -43,7 +49,10 @@ export function verifySignedKey(key: string): LicensePayload | null {
         const ok = crypto.verify(null, Buffer.from(`${parts[0]}.${parts[1]}`), publicKey, Buffer.from(parts[2], 'base64url'));
         if (!ok) return null;
         const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8'));
-        if (payload?.v !== 1 || typeof payload.sub !== 'string' || payload.plan !== 'pro') return null;
+        if (payload?.v !== 1 || typeof payload.sub !== 'string') return null;
+        if (payload.plan !== 'pro' && payload.plan !== 'team') return null;
+        if (payload.seats !== undefined
+            && !(typeof payload.seats === 'number' && Number.isInteger(payload.seats) && payload.seats >= 1 && payload.seats <= MAX_SEATS)) return null;
         return payload as LicensePayload;
     } catch {
         return null;

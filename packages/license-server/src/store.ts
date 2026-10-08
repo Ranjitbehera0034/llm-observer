@@ -8,7 +8,7 @@
  * webhooks keep working — you just don't get the owner view in /admin.
  *
  * Keys:
- *   customer:<sub>           hash  sub, provider, email, status, plan, amount, currency, created_at, updated_at, last_event
+ *   customer:<sub>           hash  sub, provider, email, status, plan, seats, amount, currency, created_at, updated_at, last_event
  *   customers                set   all subs
  *   activations:<sub>        hash  machine_id -> JSON { first_seen, last_seen, version }
  *   install:<install_id>     hash  version, os, tier, first_seen, last_seen
@@ -23,6 +23,8 @@ export interface CustomerRecord {
     email: string;
     status: CustomerStatus;
     plan: string;
+    /** Seats bought (team plan only); informational. */
+    seats?: number;
     amount?: string;
     currency?: string;
     created_at: string;
@@ -76,7 +78,7 @@ export async function upsertCustomer(c: Omit<CustomerRecord, 'created_at' | 'upd
     const now = new Date().toISOString();
     await pipeline([
         ['HSETNX', `customer:${c.sub}`, 'created_at', now],
-        hset(`customer:${c.sub}`, { ...c, updated_at: now }),
+        hset(`customer:${c.sub}`, { ...c, seats: c.seats === undefined ? undefined : String(c.seats), updated_at: now }),
         ['SADD', 'customers', c.sub],
     ]);
 }
@@ -133,10 +135,11 @@ export async function ownerReport(): Promise<OwnerReport> {
         ? await pipeline(subList.flatMap(s => [['HGETALL', `customer:${s}`], ['HGETALL', `activations:${s}`]] as Cmd[]))
         : [];
     const customers = subList.map((_, i) => {
-        const c = toObject(custResults[i * 2]) as unknown as CustomerRecord;
+        const { seats, ...c } = toObject(custResults[i * 2]) as Record<string, string>;
         const acts = toObject(custResults[i * 2 + 1]);
         return {
-            ...c,
+            ...(c as unknown as CustomerRecord),
+            ...(seats !== undefined && Number.isFinite(Number(seats)) ? { seats: Number(seats) } : {}),
             activations: Object.entries(acts).map(([machine_id, v]) => ({ machine_id, ...JSON.parse(v) })),
         };
     }).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));

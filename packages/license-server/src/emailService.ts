@@ -9,6 +9,9 @@ export interface LicenseEmailPayload {
     provider: 'lemonsqueezy' | 'razorpay';
     amount: string;
     currency: string;
+    /** Defaults to 'pro'. */
+    plan?: 'pro' | 'team';
+    seats?: number;
 }
 
 /**
@@ -18,7 +21,11 @@ export interface LicenseEmailPayload {
  * Get your key at: https://resend.com
  */
 export async function sendLicenseEmail(payload: LicenseEmailPayload): Promise<void> {
-    const { to, licenseKey, provider, amount, currency } = payload;
+    const { to, licenseKey, provider, amount, currency, plan = 'pro', seats } = payload;
+    const planLabel = plan === 'team' ? 'Team (beta)' : 'Pro';
+    const seatsNote = plan === 'team'
+        ? `<p style="margin:10px 0 0;font-size:11px;color:#64748b;text-align:center;">Team plan (beta)${seats ? `: ${seats} seat${seats === 1 ? '' : 's'} purchased` : ''}. The key unlocks Pro limits on each installation; seats are not enforced by the app.</p>`
+        : '';
 
     const providerLabel = provider === 'razorpay' ? 'Razorpay / UPI' : 'Lemon Squeezy';
     const flagEmoji = currency === 'INR' ? '🇮🇳' : '🌍';
@@ -29,7 +36,7 @@ export async function sendLicenseEmail(payload: LicenseEmailPayload): Promise<vo
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Your LLM Observer Pro License</title>
+  <title>Your LLM Observer ${planLabel} License</title>
 </head>
 <body style="margin:0;padding:0;background:#0f1117;font-family:'Inter',system-ui,sans-serif;color:#e2e8f0;">
   <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:48px auto;">
@@ -40,8 +47,8 @@ export async function sendLicenseEmail(payload: LicenseEmailPayload): Promise<vo
         <div style="margin-bottom:32px;text-align:center;">
           <div style="display:inline-block;background:#7c3aed22;border:1px solid #7c3aed44;border-radius:12px;padding:12px 24px;">
             <span style="font-size:28px;">🚀</span>
-            <h1 style="margin:8px 0 0;font-size:22px;font-weight:700;color:#fff;">You're now Pro!</h1>
-            <p style="margin:4px 0 0;font-size:13px;color:#94a3b8;">LLM Observer Pro License</p>
+            <h1 style="margin:8px 0 0;font-size:22px;font-weight:700;color:#fff;">You're now ${planLabel}!</h1>
+            <p style="margin:4px 0 0;font-size:13px;color:#94a3b8;">LLM Observer ${planLabel} License</p>
           </div>
         </div>
 
@@ -52,6 +59,7 @@ export async function sendLicenseEmail(payload: LicenseEmailPayload): Promise<vo
             <code style="font-family:'Courier New',monospace;font-size:18px;font-weight:700;color:#a78bfa;letter-spacing:2px;word-break:break-all;">${licenseKey}</code>
           </div>
           <p style="margin:10px 0 0;font-size:11px;color:#64748b;text-align:center;">Keep this key safe. It unlocks Pro on any installation.</p>
+          ${seatsNote}
         </div>
 
         <!-- Activation Steps -->
@@ -106,7 +114,7 @@ export async function sendLicenseEmail(payload: LicenseEmailPayload): Promise<vo
     const { error } = await resend.emails.send({
         from: FROM,
         to: [to],
-        subject: `🗝️ Your LLM Observer Pro License Key`,
+        subject: `🗝️ Your LLM Observer ${planLabel} License Key`,
         html,
     });
 

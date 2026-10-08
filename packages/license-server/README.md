@@ -75,6 +75,7 @@ In Vercel Dashboard → Your Project → Settings → Environment Variables
 | `LICENSE_PRIVATE_KEY` | Signs license keys. Run `npm run keygen` here; paste the private key. The matching public key must be in `packages/proxy/src/licenseKeys.ts` |
 | `LEMONSQUEEZY_WEBHOOK_SECRET` | LS Dashboard → Settings → Webhooks → Signing Secret. **Webhooks are rejected without it** |
 | `RAZORPAY_WEBHOOK_SECRET` | Razorpay Dashboard → Settings → Webhooks → Secret. **Webhooks are rejected without it** |
+| `LEMONSQUEEZY_TEAM_VARIANT_IDS` / `RAZORPAY_TEAM_PLAN_IDS` | Optional, Team plan (beta). Comma lists of the Lemon Squeezy variant ids / Razorpay plan ids that sell Team; those purchases get a `plan: 'team'` key with seats = subscription quantity, everything else stays `pro`. The field names the webhooks read (`variant_id`, `first_subscription_item.quantity`, `plan_id`, `quantity`) come from the vendors' docs as remembered and have not been checked against a live payload |
 | `RESEND_API_KEY` | [resend.com](https://resend.com) → API Keys (free: 100/day) |
 | `EMAIL_FROM` | `licenses@llm-observer.com` (must be verified in Resend) |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel → Storage → add **Upstash for Redis** (free tier) — sets both automatically. Needed for the owner view |

@@ -35,4 +35,7 @@ const TeamDailyStatsSchema: Schema = new Schema({
 // Compound index for fast aggregation and uniqueness per day/member/model
 TeamDailyStatsSchema.index({ team_id: 1, member_id: 1, date: 1, provider: 1, llm_model: 1, project_name: 1 }, { unique: true });
 
+// Rollups read one team's rows for a date range
+TeamDailyStatsSchema.index({ team_id: 1, date: 1 });
+
 export default mongoose.model<ITeamDailyStats>('TeamDailyStats', TeamDailyStatsSchema);
