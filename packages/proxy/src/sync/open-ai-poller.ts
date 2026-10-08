@@ -1,8 +1,9 @@
 import { getDb, decrypt } from '@llm-observer/database';
-import fetch from 'node-fetch';
+import nodeFetch from 'node-fetch';
 import { calculateSharedCost } from '../utils/pricing';
 import { BudgetService } from '../services/budget.service';
 import { SyncShapeError, normalizeOpenAIUsage, normalizeOpenAICost } from './response-shapes';
+import { adminBaseUrl, isBaseUrlOverridden, openaiUsageUrl, openaiCostUrl } from './admin-endpoints';
 
 const CIRCUIT_BREAKER_THRESHOLD = 10;
 const MAX_BACKOFF_SECONDS = 300;
@@ -16,13 +17,41 @@ class OpenAIAPIError extends Error {
     }
 }
 
+/** Injectable pieces, used by scripts/validate-admin-sync.js to record the responses the poller reads. */
+export interface OpenAIPollerDeps {
+    fetch?: typeof nodeFetch;
+}
+
 export class OpenAIPoller {
     private config: any;
     private timer: NodeJS.Timeout | null = null;
     private isPolling: boolean = false;
+    private fetch: typeof nodeFetch;
+    private warnedBaseUrl = false;
 
-    constructor(config: any) {
+    constructor(config: any, deps: OpenAIPollerDeps = {}) {
         this.config = config;
+        this.fetch = deps.fetch ?? nodeFetch;
+    }
+
+    /** Base URL for this poll; says so once when it is not the real OpenAI host. */
+    private baseUrl(): string {
+        const base = adminBaseUrl('openai');
+        if (isBaseUrlOverridden('openai') && !this.warnedBaseUrl) {
+            this.warnedBaseUrl = true;
+            console.warn(`[OpenAIPoller] Using a non-default admin API base URL (${base}).`);
+        }
+        return base;
+    }
+
+    /**
+     * One usage + cost sync with explicit start points (Unix seconds), exactly as poll() runs them
+     * (same code, same requests), without the config/checkpoint lookup, scheduling or budget
+     * evaluation. Errors are thrown to the caller. Used by the live-key validator.
+     */
+    async syncOnce(apiKey: string, range: { usageStart: number; costStart: number }) {
+        await this.syncUsage(apiKey, range.usageStart);
+        await this.syncCost(apiKey, range.costStart);
     }
 
     start() {
@@ -117,10 +146,9 @@ export class OpenAIPoller {
         `);
 
         do {
-            let url = `https://api.openai.com/v1/organization/usage/completions?start_time=${startingAt}&bucket_width=1d&group_by[]=model`;
-            if (nextCursor) url += `&page=${encodeURIComponent(nextCursor)}`;
+            const url = openaiUsageUrl(this.baseUrl(), startingAt, nextCursor);
 
-            const res = await fetch(url, {
+            const res = await this.fetch(url, {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`
                 }
@@ -182,10 +210,9 @@ export class OpenAIPoller {
         `);
 
         do {
-            let url = `https://api.openai.com/v1/organization/costs?start_time=${startingAt}&bucket_width=1d&group_by[]=line_item`;
-            if (nextCursor) url += `&page=${encodeURIComponent(nextCursor)}`;
+            const url = openaiCostUrl(this.baseUrl(), startingAt, nextCursor);
 
-            const res = await fetch(url, {
+            const res = await this.fetch(url, {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`
                 }
