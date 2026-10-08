@@ -21,8 +21,11 @@ import type { NextFunction, Request, Response } from 'express';
 const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 
 // Origins the bundled clients run from. The desktop webview is tauri://localhost
-// on macOS/Linux and http(s)://tauri.localhost on Windows; 5173 is the vite dev server.
-const TAURI_ORIGINS = ['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost'];
+// on macOS/Linux and http(s)://tauri.localhost on Windows (https when the app sets
+// useHttpsScheme); 5173 is the vite dev server. Exact matches only: no port, no
+// subdomain, no other scheme. Exported because the CORS allowlist in app.ts must
+// name the same origins, or the webview's browser engine discards every response.
+export const TAURI_ORIGINS = ['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost'];
 const VITE_DEV_PORT = 5173;
 
 const SSE_PATH = /^\/api\/(?:requests\/)?events\/?$/;

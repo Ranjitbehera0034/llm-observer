@@ -7,7 +7,7 @@ import { budgetGuard } from './budgetGuard';
 import { rateLimitGuard } from './rateLimitGuard';
 import { resolveRequestContext } from './requestContext';
 import { dashboardApi } from './dashboardApi';
-import { localGuard } from './security/localGuard';
+import { localGuard, TAURI_ORIGINS } from './security/localGuard';
 import syncRoutes from './routes/sync.routes';
 import subscriptionRoutes from './routes/subscriptions.routes';
 import overviewRoutes from './routes/overview.routes';
@@ -19,7 +19,7 @@ import heatmapRoutes from './routes/heatmap.routes';
 import './types';
 
 const corsOptions = {
-    origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4001', 'http://127.0.0.1:4001', process.env.DASHBOARD_URL].filter(Boolean) as string[],
+    origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4001', 'http://127.0.0.1:4001', ...TAURI_ORIGINS, process.env.DASHBOARD_URL].filter(Boolean) as string[],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
 };
