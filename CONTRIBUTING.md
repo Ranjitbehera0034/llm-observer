@@ -45,18 +45,23 @@ and must be labelled as hand-written.
 
 ### Capturing a real recording
 
-Only Claude Code is marked **verified**, and only narrowly: its recording is a scrubbed
+Claude Code and Aider are marked **verified**, and only narrowly. Claude Code's recording is a scrubbed
 excerpt of one real Claude Code 2.1.291 log from Linux
 ([`fixtures/claude/recorded/`](packages/proxy/src/parsers/__tests__/fixtures/claude/recorded/claude-code-2.1.291-linux/README.md)).
-Its older-format fixtures and every other parser's fixtures are hand-written
-(the Aider ones are labelled synthetic in
-[`fixtures/aider/README.md`](packages/proxy/src/parsers/__tests__/fixtures/aider/README.md)),
-so those parsers agree with their fixtures, not necessarily with the real tool. A parser
+Aider's is a scrubbed analytics log written by real Aider 0.86.2 on Linux against a mock model endpoint
+([`fixtures/aider/recorded/`](packages/proxy/src/parsers/__tests__/fixtures/aider/recorded/aider-0.86.2/README.md)),
+so it verifies the log format, not token counts or costs. Claude Code's older-format fixtures and every
+other parser's fixtures are hand-written (the old Aider file is kept, labelled synthetic, in
+[`fixtures/synthetic/aider/`](packages/proxy/src/parsers/__tests__/fixtures/synthetic/aider/README.md)),
+so those agree with their fixtures, not necessarily with the real tool. A parser
 is promoted to verified only with a recording from a real install:
 
 1. Use the tool normally on a throwaway project for a few prompts (include a tool call or
    edit if the tool supports them). For Aider, start it with
-   `aider --analytics-log ~/.aider/analytics.jsonl`; it writes no log otherwise.
+   `aider --analytics-log ~/.aider/analytics.jsonl`; it writes no log otherwise. Add `--no-analytics`
+   unless you want Aider's own remote analytics on: the local log is written either way. To record
+   without a paid model, point `--openai-api-base` at a small mock `/v1/chat/completions` server and say
+   so in the README (see the Aider recording for the exact command and what the mock changes).
 2. Copy the file(s) the parser reads (see the table in the README) into
    `packages/proxy/src/parsers/__tests__/fixtures/<tool>/`. For SQLite stores, copy the
    `.db`/`.vscdb` file after closing the editor.

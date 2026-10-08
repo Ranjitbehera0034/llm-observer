@@ -8,11 +8,21 @@ import { getProviderForModel } from './utils';
 /*
  * Aider has no default analytics log: it only writes one when started with
  * `--analytics-log FILE`. ~/.aider/analytics.jsonl is the path this tool looks at, so a
- * user has to point Aider there. Each line is `{event, properties, user_id, time}` where
- * `time` is Unix seconds and everything else lives under `properties`. Only the
- * `message_send` event carries usage (prompt_tokens, completion_tokens, cost).
+ * user has to point Aider there. The log is written even when the user has not opted in to
+ * Aider's remote analytics (`--no-analytics` still logs locally).
+ *
+ * Format, as recorded from real Aider 0.86.2 (fixtures/aider/recorded/aider-0.86.2/README.md):
+ * each line is `{event, properties, user_id, time}`; `time` is Unix seconds, `user_id` is a
+ * per-install UUID (there is NO session or project id anywhere), and everything else lives
+ * under `properties`. Only `message_send` carries usage (prompt_tokens, completion_tokens,
+ * cost). It is logged after the reply, and the reply's request is announced by a
+ * `message_send_starting` event, which this parser pairs with it to get a start time and duration.
+ * A failed request logs `message_send_starting` and no `message_send`. Model names are written
+ * as litellm ids ("openai/gpt-4o-mini"); a model litellm does not know is written as
+ * "<provider>/REDACTED", or the string "None" when it has no provider prefix.
  * Upstream: https://github.com/Aider-AI/aider/blob/main/aider/analytics.py
- * The fixtures for this parser are synthetic (see __tests__/fixtures/aider/README.md).
+ * Token counts in a log are whatever Aider reports: from the API's usage object when the reply
+ * is not streamed, and Aider's own tokenizer estimate when it is streamed.
  */
 const getAiderAnalyticsPath = () => {
     return path.join(os.homedir(), '.aider', 'analytics.jsonl');
@@ -23,6 +33,18 @@ export const detector = (): boolean => {
 };
 
 const num = (v: unknown): number => (typeof v === 'number' && isFinite(v) && v > 0 ? v : 0);
+
+/**
+ * Aider logs litellm model ids. Drop the routing prefix so the name matches the price table and the
+ * other parsers ("openai/gpt-4o-mini" -> "gpt-4o-mini"), and treat names Aider itself redacted
+ * ("openai/REDACTED", "REDACTED", "None", missing) as unknown.
+ */
+const normalizeModel = (raw: unknown): string => {
+    if (typeof raw !== 'string') return 'unknown';
+    const name = raw.trim().split('/').pop() || '';
+    if (!name || name === 'REDACTED' || name === 'None') return 'unknown';
+    return name;
+};
 
 /** Deterministic id: file path + byte offset of the line, so a re-read upserts instead of duplicating. */
 const eventId = (filePath: string, offset: number): string =>
@@ -46,6 +68,7 @@ export const parse = async (onProgress?: (current: number, total: number) => voi
 
         const buf = fs.readFileSync(filePath);
         let offset = 0;
+        let pendingStart = 0; // `time` of the latest message_send_starting not yet answered by a message_send
         while (offset < buf.length) {
             const nl = buf.indexOf(0x0a, offset);
             const lineStart = offset;
@@ -61,22 +84,28 @@ export const parse = async (onProgress?: (current: number, total: number) => voi
             } catch {
                 continue; // malformed or half-written last line; it keeps the same id once complete
             }
+            if (event?.event === 'message_send_starting') {
+                pendingStart = num(event.time);
+                continue;
+            }
+            if (event?.event === 'launched' || event?.event === 'exit' || event?.event === 'message_send_exception') pendingStart = 0;
             if (event?.event !== 'message_send') continue;
+            const startTime = pendingStart;
+            pendingStart = 0;
 
             const props = event.properties || {};
             const inputTokens = num(props.prompt_tokens);
             const outputTokens = num(props.completion_tokens);
             if (inputTokens + outputTokens === 0) continue;
 
-            // Aider redacts the names of models litellm does not know to "REDACTED".
             const rawModel = typeof props.main_model === 'string' ? props.main_model : '';
-            const model = rawModel && rawModel !== 'REDACTED' ? rawModel : 'unknown';
+            const model = normalizeModel(rawModel);
 
             let cost = num(props.cost);
             let isEstimated = false;
             let costSource = 'reported'; // the price Aider itself computed
             if (!cost) {
-                const pricing = model !== 'unknown' ? getPricingForModel(getProviderForModel(model), model) : undefined;
+                const pricing = model !== 'unknown' ? getPricingForModel(getProviderForModel(rawModel), model) : undefined;
                 isEstimated = true;
                 if (pricing) {
                     cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output;
@@ -86,7 +115,8 @@ export const parse = async (onProgress?: (current: number, total: number) => voi
                 }
             }
 
-            const when = new Date(num(event.time) ? event.time * 1000 : stat.birthtimeMs).toISOString();
+            const sentAt = num(event.time) ? event.time : Math.floor(stat.birthtimeMs / 1000);
+            const startedAt = startTime && startTime <= sentAt ? startTime : sentAt;
             insertSession({
                 provider: 'aider',
                 tool: 'Aider',
@@ -94,9 +124,9 @@ export const parse = async (onProgress?: (current: number, total: number) => voi
                 project_name: 'aider',
                 project_path: null as any,
                 model_primary: model,
-                started_at: when,
-                ended_at: when,
-                duration_seconds: 0,
+                started_at: new Date(startedAt * 1000).toISOString(),
+                ended_at: new Date(sentAt * 1000).toISOString(),
+                duration_seconds: sentAt - startedAt,
                 message_count: 1,
                 input_tokens: inputTokens,
                 output_tokens: outputTokens,

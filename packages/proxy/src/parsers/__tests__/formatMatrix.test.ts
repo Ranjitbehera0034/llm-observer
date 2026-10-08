@@ -1,4 +1,5 @@
 import * as claudeParser from '../claude';
+import * as aiderParser from '../aider';
 import * as dbMock from '@llm-observer/database';
 import fs from 'fs';
 import os from 'os';
@@ -65,9 +66,9 @@ const copyDir = (from: string, to: string) => {
  * here instead of a user silently seeing a $0 session.
  *
  * Hand-written files do NOT belong here: they live in fixtures/synthetic/ and are covered by
- * syntheticFormats.test.ts. Other editors' parsers are not in this matrix either, because their
- * fixtures are hand-written; add an entry only with a real recording (CONTRIBUTING.md,
- * "Capturing a real recording").
+ * syntheticFormats.test.ts. Parsers other than Claude Code and Aider are not in this matrix either,
+ * because their fixtures are hand-written; add an entry only with a real recording (CONTRIBUTING.md,
+ * "Capturing a real recording"). The Aider recording is in the second describe block below.
  */
 describe('Claude parser, recorded format matrix', () => {
     let tmpHome: string;
@@ -161,6 +162,115 @@ describe('Claude parser, recorded format matrix', () => {
             for (const re of forbidden) if (re.test(text)) offenders.push(`${path.basename(file)} matches ${re}`);
             if (home.length > 1 && text.includes(home)) offenders.push(`${path.basename(file)} contains the home directory`);
         }
+        expect(offenders).toEqual([]);
+    });
+});
+
+const AIDER_DIR = path.join(FIXTURES_DIR, 'aider');
+
+interface AiderRow {
+    line: number;
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+    costSource: string;
+    isEstimated: boolean;
+    startedAt: string;
+    durationSeconds: number;
+}
+
+interface AiderEntry {
+    fixture: string;
+    description: string;
+    expected: { eventsInFile: number; sessionRows: number; inputTokens: number; outputTokens: number; rows: AiderRow[] };
+}
+
+/**
+ * Aider recorded-format matrix.
+ *
+ * The fixture is the analytics log (`--analytics-log`) written by real Aider 0.86.2, scrubbed (see the
+ * README in the fixture folder). The model endpoint was a mock, so token counts are not real model usage;
+ * what is checked here is the FORMAT: where the usage lives, how models are named, how events are paired.
+ * Golden values were computed by hand from the raw lines (the `line` field is the 1-based line number).
+ */
+describe('Aider parser, recorded format matrix', () => {
+    let tmpHome: string;
+    let logPath: string;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aider-format-matrix-'));
+        fs.mkdirSync(path.join(tmpHome, '.aider'), { recursive: true });
+        logPath = path.join(tmpHome, '.aider', 'analytics.jsonl');
+        jest.spyOn(os, 'homedir').mockReturnValue(tmpHome);
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+        fs.rmSync(tmpHome, { recursive: true, force: true });
+    });
+
+    it.each(manifest.aider as AiderEntry[])('$fixture: $description', async ({ fixture, expected }) => {
+        fs.copyFileSync(path.join(AIDER_DIR, fixture, 'analytics.jsonl'), logPath);
+        expect(fs.readFileSync(logPath, 'utf8').trim().split('\n')).toHaveLength(expected.eventsInFile);
+
+        await aiderParser.parse();
+
+        const rows = (dbMock.insertSession as jest.Mock).mock.calls.map((c: any[]) => c[0]);
+        expect(rows).toHaveLength(expected.sessionRows);
+        expect(rows.map((r: any) => r.input_tokens).reduce((a: number, b: number) => a + b, 0)).toBe(expected.inputTokens);
+        expect(rows.map((r: any) => r.output_tokens).reduce((a: number, b: number) => a + b, 0)).toBe(expected.outputTokens);
+
+        // Every row is unique and stable: the id is derived from the log path and the line's byte offset.
+        expect(new Set(rows.map((r: any) => r.session_id)).size).toBe(rows.length);
+
+        expected.rows.forEach((want, i) => {
+            const got = rows[i];
+            const label = `line ${want.line}`;
+            expect([label, got.provider, got.tool]).toEqual([label, 'aider', 'Aider']);
+            expect([label, got.model_primary]).toEqual([label, want.model]);
+            expect([label, got.input_tokens]).toEqual([label, want.inputTokens]);
+            expect([label, got.output_tokens]).toEqual([label, want.outputTokens]);
+            expect([label, got.estimated_cost_usd]).toEqual([label, expect.closeTo(want.costUsd, 9)]);
+            expect([label, got.cost_source]).toEqual([label, want.costSource]);
+            expect([label, Boolean(got.is_estimated)]).toEqual([label, want.isEstimated]);
+            expect([label, got.started_at]).toEqual([label, want.startedAt]);
+            expect([label, got.duration_seconds]).toEqual([label, want.durationSeconds]);
+        });
+    });
+
+    it('only wires a real recording into the matrix: a recorded/ directory with a README naming the Aider version', () => {
+        for (const { fixture } of manifest.aider as AiderEntry[]) {
+            const dir = path.join(AIDER_DIR, fixture);
+            expect(fixture).toMatch(/^recorded\//);
+            expect(fixture).not.toMatch(/synthetic/i);
+            const readme = fs.readFileSync(path.join(dir, 'README.md'), 'utf8');
+            expect(readme).toMatch(/Aider 0\.\d+\.\d+/);
+            expect(readme).toMatch(/Linux|macOS|Windows/);
+            expect(readme).toMatch(/mock/i);
+            expect(fixture).toContain(readme.match(/Aider (0\.\d+\.\d+)/)![1]);
+        }
+    });
+
+    it('the recording keeps real key names and nesting, and has one scrubbed user id', () => {
+        const lines = fs.readFileSync(path.join(AIDER_DIR, 'recorded', 'aider-0.86.2', 'analytics.jsonl'), 'utf8')
+            .trim().split('\n').map(l => JSON.parse(l));
+        for (const l of lines) expect(Object.keys(l)).toEqual(['event', 'properties', 'user_id', 'time']);
+        expect(new Set(lines.map(l => l.user_id)).size).toBe(1);
+        const send = lines.find(l => l.event === 'message_send');
+        expect(Object.keys(send.properties)).toEqual([
+            'main_model', 'weak_model', 'editor_model', 'edit_format',
+            'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost', 'total_cost',
+        ]);
+    });
+
+    it('recorded Aider fixture contains no paths, emails, URLs, keys, or the current home directory', () => {
+        const text = fs.readFileSync(path.join(AIDER_DIR, 'recorded', 'aider-0.86.2', 'analytics.jsonl'), 'utf8');
+        const forbidden: RegExp[] = [/\/home\//, /\/Users\//, /\/root\b/, /\/tmp\b/, /[A-Za-z]:\\/, /@/, /https?:\/\//, /127\.0\.0\.1/, /sk-/, /session_/, /\.wt\b/];
+        const offenders = forbidden.filter(re => re.test(text)).map(String);
+        const home = os.homedir();
+        if (home.length > 1 && text.includes(home)) offenders.push('home directory');
         expect(offenders).toEqual([]);
     });
 });
