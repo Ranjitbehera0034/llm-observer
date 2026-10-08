@@ -309,7 +309,7 @@ export function BudgetsTab() {
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="text-sm font-bold text-white group-hover:text-red-400 transition-colors">Block After Limit (Best Effort)</span>
-                                        <span className="text-[10px] text-slate-500 font-medium leading-tight">Blocks a request before it is sent when recorded, queued and in-flight estimated spend would exceed the limit. Overshoot is bounded by the gap between a request's estimated and actual cost.</span>
+                                        <span className="text-[10px] text-slate-500 font-medium leading-tight">Blocks a request before it is sent when recorded, queued and in-flight estimated spend would exceed the limit, once spend reaches 60% of the limit (below that, one request can overshoot by its whole cost). Above that, overshoot is bounded by the gap between a request's estimated and actual cost.</span>
                                     </div>
                                 </label>
                             </div>
@@ -491,7 +491,7 @@ export function BudgetsTab() {
                     <h5 className="text-sm font-bold text-white mb-1">Pre-estimation active</h5>
                     <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
                         Proxy requests are pre-estimated using model pricing tables before execution. 
-                        If recorded, queued (finished but not yet written to the database) and in-flight estimated spend plus this request's estimate would cross the kill-switch limit, the request is blocked with a 429 before it is sent. The estimate check starts once spend reaches 60% of the limit. Enforcement is best effort: overshoot is bounded by the difference between a request's estimated and actual cost, and it covers only traffic sent through this proxy process (not calls that bypass it, requests the client aborts mid-response, or models with no known price). It cannot promise to prevent a bill.
+                        If recorded, queued (finished but not yet written to the database) and in-flight estimated spend plus this request's estimate would cross the kill-switch limit, the request is blocked with a 429 before it is sent. The estimate check starts only once spend reaches 60% of the limit; below that a request of any size is admitted and can overshoot by its whole cost. Above it, enforcement is best effort: overshoot is bounded by the difference between a request's estimated and actual cost, and it covers only traffic sent through this proxy process (not calls that bypass it, requests the client aborts mid-response, or models with no known price). It cannot promise to prevent a bill.
                     </p>
                 </div>
             </div>

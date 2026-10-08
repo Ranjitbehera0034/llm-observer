@@ -6,6 +6,8 @@
  * What the kill switch really does (K1): a request is refused before it is sent when recorded +
  * queued + in-flight estimated spend would exceed a budget. Overshoot is bounded by the difference
  * between a request's estimated and actual cost, and only proxy traffic of one process is seen.
+ * The estimate check starts once committed spend reaches 60% of the limit (below that a request of
+ * any size is admitted), and the bound holds only for requests that pass that check.
  */
 import fs from 'fs';
 import path from 'path';
@@ -69,6 +71,15 @@ describe('user-facing claims', () => {
         expect(text).toMatch(/best effort/i);
         expect(text).toMatch(/cannot promise to prevent a bill/i);
         expect(text).toMatch(/proxy/i);
+    });
+
+    it.each(KILL_SWITCH_FILES)('%s says the estimate check only starts at 60% of the limit', (file) => {
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8').replace(/\s+/g, ' ');
+        // The estimate check (and so the estimated-vs-actual bound) applies only once committed spend
+        // reaches 60% of the limit; below that a single request can overshoot by its whole cost.
+        expect(text).toMatch(/60% of the limit/);
+        expect(text).toMatch(/(?:below|until) (?:that|then|60%)|only (?:once|after|when|from)|starts? (?:once|at|when)|only applies?/i);
+        expect(text).toMatch(/whole cost|full cost|entire cost|any size/i);
     });
 
     it('the longer docs also say the figure covers one process and not traffic that bypasses the proxy', () => {

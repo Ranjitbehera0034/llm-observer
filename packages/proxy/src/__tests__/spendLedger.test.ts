@@ -219,6 +219,43 @@ describe('spendLedger', () => {
             expect(spendLedger.inFlight()).toBe(1);
         });
 
+        // The estimate check (Layer 3) only runs once committed spend (recorded + queued + in-flight)
+        // reaches 60% of the limit. These tests pin that documented behaviour so the wording in the
+        // README / BudgetsTab ("starts once spend reaches 60% of the limit") cannot drift from the code.
+        describe('estimate check starts at 60% of the limit', () => {
+            it('at 0% a request whose estimate alone exceeds the whole limit is admitted', () => {
+                addBudget({ limit_usd: 1, safety_buffer_usd: 0.001 });
+                const r = BudgetService.admit('openai', 'm', 'default', 10, 50, undefined);
+                expect(r.blocked).toBe(false);
+                r.reservation?.release();
+            });
+
+            it('at 55% a request that takes the total past the limit is admitted', async () => {
+                addBudget({ limit_usd: 1, safety_buffer_usd: 0.001 });
+                await internalLogger.add(row({ cost_usd: 0.55 }));
+                const r = BudgetService.admit('openai', 'gpt-4o-mini', 'default', 10, 0.5, undefined);
+                expect(r.blocked).toBe(false);
+                r.reservation?.release();
+            });
+
+            it('at exactly 60% the same request is refused as budget_insufficient', async () => {
+                addBudget({ limit_usd: 1, safety_buffer_usd: 0.001 });
+                await internalLogger.add(row({ cost_usd: 0.6 }));
+                const r = BudgetService.admit('openai', 'gpt-4o-mini', 'default', 10, 0.5, undefined);
+                expect(r.blocked).toBe(true);
+                expect(r.type).toBe('budget_insufficient');
+            });
+
+            it('in-flight estimates count towards the 60%, so a burst crosses the gate and is then refused', () => {
+                addBudget({ limit_usd: 1, safety_buffer_usd: 0.001 });
+                const a = BudgetService.admit('openai', 'm', 'default', 10, 0.3, undefined);
+                const b = BudgetService.admit('openai', 'm', 'default', 10, 0.3, undefined); // 0.3 in flight, 0.6 after
+                const c = BudgetService.admit('openai', 'm', 'default', 10, 0.5, undefined); // 0.6 committed + 0.5 > 1
+                expect([a.blocked, b.blocked, c.blocked]).toEqual([false, false, true]);
+                a.reservation?.release(); b.reservation?.release();
+            });
+        });
+
         it('budgets without the kill switch never block or reserve against themselves', () => {
             addBudget({ limit_usd: 1, kill_switch: false });
             const a = BudgetService.admit('openai', 'm', 'default', 10, 50, undefined);
