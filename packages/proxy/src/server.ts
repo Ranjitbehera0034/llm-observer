@@ -15,6 +15,7 @@ import { startLicenseRevalidation } from './licenseManager';
 import { startTelemetry } from './telemetry';
 import { createApp, createDashboardApp } from './app';
 import { internalLogger } from './internalLogger';
+import { initOtlpReceiver, shutdownOtlp } from './otlp';
 import './types';
 
 // The app factories live in ./app and are re-exported so tests (and anything
@@ -147,6 +148,8 @@ function bootstrap() {
         initParsers();
         startLicenseRevalidation();
         startTelemetry();
+        // Opt-in (otlp_receiver_enabled, off by default); a no-op unless the user turned it on
+        void initOtlpReceiver();
 
     } catch (err) {
         console.error('Fatal Initialization Error:', err);
@@ -176,7 +179,7 @@ export function installSignalHandlers(
 ): void {
     const shutdown = createShutdownHandler({
         servers,
-        flush: () => internalLogger.flush(),
+        flush: async () => { await shutdownOtlp(); await internalLogger.flush(); },
         closeDatabase: closeDb,
         exit,
     });

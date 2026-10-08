@@ -272,6 +272,14 @@ LLM_OBSERVER_PORT=3000 llm-observer start
 
 All files are read in **read-only mode**. LLM Observer never modifies any AI tool's data.
 
+### Real-time Claude Code telemetry (OpenTelemetry, opt-in)
+
+Claude Code can push its own usage telemetry. Turn on **Settings → OpenTelemetry Receiver** and LLM Observer
+listens on `127.0.0.1:4318` (override with `LLM_OBSERVER_OTLP_PORT`) for OTLP over `http/json`; the card shows the
+exact `export` lines to paste into your shell. It is off by default, loopback only, refuses browser requests, and
+stores only token counts, model, cost and session id, never prompt or tool content. It does not double count with
+the log parser. Verified on Claude Code 2.1.294 (Linux) only; see [docs/guide/otlp.md](docs/guide/otlp.md).
+
 ---
 
 ## What LLM Observer Does NOT Do

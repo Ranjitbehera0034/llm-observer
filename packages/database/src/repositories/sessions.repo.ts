@@ -33,6 +33,7 @@ export interface SessionRecord {
   tool?: string; // display name of the tool, e.g. 'Claude Code'
   is_estimated?: boolean | number; // cost is a guess, not an exact price-table match
   cost_source?: string; // 'pricing_table' | 'reported' (price computed by the tool itself) | 'family_fallback' | 'unpriced' | 'estimated'
+  source?: 'log' | 'otlp'; // where the row came from; parsers write 'log' (the default), the OTLP receiver 'otlp'
 }
 
 // Worst-first ordering used to merge the provenance of a parent and its subagents.
@@ -67,7 +68,7 @@ export const insertSession = (session: SessionRecord): number => {
       cache_hit_rate, estimated_cost_usd, session_type, tool_calls_json,
       has_subagents, subagent_count, raw_metadata_json, file_path, file_modified_at,
       total_subagent_cost_usd, parent_cost_usd, deepest_agent_depth,
-      tool, is_estimated, cost_source
+      tool, is_estimated, cost_source, source
     ) VALUES (
       ?, ?, ?, ?, ?,
       ?, ?, ?, ?,
@@ -75,7 +76,7 @@ export const insertSession = (session: SessionRecord): number => {
       ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
       ?, ?, ?,
-      ?, ?, ?
+      ?, ?, ?, ?
     )
     ON CONFLICT(provider, session_id) DO UPDATE SET
       project_path = excluded.project_path,
@@ -103,7 +104,8 @@ export const insertSession = (session: SessionRecord): number => {
       deepest_agent_depth = excluded.deepest_agent_depth,
       tool = excluded.tool,
       is_estimated = excluded.is_estimated,
-      cost_source = excluded.cost_source
+      cost_source = excluded.cost_source,
+      source = excluded.source
     RETURNING id
   `);
 
@@ -137,7 +139,8 @@ export const insertSession = (session: SessionRecord): number => {
     session.deepest_agent_depth || 0,
     session.tool || null,
     session.is_estimated ? 1 : 0,
-    session.cost_source || null
+    session.cost_source || null,
+    session.source || 'log'
   ) as { id: number };
 
   return row.id;
