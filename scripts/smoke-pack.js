@@ -325,7 +325,9 @@ async function main() {
                 const gone = await waitFor(() => !isAlive(termRun.serverPid), 15000);
                 if (!gone) fail(`start #2: server process ${termRun.serverPid} orphaned after SIGTERM`);
             }
-            if (fs.existsSync(pidFile)) fail('start #2: pid file left behind after SIGTERM');
+            // Windows delivers SIGTERM as an unconditional kill (no handler can run), so the CLI cannot remove
+            // its pid file there. A stale file is harmless: step 5c boots over it and `stop` verifies the pid.
+            if (!IS_WIN && fs.existsSync(pidFile)) fail('start #2: pid file left behind after SIGTERM');
             if (exited) log('start #2: clean shutdown on SIGTERM');
         }
 
