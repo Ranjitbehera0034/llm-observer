@@ -60,8 +60,10 @@ jobs:
     - name: Build, pack, install and boot the packed CLI
       run: node scripts/smoke-pack.js
 
-  # A clean checkout must install from the lockfile and build on every OS the
-  # desktop installers and the npm package are used on.
+  # A clean checkout must install from the lockfile, build and pass its tests on every
+  # OS the desktop installers and the npm package are used on. The packed-CLI smoke
+  # test starts and stops the real server there, which is the only place the Windows
+  # and macOS branches of `llm-observer stop` run.
   install-build-matrix:
     strategy:
       fail-fast: false
@@ -83,6 +85,15 @@ jobs:
 
     - name: Build all packages
       run: npm run build:ci
+
+    - name: Database and CLI tests
+      run: npm test --workspace=@llm-observer/database --workspace=llm-observer
+
+    - name: Proxy tests
+      run: npm test --workspace=@llm-observer/proxy
+
+    - name: Packed CLI smoke test
+      run: node scripts/smoke-pack.js
 
   parser-format-drift:
     runs-on: ubuntu-latest

@@ -10,7 +10,7 @@
     "test:coverage": "jest --coverage --forceExit --testTimeout=30000",
     "typecheck": "tsc --noEmit",
     "build:sidecar": "node scripts/build-sidecar.js",
-    "clean": "rm -rf dist"
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
     "@llm-observer/database": "*",

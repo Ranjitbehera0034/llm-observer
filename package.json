@@ -24,7 +24,7 @@
     "test:load:k6": "k6 run tests/load/k6-proxy-load.js",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "smoke:pack": "node scripts/smoke-pack.js",
-    "clean": "rm -rf node_modules packages/*/dist packages/*/node_modules"
+    "clean": "node scripts/clean.js"
   },
   "repository": {
     "type": "git",
