@@ -41,3 +41,21 @@ Admin keys exist only for organisation accounts, so this needs someone with one.
 | Date | Tester | Anthropic | OpenAI | Notes |
 |------|--------|-----------|--------|-------|
 | _not yet validated_ | | | | |
+
+## License server: post-deploy verification (manual, required after any deploy or env change)
+
+The license server (`packages/license-server`) has been tested over real HTTP only against local fakes
+(`tests/integration/license-e2e.test.ts`). Whether the Vercel deployment itself works is unproven until this
+passes. Full set-up steps: `docs/DEPLOY_LICENSE_SERVER.md`.
+
+1. `ADMIN_TOKEN=<token> node scripts/verify-license-server.js https://api.llm-observer.com --admin-token-env ADMIN_TOKEN`
+   must exit 0 with no FAIL and no SKIP. It is read-only and never prints the token.
+2. Make one test-mode purchase and confirm: email with an `LLMO1.` key arrives, the app activates it,
+   `/admin.html` shows the customer with one device, a re-sent webhook sends no second email.
+3. If the public key in `packages/proxy/src/licenseKeys.ts` changed in this release, confirm it matches
+   `LICENSE_PRIVATE_KEY` (a key from step 2 activating proves it).
+4. Record the date, tester and result below.
+
+| Date | Tester | Verifier | Test purchase | Notes |
+|------|--------|----------|---------------|-------|
+| _not yet run against production_ | | | | |

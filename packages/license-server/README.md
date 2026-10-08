@@ -2,6 +2,11 @@
 
 The cloud relay that bridges payment webhooks (Razorpay / Lemon Squeezy) to your local LLM Observer installation. Runs as a Vercel Serverless deployment.
 
+> **Deploying?** Follow [`docs/DEPLOY_LICENSE_SERVER.md`](../../docs/DEPLOY_LICENSE_SERVER.md) (Vercel project, domain,
+> every environment variable and where it comes from, Upstash, webhooks). The production deployment has not been
+> exercised yet: run `node scripts/verify-license-server.js https://api.llm-observer.com --admin-token-env ADMIN_TOKEN`
+> from the repository root after deploying - that is how you find out whether it works.
+
 ```
 packages/license-server/
 ├── api/
@@ -43,7 +48,10 @@ Customer pastes key into LLM Observer Settings → Instant activation ✅
 
 ---
 
-## 1. Deploy to Vercel in 2 minutes
+## 1. Deploy to Vercel
+
+The short version; the full checklist (project settings, DNS, Resend domain, webhook events, test purchase) is in
+[`docs/DEPLOY_LICENSE_SERVER.md`](../../docs/DEPLOY_LICENSE_SERVER.md).
 
 ```bash
 cd packages/license-server
@@ -61,7 +69,13 @@ you at your DNS provider. (Any other domain works if you set
 `LLM_OBSERVER_LICENSE_SERVER` for the app, but the published npm package
 talks to `https://api.llm-observer.com`.)
 
-Check it: `curl https://api.llm-observer.com/health` — every `has*` flag should be `true`.
+Check it: `curl https://api.llm-observer.com/health` — every `has*` flag should be `true` — then run the
+verifier, which checks that bad keys, forged webhooks and unauthenticated admin requests are all refused
+and that `/admin.html` is served:
+
+```bash
+ADMIN_TOKEN=... node scripts/verify-license-server.js https://api.llm-observer.com --admin-token-env ADMIN_TOKEN
+```
 
 ---
 
@@ -130,6 +144,10 @@ npm test          # unit tests, no network needed
 npm run dev       # Vercel dev environment
 curl http://localhost:3000/health
 ```
+
+From the repository root, `npx vitest run tests/integration/license-e2e.test.ts` (after `npm run build:ci`) runs
+the real handlers over HTTP together with the compiled app: purchase webhook, email, activation, cancel/expiry.
+Against any running server, `node scripts/verify-license-server.js http://localhost:3000` runs the read-only checks.
 
 Webhooks need a valid signature even locally. To simulate one:
 
