@@ -1,6 +1,28 @@
 import { getDb, Budget, getBudgetLimits, createAlert } from '@llm-observer/database';
 import { estimateOutputTokens } from './costEstimator';
-import { getPeriodStart, getPeriodStartLabel, getSecondsUntilPeriodReset, periodLabel } from '../utils/period';
+import { getPeriodStart, getPeriodStartDate, getPeriodStartLabel, getSecondsUntilPeriodReset, periodLabel } from '../utils/period';
+import { spendLedger, Reservation } from './spendLedger';
+
+/** What the guard sees for one budget: the three places spend can be. */
+export interface SpendBreakdown {
+    /** Rows in SQLite (proxy rows, plus admin-API sync rows) */
+    recorded: number;
+    /** Completed requests whose row is still waiting in the internalLogger batch (final cost) */
+    queued: number;
+    /** Estimated cost of admitted requests that are still running */
+    reserved: number;
+    /** recorded + queued + reserved */
+    total: number;
+}
+
+export type AdmitResult = {
+    blocked: boolean;
+    type?: 'budget_exceeded' | 'budget_buffer' | 'budget_insufficient';
+    reason?: string;
+    details?: any;
+    /** Present when the request was admitted: its estimate is held until release() */
+    reservation?: Reservation;
+};
 
 export class BudgetService {
     
@@ -38,7 +60,9 @@ export class BudgetService {
 
     /**
      * Context B: Real-time kill switch check for proxy requests.
-     * Implements Budget Guard v2 with three layers of protection.
+     * Implements Budget Guard v2 with three layers of protection, on committed spend
+     * (recorded + queued + in-flight estimates). Does not reserve anything: use admit() on the
+     * request path. Kept async for existing callers; it has no real await.
      */
     static async checkKillSwitch(
         provider: string, 
@@ -47,6 +71,35 @@ export class BudgetService {
         estimatedCost: number,
         maxOutputTokens?: number
     ): Promise<{ blocked: boolean, type?: 'budget_exceeded' | 'budget_buffer' | 'budget_insufficient', reason?: string, details?: any }> {
+        return this.checkKillSwitchSync(provider, model, inputTokens, estimatedCost, maxOutputTokens);
+    }
+
+    /**
+     * Check and reserve in one synchronous step. There is deliberately no await anywhere between
+     * reading the spend and holding the estimate, so on a single event loop two requests can never
+     * be admitted against the same headroom. The caller owns the returned reservation and must
+     * release it when the request ends (the guard binds it to the response).
+     */
+    static admit(
+        provider: string,
+        model: string,
+        projectId: string,
+        inputTokens: number,
+        estimatedCost: number,
+        maxOutputTokens?: number
+    ): AdmitResult {
+        const check = this.checkKillSwitchSync(provider, model, inputTokens, estimatedCost, maxOutputTokens);
+        if (check.blocked) return check;
+        return { blocked: false, reservation: spendLedger.reserve({ provider, model, projectId, amountUsd: estimatedCost }) };
+    }
+
+    static checkKillSwitchSync(
+        provider: string,
+        model: string,
+        inputTokens: number,
+        estimatedCost: number,
+        maxOutputTokens?: number
+    ): AdmitResult {
         const budgets = getBudgetLimits(true).filter(b => b.kill_switch);
         
         for (const budget of budgets) {
@@ -57,11 +110,13 @@ export class BudgetService {
             
             if (!isMatch) continue;
 
-            const spent = await this.calculateCurrentSpend(budget.scope, budget.scope_value, budget.period);
+            const breakdown = this.spendBreakdown(budget.scope, budget.scope_value, budget.period);
+            const spent = breakdown.total;
             const limit = budget.limit_usd;
             const buffer = budget.safety_buffer_usd || 0.05;
             const effectiveLimit = limit - buffer;
             const utilization = spent / limit;
+            const parts = { recorded: breakdown.recorded, queued: breakdown.queued, in_flight_estimated: breakdown.reserved };
 
             // Layer 1: Already Exceeded
             if (spent >= limit) {
@@ -69,7 +124,7 @@ export class BudgetService {
                     blocked: true, 
                     type: 'budget_exceeded',
                     reason: `${periodLabel(budget.period)} budget exceeded: $${spent.toFixed(2)} spent of $${limit.toFixed(2)} limit.`,
-                    details: { limit, spent, scope: budget.scope, scope_value: budget.scope_value, retry_after: getSecondsUntilPeriodReset(budget.period) }
+                    details: { limit, spent, ...parts, scope: budget.scope, scope_value: budget.scope_value, retry_after: getSecondsUntilPeriodReset(budget.period) }
                 };
             }
 
@@ -79,7 +134,7 @@ export class BudgetService {
                     blocked: true,
                     type: 'budget_buffer',
                     reason: `${periodLabel(budget.period)} budget nearly exhausted. $${(limit - spent).toFixed(2)} remaining (safety buffer: $${buffer.toFixed(2)}).`,
-                    details: { limit, spent, remaining: limit - spent, buffer, scope: budget.scope, scope_value: budget.scope_value, retry_after: getSecondsUntilPeriodReset(budget.period) }
+                    details: { limit, spent, ...parts, remaining: limit - spent, buffer, scope: budget.scope, scope_value: budget.scope_value, retry_after: getSecondsUntilPeriodReset(budget.period) }
                 };
             }
 
@@ -92,7 +147,7 @@ export class BudgetService {
                         type: 'budget_insufficient',
                         reason: `Insufficient ${budget.period} budget for this request. $${(limit - spent).toFixed(2)} remaining, estimated cost ~$${estimatedCost.toFixed(4)}.`,
                         details: { 
-                            limit, spent, estimated: estimatedCost, 
+                            limit, spent, ...parts, estimated: estimatedCost, 
                             input_tokens: inputTokens, 
                             output_tokens: estimateOutputTokens(inputTokens, budget.estimate_multiplier || 3.0, maxOutputTokens),
                             model, scope: budget.scope, scope_value: budget.scope_value, 
@@ -109,8 +164,22 @@ export class BudgetService {
     /**
      * Dual-source spend aggregator (Sync preferred over Proxy)
      * Matches logic from Overview Routes v1.3.1
+     *
+     * Recorded + queued spend: money that has actually been spent. In-flight estimates are NOT
+     * included (this feeds the dashboard and alerts, which should show real spend). The kill switch
+     * uses committedSpend() instead.
      */
     public static async calculateCurrentSpend(scope: string, value: string | undefined, period: string): Promise<number> {
+        const b = this.spendBreakdown(scope, value, period);
+        return b.recorded + b.queued;
+    }
+
+    /** What the kill switch compares with the limit: recorded + queued + in-flight estimates. */
+    public static committedSpend(scope: string, value: string | undefined | null, period: string): number {
+        return this.spendBreakdown(scope, value, period).total;
+    }
+
+    public static spendBreakdown(scope: string, value: string | undefined | null, period: string): SpendBreakdown {
         const db = getDb();
         const start = getPeriodStart(period);
         
@@ -140,9 +209,17 @@ export class BudgetService {
         if (scope === 'model') { proxyQuery += ' AND model = ?'; proxyParams.push(value); }
 
         const proxyRows = db.prepare(proxyQuery).get(...proxyParams) as any;
-        const proxyTotal = proxyRows?.total || 0;
+        const recorded = syncTotal + (proxyRows?.total || 0);
 
-        return syncTotal + proxyTotal;
+        // 4. Rows the proxy has completed but not flushed yet (same period start, same sync exclusion)
+        const target = { scope, value };
+        const queued = spendLedger.queuedUsd(target, getPeriodStartDate(period).getTime(), activeSyncProviders);
+
+        // 5. Estimates of requests still running. These are held for every provider, including
+        // sync-active ones: a running request's cost is not in any report yet.
+        const reserved = spendLedger.reservedUsd(target);
+
+        return { recorded, queued, reserved, total: recorded + queued + reserved };
     }
 
     /**
@@ -150,6 +227,10 @@ export class BudgetService {
      * Used for informational headers (X-Budget-Warning).
      */
     static async getBudgetStatus(provider: string, model: string): Promise<{ percent: number, spent: number, limit: number, name: string, period: string } | null> {
+        return this.getBudgetStatusSync(provider, model);
+    }
+
+    static getBudgetStatusSync(provider: string, model: string): { percent: number, spent: number, limit: number, name: string, period: string } | null {
         const budgets = getBudgetLimits(true);
         let maxUtilization = -1;
         let worstBudget: any = null;
@@ -161,7 +242,7 @@ export class BudgetService {
             
             if (!isMatch) continue;
 
-            const spent = await this.calculateCurrentSpend(budget.scope, budget.scope_value, budget.period);
+            const spent = this.committedSpend(budget.scope, budget.scope_value, budget.period);
             const utilization = spent / budget.limit_usd;
             
             if (utilization > maxUtilization) {

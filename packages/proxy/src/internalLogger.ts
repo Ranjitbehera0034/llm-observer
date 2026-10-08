@@ -22,6 +22,14 @@ let timeout: NodeJS.Timeout | null = null;
  * This replaces the Redis/BullMQ dependency for a zero-config local experience.
  */
 export const internalLogger = {
+    /**
+     * Read accessor for the spend ledger: rows added but not yet written to SQLite. The array is the
+     * live queue, not a copy; callers must only read it, synchronously. flush() empties the queue and
+     * inserts its rows in one synchronous step, so a row is always in exactly one of "queued" or
+     * "recorded" from the point of view of code that does not await between its two reads.
+     */
+    getQueued: (): readonly NewRequestRecord[] => queue,
+
     add: async (requestData: NewRequestRecord) => {
         queue.push(requestData);
 

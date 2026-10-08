@@ -309,7 +309,7 @@ export function BudgetsTab() {
                                     </div>
                                     <div className="flex flex-col">
                                         <span className="text-sm font-bold text-white group-hover:text-red-400 transition-colors">Block After Limit (Best Effort)</span>
-                                        <span className="text-[10px] text-slate-500 font-medium leading-tight">Blocks requests once recorded spend exceeds the limit. Spend is written in short batches, so a burst can slip past.</span>
+                                        <span className="text-[10px] text-slate-500 font-medium leading-tight">Blocks a request before it is sent when recorded, queued and in-flight estimated spend would exceed the limit. Overshoot is bounded by the gap between a request's estimated and actual cost.</span>
                                     </div>
                                 </label>
                             </div>
@@ -392,7 +392,7 @@ export function BudgetsTab() {
                             <Shield className="w-8 h-8 text-slate-600 group-hover:text-indigo-400" />
                         </div>
                         <h4 className="text-white font-bold text-lg leading-tight">No guardrails active</h4>
-                        <p className="text-slate-500 text-sm mt-1 max-w-xs mx-auto">Set provider-specific limits to prevent unexpected bill shocks.</p>
+                        <p className="text-slate-500 text-sm mt-1 max-w-xs mx-auto">Set provider-specific limits to get warned, and optionally blocked, as spend approaches them.</p>
                     </div>
                 ) : (
                     budgets.map((budget: Budget) => (
@@ -491,7 +491,7 @@ export function BudgetsTab() {
                     <h5 className="text-sm font-bold text-white mb-1">Pre-estimation active</h5>
                     <p className="text-xs text-slate-500 leading-relaxed max-w-2xl">
                         Proxy requests are pre-estimated using model pricing tables before execution. 
-                        If a request is estimated to cross the kill-switch limit, it will be blocked with a 429 error and an alert will be logged. Enforcement is best effort: recorded spend lags the proxy by up to about 5 seconds or 10 requests, so a burst of requests can exceed a limit before it is blocked.
+                        If recorded, queued (finished but not yet written to the database) and in-flight estimated spend plus this request's estimate would cross the kill-switch limit, the request is blocked with a 429 before it is sent. The estimate check starts once spend reaches 60% of the limit. Enforcement is best effort: overshoot is bounded by the difference between a request's estimated and actual cost, and it covers only traffic sent through this proxy process (not calls that bypass it, requests the client aborts mid-response, or models with no known price). It cannot promise to prevent a bill.
                     </p>
                 </div>
             </div>
