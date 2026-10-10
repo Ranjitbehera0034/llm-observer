@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Activity, FolderOpen, Bell, Settings as SettingsIcon, Lightbulb, RefreshCw, MonitorSmartphone, Gift, Database, Bot, Wrench, Zap, Clock, GitCompare } from 'lucide-react';
+import { LayoutDashboard, Activity, FolderOpen, Bell, Settings as SettingsIcon, Lightbulb, RefreshCw, MonitorSmartphone, Gift, Database, Bot, Wrench, Zap, Clock, GitCompare, Users } from 'lucide-react';
 import clsx from 'clsx';
 
 const navItems = [
@@ -16,6 +16,7 @@ const navItems = [
     { name: 'Insights', path: '/insights', icon: Lightbulb },
     { name: 'Projects', path: '/projects', icon: FolderOpen },
     { name: 'AI Wrapped', path: '/wrapped', icon: Gift },
+    { name: 'Team', path: '/team', icon: Users, badge: 'beta' },
     { name: 'Alerts', path: '/alerts', icon: Bell },
     { name: 'Settings', path: '/settings', icon: SettingsIcon },
 ];
@@ -48,6 +49,9 @@ export function Sidebar() {
                         >
                             <item.icon className={clsx("w-5 h-5", isActive ? "text-primary" : "opacity-60 group-hover:opacity-100")} />
                             {item.name}
+                            {'badge' in item && item.badge && (
+                                <span className="ml-auto text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">{item.badge}</span>
+                            )}
                         </Link>
                     )
                 })}

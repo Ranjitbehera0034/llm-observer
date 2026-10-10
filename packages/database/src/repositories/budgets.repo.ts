@@ -13,6 +13,8 @@ export interface Budget {
     safety_buffer_usd: number;
     estimate_multiplier: number;
     is_active: boolean;
+    /** 'local' = created in this app; 'team' = reconciled from the team policy (read-only here). */
+    source?: 'local' | 'team';
     created_at?: string;
     updated_at?: string;
 }
@@ -42,8 +44,8 @@ export const getBudgetLimitById = (id: number): Budget | undefined => {
 export const createBudgetLimit = (budget: Omit<Budget, 'id' | 'created_at' | 'updated_at'>): number => {
     const db = getDb();
     const stmt = db.prepare(`
-        INSERT INTO budgets (name, scope, scope_value, period, limit_usd, warning_pct_1, warning_pct_2, kill_switch, safety_buffer_usd, estimate_multiplier, is_active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO budgets (name, scope, scope_value, period, limit_usd, warning_pct_1, warning_pct_2, kill_switch, safety_buffer_usd, estimate_multiplier, is_active, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const result = stmt.run(
         budget.name,
@@ -56,7 +58,8 @@ export const createBudgetLimit = (budget: Omit<Budget, 'id' | 'created_at' | 'up
         budget.kill_switch ? 1 : 0,
         budget.safety_buffer_usd,
         budget.estimate_multiplier || 3.0,
-        budget.is_active ? 1 : 0
+        budget.is_active ? 1 : 0,
+        budget.source === 'team' ? 'team' : 'local'
     );
     return result.lastInsertRowid as number;
 };
@@ -78,4 +81,13 @@ export const deleteBudgetLimit = (id: number): void => {
     db.prepare('DELETE FROM alerts WHERE budget_id = ?').run(id);
     // Delete the budget
     db.prepare('DELETE FROM budgets WHERE id = ?').run(id);
+};
+
+/** Removes every budget reconciled from a team policy (and their alerts). Local budgets are never touched. Returns how many were removed. */
+export const deleteTeamBudgets = (): number => {
+    const db = getDb();
+    return db.transaction(() => {
+        db.prepare("DELETE FROM alerts WHERE budget_id IN (SELECT id FROM budgets WHERE source = 'team')").run();
+        return db.prepare("DELETE FROM budgets WHERE source = 'team'").run().changes;
+    })();
 };

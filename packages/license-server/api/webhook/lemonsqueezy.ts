@@ -1,5 +1,5 @@
 import { verifyWebhookSignature, getRawBody } from '../../src/keyGenerator.js';
-import { issueLicense, updateStatus, jsonResponse } from '../../src/issue.js';
+import { issueLicense, updateStatus, jsonResponse, resolvePlan } from '../../src/issue.js';
 
 /**
  * POST /webhook/lemonsqueezy
@@ -7,7 +7,8 @@ import { issueLicense, updateStatus, jsonResponse } from '../../src/issue.js';
  * Vercel Serverless Function — Lemon Squeezy Payment Webhook
  *
  * Events handled:
- *   - subscription_created                     → issue + email a signed license key
+ *   - subscription_created                     → issue + email a signed license key (plan 'team' if the
+ *                                                variant is in LEMONSQUEEZY_TEAM_VARIANT_IDS, else 'pro')
  *   - subscription_payment_success / _resumed  → mark customer active
  *   - subscription_cancelled                   → mark cancelled (keeps access until the period ends)
  *   - subscription_expired                     → mark expired (the app drops to Free on its next check)
@@ -59,8 +60,11 @@ export default async function handler(req: Request): Promise<Response> {
                 return jsonResponse({ received: true, action: 'error', reason: 'no_email' }, 400);
             }
             const amountCents = attrs.total ?? attrs.first_subscription_item?.price ?? 0;
+            // 'team' only when the purchased variant is listed in LEMONSQUEEZY_TEAM_VARIANT_IDS;
+            // the subscription item quantity is the seat count.
+            const { plan, seats } = resolvePlan('lemonsqueezy', attrs.variant_id, attrs.first_subscription_item?.quantity);
             return issueLicense({
-                sub, provider: 'lemonsqueezy', email,
+                sub, provider: 'lemonsqueezy', email, plan, seats,
                 amount: (amountCents / 100).toFixed(2),
                 currency: String(attrs.currency ?? 'USD').toUpperCase(),
                 event,

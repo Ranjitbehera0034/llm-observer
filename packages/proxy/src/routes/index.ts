@@ -14,6 +14,7 @@ import networkRouter from './network.routes';
 import wrappedRouter from './wrapped.routes';
 import optimizeRouter from './optimize.routes';
 import compareRouter from './compare.routes';
+import { teamRouter } from './team.routes';
 
 /**
  * Composes all dashboard API sub-routers into a single router.
@@ -42,6 +43,9 @@ export function createDashboardRouter(): Router {
 
     // Teams sync
     router.use('/teams', requestsRouter);
+
+    // Team tier (beta): status, manual sync, admin rollup proxy
+    router.use('/team', teamRouter);
 
     // Budgets
     router.use('/budgets', budgetsRouter);

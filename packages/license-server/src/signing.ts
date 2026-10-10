@@ -20,9 +20,19 @@ export interface LicensePayload {
     v: 1;
     /** Stable customer/subscription reference, e.g. "ls:12345" or "rzp:sub_ABC". */
     sub: string;
-    plan: 'pro';
+    /** 'team' unlocks the same limits as 'pro' (team policy features are separate and beta). */
+    plan: LicensePlan;
+    /** Seats bought (team plan). Informational: it cannot be enforced offline. */
+    seats?: number;
     /** Issued-at, unix seconds. */
     iat: number;
+}
+
+export type LicensePlan = 'pro' | 'team';
+export const MAX_SEATS = 100_000;
+
+export function isValidSeats(seats: unknown): seats is number {
+    return typeof seats === 'number' && Number.isInteger(seats) && seats >= 1 && seats <= MAX_SEATS;
 }
 
 const b64url = (buf: Buffer) => buf.toString('base64url');
@@ -39,9 +49,15 @@ export function isSigningConfigured(): boolean {
     return !!process.env.LICENSE_PRIVATE_KEY;
 }
 
-export function signLicenseKey(sub: string, privateKey: crypto.KeyObject | null = loadPrivateKey()): string {
+export function signLicenseKey(
+    sub: string,
+    privateKey: crypto.KeyObject | null = loadPrivateKey(),
+    opts: { plan?: LicensePlan; seats?: number } = {},
+): string {
     if (!privateKey) throw new Error('LICENSE_PRIVATE_KEY is not configured');
-    const payload: LicensePayload = { v: 1, sub, plan: 'pro', iat: Math.floor(Date.now() / 1000) };
+    if (opts.seats !== undefined && !isValidSeats(opts.seats)) throw new Error(`seats must be an integer between 1 and ${MAX_SEATS}`);
+    const payload: LicensePayload = { v: 1, sub, plan: opts.plan ?? 'pro', iat: Math.floor(Date.now() / 1000) };
+    if (opts.seats !== undefined) payload.seats = opts.seats;
     const body = b64url(Buffer.from(JSON.stringify(payload)));
     const sig = crypto.sign(null, Buffer.from(`${SIGNED_KEY_PREFIX}.${body}`), privateKey);
     return `${SIGNED_KEY_PREFIX}.${body}.${b64url(sig)}`;
@@ -56,7 +72,9 @@ export function verifySignedKey(key: string, publicKey: crypto.KeyObject | strin
         const ok = crypto.verify(null, Buffer.from(`${parts[0]}.${parts[1]}`), pub, Buffer.from(parts[2], 'base64url'));
         if (!ok) return null;
         const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8'));
-        if (payload?.v !== 1 || typeof payload.sub !== 'string' || payload.plan !== 'pro') return null;
+        if (payload?.v !== 1 || typeof payload.sub !== 'string') return null;
+        if (payload.plan !== 'pro' && payload.plan !== 'team') return null;
+        if (payload.seats !== undefined && !isValidSeats(payload.seats)) return null;
         return payload as LicensePayload;
     } catch {
         return null;

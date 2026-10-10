@@ -11,7 +11,8 @@ import {
 } from '@llm-observer/database';
 import { setTelemetryOptIn } from '../telemetry';
 
-const PROTECTED_SETTING = /^(license_|telemetry_install_id$|telemetry_last_ping_at$)/;
+// team_* (server URL, key, email, policy state) only change through `llm-observer team join/leave` and the sync manager
+const PROTECTED_SETTING = /^(license_|telemetry_install_id$|telemetry_last_ping_at$|team_|last_team_sync_at$)/;
 
 export const settingsRouter = Router();
 

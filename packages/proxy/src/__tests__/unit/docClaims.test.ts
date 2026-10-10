@@ -21,6 +21,8 @@ const FILES = [
     'packages/dashboard/src/pages/Sessions.tsx',
     'packages/dashboard/src/pages/Settings.tsx',
     'packages/dashboard/src/components/BudgetsTab.tsx',
+    'packages/dashboard/src/components/TeamPanels.tsx',
+    'docs/guide/team.md',
     'landing-page/src/App.tsx',
 ];
 

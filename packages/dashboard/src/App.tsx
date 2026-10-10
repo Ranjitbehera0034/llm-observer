@@ -16,6 +16,7 @@ import Agents from './pages/Agents';
 import Tools from './pages/Tools';
 import Optimize from './pages/Optimize';
 import Compare from './pages/Compare';
+import Team from './pages/Team';
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
             <Route path="/insights" element={<Insights />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/wrapped" element={<Wrapped />} />
+            <Route path="/team" element={<Team />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/sync" element={<Sync />} />

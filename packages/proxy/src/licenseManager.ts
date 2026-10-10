@@ -2,7 +2,7 @@ import { getDb, getSetting, updateSetting } from '@llm-observer/database';
 import { createHash, createHmac } from 'crypto';
 import os from 'os';
 import { version as APP_VERSION } from '../package.json';
-import { isSignedKey, verifySignedKey, LEGACY_KEY_FORMAT } from './licenseKeys';
+import { isSignedKey, verifySignedKey, LEGACY_KEY_FORMAT, type LicensePlan as LicenseKeyPlan } from './licenseKeys';
 
 /**
  * Generates a machine-specific HMAC key for signing locally stored license keys.
@@ -39,7 +39,12 @@ function verifyLicenseKeyIntegrity(key: string, storedHmac: string | null): bool
 }
 
 export interface LicenseInfo {
+    /** True for both the Pro and Team plans: Team gets the Pro limits. */
     isPro: boolean;
+    /** Which plan the stored key buys. 'free' when there is no verified key. */
+    plan: 'free' | LicenseKeyPlan;
+    /** Seats bought on a team key. Informational: it cannot be enforced offline. */
+    seats?: number;
     licenseKey?: string;
     status: 'active' | 'cancelled' | 'free';
     /** A stored key could not be verified (machine mismatch for a legacy key, unverifiable signed key); limits fall back to Free but nothing is deleted on that basis. */
@@ -93,7 +98,7 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
 
     // Cancelled subscription always becomes free regardless of stored key
     if (licenseStatus === 'cancelled') {
-        cachedLicense = { isPro: false, licenseKey: undefined, status: 'cancelled', limits: FREE_LIMITS };
+        cachedLicense = { isPro: false, plan: 'free', licenseKey: undefined, status: 'cancelled', limits: FREE_LIMITS };
         lastCheckTime = now;
         return cachedLicense;
     }
@@ -101,8 +106,9 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
     // Signed keys are re-verified on every check, so a key can't be made Pro by
     // editing the database. Legacy PRO_ keys were verified by the license
     // server (or dev mode) at activation and are guarded by the HMAC below.
+    const signed = licenseKey && isSignedKey(licenseKey) ? verifySignedKey(licenseKey) : null;
     const isPro = !!licenseKey && (
-        isSignedKey(licenseKey) ? verifySignedKey(licenseKey) !== null : licenseKey.startsWith('PRO_')
+        isSignedKey(licenseKey) ? signed !== null : licenseKey.startsWith('PRO_')
     );
 
     // A signed key that is stored, not cancelled, yet fails verification (damaged
@@ -111,7 +117,7 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
     if (licenseKey && isSignedKey(licenseKey) && !isPro) {
         console.warn('[LICENSE] The stored license key could not be verified. Treating as free tier.');
         cachedLicense = {
-            isPro: false, licenseKey: undefined, status: 'free', limits: FREE_LIMITS,
+            isPro: false, plan: 'free', licenseKey: undefined, status: 'free', limits: FREE_LIMITS,
             integrityMismatch: true,
             notice: 'Your stored license key could not be verified (it may be damaged or from an incompatible version). Re-enter your license key to restore Pro.'
         };
@@ -127,7 +133,7 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
         if (!verifyLicenseKeyIntegrity(licenseKey, storedHmac)) {
             console.warn('[LICENSE] License key integrity check failed — key may have been tampered with, or this machine changed. Treating as free tier.');
             cachedLicense = {
-                isPro: false, licenseKey: undefined, status: 'free', limits: FREE_LIMITS,
+                isPro: false, plan: 'free', licenseKey: undefined, status: 'free', limits: FREE_LIMITS,
                 integrityMismatch: true,
                 notice: 'Your license could not be verified on this machine (the hostname or hardware may have changed). Re-enter your license key to restore Pro.'
             };
@@ -138,6 +144,8 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
 
     cachedLicense = {
         isPro,
+        plan: !isPro ? 'free' : (signed?.plan ?? 'pro'),
+        ...(isPro && signed?.seats !== undefined ? { seats: signed.seats } : {}),
         licenseKey: licenseKey || undefined,
         status: isPro ? 'active' : 'free',
         limits: isPro ? PRO_LIMITS : FREE_LIMITS

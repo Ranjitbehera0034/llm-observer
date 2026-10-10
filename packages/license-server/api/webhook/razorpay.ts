@@ -1,5 +1,5 @@
 import { verifyWebhookSignature, getRawBody } from '../../src/keyGenerator.js';
-import { issueLicense, updateStatus, jsonResponse } from '../../src/issue.js';
+import { issueLicense, updateStatus, jsonResponse, resolvePlan } from '../../src/issue.js';
 
 /**
  * POST /webhook/razorpay
@@ -7,7 +7,8 @@ import { issueLicense, updateStatus, jsonResponse } from '../../src/issue.js';
  * Vercel Serverless Function — Razorpay Payment Webhook
  *
  * Events handled:
- *   - subscription.activated                       → issue + email a signed license key
+ *   - subscription.activated                       → issue + email a signed license key (plan 'team' if the
+ *                                                    plan id is in RAZORPAY_TEAM_PLAN_IDS, else 'pro')
  *   - payment.captured (one-time, e.g. Payment Link) → issue + email a signed license key
  *   - subscription.charged / .resumed              → mark customer active
  *   - subscription.cancelled / .halted / .completed → mark expired (the app drops to Free on its next check)
@@ -56,6 +57,10 @@ export default async function handler(req: Request): Promise<Response> {
     const currency: string = String(subscription.currency ?? payment.currency ?? 'INR').toUpperCase();
     const amount = ((payment.amount ?? 0) / 100).toFixed(2);
 
+    // 'team' only when the subscription's plan id is listed in RAZORPAY_TEAM_PLAN_IDS;
+    // the subscription quantity is the seat count. One-time payments carry no plan id, so they are 'pro'.
+    const { plan, seats } = resolvePlan('razorpay', subscription.plan_id, subscription.quantity);
+
     const issue = (sub: string) => {
         if (!email) {
             // Without an email we can't deliver the key — log for manual follow-up.
@@ -63,7 +68,7 @@ export default async function handler(req: Request): Promise<Response> {
             console.error(`[RZP WEBHOOK] No email found for ${sub}. Manual key delivery needed.`);
             return jsonResponse({ received: true, action: 'pending_manual_delivery', sub });
         }
-        return issueLicense({ sub, provider: 'razorpay', email, amount, currency, event });
+        return issueLicense({ sub, provider: 'razorpay', email, amount, currency, event, plan, seats });
     };
 
     switch (event) {

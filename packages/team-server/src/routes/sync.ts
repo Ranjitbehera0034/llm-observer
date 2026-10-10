@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import Team from '../models/Team';
-import TeamMember from '../models/TeamMember';
+import { resolveTeamMember } from '../lib/teamKeyAuth';
 import TeamDailyStats from '../models/TeamDailyStats';
 import { z } from 'zod';
 
@@ -28,27 +27,16 @@ router.post('/sync', async (req, res) => {
     try {
         const data = SyncSchema.parse(req.body);
 
-        // 1. Verify Team
-        const team = await Team.findOne({ team_api_key: data.team_api_key });
-        if (!team) {
-            return res.status(401).json({ error: 'Invalid Team API Key' });
+        // 1+2. The API key authenticates the *team* (any machine on the team can hold it); the
+        // invited-email lookup authenticates which *member's* stats these are, so one member's
+        // install can't attribute usage to a non-member. (The email is still only claimed: see
+        // resolveTeamMember.) Shared with GET /api/team/policy.
+        const found = await resolveTeamMember(data.team_api_key, data.member_email);
+        if (!found.ok) {
+            return res.status(found.status).json({ error: found.error });
         }
-
-        // 2. Verify the syncing member is actually on this team. The API key
-        // authenticates the *team* (any machine on the team can hold it);
-        // the invited-email lookup authenticates which *member's* stats
-        // these are, so one member's local install can't attribute usage to
-        // another member by simply claiming their email.
-        const membership = await TeamMember.findOne({ team_id: team._id, invited_email: data.member_email.toLowerCase() });
-        if (!membership) {
-            return res.status(403).json({ error: `${data.member_email} is not a member of this team.` });
-        }
-        if (!membership.user_id) {
-            // Invited but has never actually signed in (local or SSO) — no
-            // identity to attribute stats to yet.
-            return res.status(403).json({ error: `${data.member_email} has been invited but has not yet signed in.` });
-        }
-        const member_id = membership.user_id;
+        const { team } = found;
+        const member_id = found.membership.user_id;
 
         // 3. Upsert Stats
         const operations = data.stats.map(stat => ({
