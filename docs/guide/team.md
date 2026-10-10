@@ -90,8 +90,9 @@ on the Team page / `llm-observer team sync`):
 
 **Enforcement.** There is no second code path. A `block` budget is a kill-switch budget, so the same
 `BudgetService` / `budgetGuard` checks that handle a local budget return the 429 (with "This limit was set by
-your team."). As with every kill switch it is best effort: spend is written in short batches, so a burst can
-pass the limit before it is blocked, and a developer can edit their own copy of the app.
+your team."). As with every kill switch it is best effort: it counts recorded, queued and in-flight estimated
+spend, and covers only traffic sent through that developer's own proxy (see the README's Kill Switch entry for the
+exact bound). A developer can also edit their own copy of the app, so a team budget is a guardrail, not a control.
 
 **Read-only.** `PUT`/`DELETE /api/budgets/:id` on a team budget answer 403; the Budgets tab shows a lock and
 "set by your team" and offers no edit, delete or toggle.
