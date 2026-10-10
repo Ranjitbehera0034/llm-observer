@@ -147,6 +147,15 @@ maybe('fast path: file watcher to sessions API', () => {
             manager = createParserManager({ adapters: [adapter], intervalMs: 5 * 60 * 1000 });
             manager.init();
             await waitFor(() => manager!.watcherInfo().length > 0 && parse.mock.calls.length >= 1, 10_000, 50);
+            // macOS FSEvents can deliver the directory creation above late, after the watcher is up. That is
+            // a legitimate change in the watched tree, so let the watcher go quiet (debounce 1.5s + minimum
+            // gap 5s between runs) before measuring what the database-directory writes do.
+            let last = parse.mock.calls.length;
+            let quietSince = Date.now();
+            while (Date.now() - quietSince < 7500) {
+                await sleep(250);
+                if (parse.mock.calls.length !== last) { last = parse.mock.calls.length; quietSince = Date.now(); }
+            }
             const before = parse.mock.calls.length;
             for (let i = 0; i < 5; i++) { fs.appendFileSync(path.join(dataDir, 'data.db-wal'), 'x'.repeat(100)); await sleep(100); }
             await sleep(3500);

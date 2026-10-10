@@ -159,11 +159,19 @@ describe('request hygiene', () => {
 
         // plain body over the limit
         const big = Buffer.alloc(MAX_BODY_BYTES + 1, 0x20);
-        const tooBig = await send(port, { path: '/v1/logs', headers: { 'Content-Type': 'application/json' }, body: big });
-        expect(tooBig.status).toBe(413);
+        // The server answers 413 and closes. While megabytes of body are still in flight, macOS and Windows
+        // may deliver a TCP reset instead of the response (closing a socket with unread data resets it).
+        // Either way the upload was refused; what must hold is that nothing was stored and the server lives on.
+        const refused = async (p: Promise<{ status: number }>) => {
+            try {
+                expect((await p).status).toBe(413);
+            } catch (err: any) {
+                if (!['ECONNRESET', 'EPIPE', 'ECONNABORTED'].includes(err?.code)) throw err;
+            }
+        };
+        await refused(send(port, { path: '/v1/logs', headers: { 'Content-Type': 'application/json' }, body: big }));
         // same without a Content-Length (chunked): cut off while reading
-        const chunked = await send(port, { path: '/v1/logs', headers: { 'Content-Type': 'application/json' }, body: big, chunked: true });
-        expect(chunked.status).toBe(413);
+        await refused(send(port, { path: '/v1/logs', headers: { 'Content-Type': 'application/json' }, body: big, chunked: true }));
 
         // a tiny gzip that inflates past the limit (zip bomb)
         const bomb = zlib.gzipSync(Buffer.alloc(MAX_BODY_BYTES + 1024, 0x20));

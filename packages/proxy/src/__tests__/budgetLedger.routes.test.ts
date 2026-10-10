@@ -59,8 +59,15 @@ interface UpstreamMode {
 const DEFAULT_MODE: UpstreamMode = { delayMs: 250, status: 200, promptTokens: 5, completionTokens: 10, stream: false };
 let mode: UpstreamMode = { ...DEFAULT_MODE };
 let upstreamHits = 0;
+/** Upstream responses still being produced. Tests that abort clients leave some behind; the next test must not inherit them. */
+let upstreamActive = 0;
 
 const handleUpstream = (req: http.IncomingMessage, res: http.ServerResponse) => {
+    upstreamActive++;
+    let counted = true;
+    const done = () => { if (counted) { counted = false; upstreamActive--; } };
+    res.on('close', done);
+    req.on('error', done);
     req.resume();
     req.on('end', () => {
         upstreamHits++;
@@ -157,8 +164,14 @@ describe('K1 kill switch counts queued and in-flight spend (createApp + mock ups
     });
 
     afterEach(async () => {
-        // Let any straggling connection settle before the next test resets state
-        await new Promise(r => setTimeout(r, 20));
+        // A request whose client gave up is still answered by the mock (default 250ms) and then logged. If that
+        // happened after the next test's cleanup, its row (5 + 10 tokens = $6.75e-6) would leak into that test's
+        // totals - seen on slower CI runners. Wait for every straggler, give back the reservations, then flush.
+        const deadline = Date.now() + 5000;
+        while ((upstreamActive > 0 || ledger().inFlight() > 0) && Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 20));
+        }
+        await internalLogger.flush();
     });
 
     describe('(1) a burst of concurrent requests', () => {
@@ -456,7 +469,8 @@ describe('K1 kill switch counts queued and in-flight spend (createApp + mock ups
             await internalLogger.flush();
             const admitted = results.filter(r => r.status === 200).length;
             expect(admitted).toBe(6);
-            const recorded = (getDb().prepare('SELECT COALESCE(SUM(cost_usd), 0) AS s FROM requests').get() as any).s;
+            // Only this test's rows: they alone answered with 20,000 completion tokens.
+            const recorded = (getDb().prepare('SELECT COALESCE(SUM(cost_usd), 0) AS s FROM requests WHERE completion_tokens = 20000').get() as any).s;
             expect(recorded).toBeCloseTo(admitted * actual, 9);
             expect(recorded - limit).toBeLessThan(admitted * (actual - e));
         });

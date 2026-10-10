@@ -30,11 +30,8 @@ import { ParserAdapter, locator } from './adapter';
 const getCodexDir = () => {
     const configured = process.env.CODEX_HOME && process.env.CODEX_HOME.trim();
     if (configured) return path.join(path.resolve(configured), 'sessions');
-    const home = os.homedir();
-    if (process.platform === 'win32') {
-        return path.join(process.env.USERPROFILE || home, '.codex', 'sessions');
-    }
-    return path.join(home, '.codex', 'sessions');
+    // os.homedir() is USERPROFILE on Windows and HOME elsewhere (the same place Codex itself uses).
+    return path.join(os.homedir(), '.codex', 'sessions');
 };
 
 export const detector = (): boolean => {
