@@ -16,5 +16,11 @@ documents. Token counts and amounts are invented.
 - `*.flat.json` - the older flat shape the pollers originally assumed. Kept because it may be what
   some deployments already ingested, and the pollers tolerate it.
 
-`recorded/` is reserved for real responses captured with a live admin key (see
-`docs/RELEASE_CHECKLIST.md`). Nothing in it is synthetic. Do not put synthetic data there.
+`recorded/` is reserved for real responses captured with a live admin key by
+`node scripts/validate-admin-sync.js --save` (see `docs/RELEASE_CHECKLIST.md`). Nothing in it is synthetic;
+do not put synthetic data there. Each recording is a directory `<provider>-<YYYY-MM-DD>/` holding one redacted
+file per response page (`usage-1.json`, `usage-2.json`, `cost-1.json`, ...) and a `meta.json` (provider, date,
+tool and Node versions, page counts, the redaction summary). Ids, emails, key names and page cursors are replaced
+with stable fake values; every number and the shape are untouched.
+`recordedAdminConformance.test.ts` runs the normalisers over every directory here. No live recording has been
+committed yet.

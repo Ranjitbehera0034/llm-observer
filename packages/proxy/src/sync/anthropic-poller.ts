@@ -1,7 +1,8 @@
 import { getDb, decrypt } from '@llm-observer/database';
-import fetch from 'node-fetch';
+import nodeFetch from 'node-fetch';
 import { BudgetService } from '../services/budget.service';
 import { SyncShapeError, normalizeAnthropicUsage, normalizeAnthropicCost } from './response-shapes';
+import { adminBaseUrl, isBaseUrlOverridden, anthropicUsageUrl, anthropicCostUrl } from './admin-endpoints';
 
 const CIRCUIT_BREAKER_THRESHOLD = 10;
 const MAX_BACKOFF_SECONDS = 300;
@@ -15,13 +16,41 @@ class AnthropicAPIError extends Error {
     }
 }
 
+/** Injectable pieces, used by scripts/validate-admin-sync.js to record the responses the poller reads. */
+export interface AnthropicPollerDeps {
+    fetch?: typeof nodeFetch;
+}
+
 export class AnthropicPoller {
     private config: any;
     private timer: NodeJS.Timeout | null = null;
     private isPolling: boolean = false;
+    private fetch: typeof nodeFetch;
+    private warnedBaseUrl = false;
 
-    constructor(config: any) {
+    constructor(config: any, deps: AnthropicPollerDeps = {}) {
         this.config = config;
+        this.fetch = deps.fetch ?? nodeFetch;
+    }
+
+    /** Base URL for this poll; says so once when it is not the real Anthropic host. */
+    private baseUrl(): string {
+        const base = adminBaseUrl('anthropic');
+        if (isBaseUrlOverridden('anthropic') && !this.warnedBaseUrl) {
+            this.warnedBaseUrl = true;
+            console.warn(`[AnthropicPoller] Using a non-default admin API base URL (${base}).`);
+        }
+        return base;
+    }
+
+    /**
+     * One usage + cost sync with explicit start points, exactly as poll() runs them (same code, same
+     * requests), without the config/checkpoint lookup, scheduling or budget evaluation. Errors are
+     * thrown to the caller instead of being turned into poller state. Used by the live-key validator.
+     */
+    async syncOnce(apiKey: string, range: { usageStart: string; costStart: string }) {
+        await this.syncUsage(apiKey, range.usageStart);
+        await this.syncCost(apiKey, range.costStart);
     }
 
     start() {
@@ -108,10 +137,9 @@ export class AnthropicPoller {
         `);
 
         do {
-            let url = `https://api.anthropic.com/v1/organizations/usage_report/messages?starting_at=${encodeURIComponent(startingAt)}&bucket_width=1d&group_by[]=model`;
-            if (nextCursor) url += `&page=${encodeURIComponent(nextCursor)}`;
+            const url = anthropicUsageUrl(this.baseUrl(), startingAt, nextCursor);
 
-            const res = await fetch(url, {
+            const res = await this.fetch(url, {
                 headers: {
                     'x-api-key': apiKey,
                     'anthropic-version': '2023-06-01'
@@ -184,10 +212,9 @@ export class AnthropicPoller {
         do {
             // The documented date-time format is RFC 3339; the checkpoint is stored as a bare date.
             const start = /^\d{4}-\d{2}-\d{2}$/.test(startingAt) ? `${startingAt}T00:00:00Z` : startingAt;
-            let url = `https://api.anthropic.com/v1/organizations/cost_report?starting_at=${encodeURIComponent(start)}&ending_at=${encodeURIComponent(endingAt)}&group_by[]=description`;
-            if (nextCursor) url += `&page=${encodeURIComponent(nextCursor)}`;
+            const url = anthropicCostUrl(this.baseUrl(), start, endingAt, nextCursor);
 
-            const res = await fetch(url, {
+            const res = await this.fetch(url, {
                 headers: {
                     'x-api-key': apiKey,
                     'anthropic-version': '2023-06-01'

@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-    entry: ['src/index.ts', 'src/server.ts'],
+    entry: ['src/index.ts', 'src/server.ts', 'src/licenseE2E.ts', 'src/syncValidate.ts'],
     format: ['cjs'],
     minify: true,
     clean: true,
