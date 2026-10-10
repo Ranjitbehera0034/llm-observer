@@ -12,7 +12,8 @@ import express from 'express';
 import Database from 'better-sqlite3';
 import { initDb, getDb, closeDb } from '@llm-observer/database';
 import { EventEmitter } from 'events';
-import { listenOrExit, createShutdownHandler, installSignalHandlers } from '../server';
+import { listenOrExit, createShutdownHandler, installSignalHandlers, flushOnShutdown } from '../server';
+import * as parserManager from '../parsers/manager';
 import { internalLogger } from '../internalLogger';
 
 const listening = (server: net.Server) => new Promise<number>(resolve => server.listen(0, '127.0.0.1', () => resolve((server.address() as net.AddressInfo).port)));
@@ -155,5 +156,27 @@ describe('installSignalHandlers (the wiring main() uses)', () => {
         expect(await done).toBe(0);
         expect(rowCount()).toBe(1);
         expect(() => getDb()).toThrow(); // database closed after the flush
+    });
+
+    it('writes queued rows to SQLite while a parser stop is still pending, so a stuck parse cannot delay the flush', async () => {
+        let releaseParsers!: () => void;
+        const stopParsers = jest.spyOn(parserManager, 'stopParsers').mockImplementation(
+            () => new Promise<void>(resolve => { releaseParsers = resolve; }),
+        );
+        await internalLogger.add({
+            project_id: 'default', provider: 'openai', model: 'gpt-4', endpoint: '/v1/chat/completions',
+            cost_usd: 0.01, status_code: 200, status: 'success',
+        } as any);
+        expect(rowCount()).toBe(0);
+
+        let finished = false;
+        const shutdown = flushOnShutdown().then(() => { finished = true; });
+        await new Promise(r => setTimeout(r, 300));
+        expect(stopParsers).toHaveBeenCalledTimes(1);
+        expect(rowCount()).toBe(1); // flushed although the parsers have not stopped
+        expect(finished).toBe(false); // the database is not closed under a parse still in flight
+        releaseParsers();
+        await shutdown;
+        expect(finished).toBe(true);
     });
 });

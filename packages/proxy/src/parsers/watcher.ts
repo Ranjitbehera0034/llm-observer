@@ -162,8 +162,12 @@ export class ParserWatcher {
         return [...this.paths.values()].map(ps => ({ id: ps.id, path: ps.root, mode: ps.mode }));
     }
 
-    /** Close every watcher and timer, cancel queued runs and wait for runs already in flight. */
-    async stop(): Promise<void> {
+    /**
+     * Close every watcher and timer, cancel queued runs and wait for runs already in flight. With `timeoutMs`
+     * the wait for in-flight runs is capped (a run that never finishes must not hold up shutdown); the
+     * watchers and timers are released immediately either way.
+     */
+    async stop(timeoutMs?: number): Promise<void> {
         this.stopped = true;
         for (const ps of this.paths.values()) this.closePath(ps);
         this.paths.clear();
@@ -175,7 +179,12 @@ export class ParserWatcher {
             if (st.running) inFlight.push(st.running);
         }
         this.targets.clear();
-        await Promise.all(inFlight);
+        const settled = Promise.all(inFlight).then(() => undefined);
+        if (timeoutMs === undefined) { await settled; return; }
+        let timer: NodeJS.Timeout | undefined;
+        const timeout = new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs); timer.unref?.(); });
+        await Promise.race([settled, timeout]);
+        if (timer) clearTimeout(timer);
     }
 
     // --- watching ---

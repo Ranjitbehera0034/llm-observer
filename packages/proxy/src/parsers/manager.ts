@@ -197,12 +197,16 @@ export const createParserManager = (options: ParserManagerOptions): ParserManage
     const stop = async (): Promise<void> => {
         stopped = true;
         if (intervalHandle) { clearInterval(intervalHandle); intervalHandle = null; }
-        try {
-            await watcher?.stop();
-        } catch (e) {
-            console.error('[Parser Manager] Error stopping file watchers:', e);
-        }
-        const inFlight = Promise.all([...chains.values()]).then(() => undefined, () => undefined);
+        // One cap covers watcher-triggered runs and full scans alike: stopping the watcher closes it at once,
+        // and only the wait for its in-flight runs is bounded.
+        const stoppingWatcher = (async () => {
+            try {
+                await watcher?.stop(STOP_WAIT_MS);
+            } catch (e) {
+                console.error('[Parser Manager] Error stopping file watchers:', e);
+            }
+        })();
+        const inFlight = Promise.all([stoppingWatcher, ...chains.values()]).then(() => undefined, () => undefined);
         let timer: NodeJS.Timeout | undefined;
         const timeout = new Promise<void>(resolve => { timer = setTimeout(resolve, STOP_WAIT_MS); timer.unref?.(); });
         await Promise.race([inFlight, timeout]);

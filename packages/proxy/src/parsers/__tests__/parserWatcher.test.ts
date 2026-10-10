@@ -186,6 +186,20 @@ describe('ParserWatcher', () => {
         expect(watcher.describe()).toEqual([]);
     });
 
+    it('stop(timeoutMs) gives up on a run that never finishes, after releasing the watchers', async () => {
+        const { watch, watchers } = fakeWatch();
+        let started = 0;
+        watcher = new ParserWatcher({ ...FAST, watch, ignoreDirs: [] });
+        watcher.sync([target('a', [dir], () => { started++; return new Promise<void>(() => undefined); })]);
+        watchers[0].listener('change', 'x');
+        await waitFor(() => started === 1, 2000);
+        const t0 = Date.now();
+        await watcher.stop(200);
+        expect(Date.now() - t0).toBeLessThan(1000);
+        expect(watchers[0].closed).toBe(true);
+        expect(watcher.describe()).toEqual([]);
+    });
+
     describe('polling fallback', () => {
         const throwing: any = () => { const e: any = new Error('recursive watch unsupported'); e.code = 'ERR_FEATURE_UNAVAILABLE_ON_PLATFORM'; throw e; };
 

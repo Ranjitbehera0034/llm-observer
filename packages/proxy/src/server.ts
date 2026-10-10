@@ -166,6 +166,20 @@ function main() {
 }
 
 /**
+ * Shutdown work before the database closes: flush queued request logs and stop the parsers. They run in
+ * parallel so a parse that is slow to finish (stopParsers waits at most a few seconds) can never delay the
+ * flush, which is the data that matters. A parser failure is logged, a flush failure is thrown.
+ */
+export async function flushOnShutdown(): Promise<void> {
+    const stopping = stopParsers().catch(err => { console.error('Failed to stop parsers on shutdown:', err); });
+    try {
+        await internalLogger.flush();
+    } finally {
+        await stopping;
+    }
+}
+
+/**
  * Wires SIGTERM/SIGINT to the shutdown handler with the real logger flush and
  * database close. `proc` and `exit` are injectable so a test can drive it
  * without signalling the Jest process.
@@ -176,8 +190,7 @@ export function installSignalHandlers(
 ): void {
     const shutdown = createShutdownHandler({
         servers,
-        // Stop the parser file watchers and wait for an in-flight parse before the database closes under it.
-        flush: async () => { await stopParsers(); await internalLogger.flush(); },
+        flush: flushOnShutdown,
         closeDatabase: closeDb,
         exit,
     });
