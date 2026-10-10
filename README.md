@@ -116,8 +116,9 @@ On first launch, LLM Observer automatically detects your installed AI tools, par
 
 - **Per-Provider / Per-Model Budgets** — Set daily, weekly, or monthly limits
 - **Three-Threshold Alerts** — Notifications at 80%, 90%, and 100% of budget
-- **Kill Switch** — Optionally block proxy requests once recorded spend exceeds a budget. Best effort: spend is written to the database in short batches (about 5 seconds or 10 requests), so a burst of requests can overshoot a limit before the block applies
-- **Pre-Estimation** — Estimates request cost *before* sending to reduce overshoot
+- **Kill Switch** — Optionally block proxy requests before they are sent when recorded, queued and in-flight estimated spend would exceed a budget ("queued" is spend from finished requests that has not been written to the database yet, which happens in batches of about 5 seconds or 10 requests; "in-flight" is the estimated cost of requests that were admitted and are still running). Best effort: the estimate check starts only once that combined spend reaches 60% of the limit, so below 60% a single request of any size is admitted and can overshoot by its whole cost. Once past 60%, overshoot is bounded by the difference between a request's estimated and actual cost (summed over the requests running at the same time). It applies only to traffic sent through the proxy of one `llm-observer` process. It cannot promise to prevent a bill
+- **Pre-Estimation** — Estimates request cost *before* sending (input at about 4 characters per token; output from the request's own `max_tokens` when it sets one, otherwise 3x the input, capped) and holds that estimate against the budget until the response finishes. The estimate is checked once spend reaches 60% of a limit; below that only the limit itself and the safety buffer are checked
+- **What the kill switch cannot see** — Calls that bypass the proxy; a second `llm-observer` process (the ledger is in memory); a request the client aborts mid-response (its cost is not recorded); models with no known price (recorded at $0); and, for a provider with Admin API sync turned on, anything newer than the vendor's usage report (proxied requests to that provider count only while they are in flight)
 - **Desktop Notifications** — Native OS alerts, not just in-dashboard (macOS, Linux, Windows)
 
 ### AI Wrapped
@@ -142,7 +143,7 @@ On first launch, LLM Observer automatically detects your installed AI tools, par
 ### Local Proxy (Optional)
 
 - **Per-Request Detail** — Full prompt, response, and latency for proxied traffic
-- **Budget Enforcement** — Kill switch blocks requests once recorded spend exceeds the limit (best effort; spend is written in short batches)
+- **Budget Enforcement** — Kill switch blocks requests before they are sent when recorded, queued and in-flight estimated spend would exceed the limit (best effort: this estimate check only starts once spend reaches 60% of the limit, so below that one request can overshoot by its whole cost; above it, overshoot is bounded by the difference between a request's estimated and actual cost; proxy traffic of one process only; cannot promise to prevent a bill)
 - **Provider Error Forwarding** — 402/429 errors passed through with `_source` field
 - **Ollama, first-class** — Local models route through the same proxy and are always tracked at $0 cost, no API key needed
 

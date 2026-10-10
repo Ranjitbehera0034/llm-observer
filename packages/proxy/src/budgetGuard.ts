@@ -3,7 +3,8 @@ import { getDb, validateApiKey } from '@llm-observer/database';
 import { randomUUID } from 'crypto';
 import { BudgetService } from './services/budget.service';
 import { estimateRequestTokens, estimateRequestCost, extractMaxOutputTokens } from './services/costEstimator';
-import { getPeriodStart } from './utils/period';
+import { getPeriodStart, getPeriodStartDate } from './utils/period';
+import { spendLedger } from './services/spendLedger';
 import './types';
 
 interface ProjectCache {
@@ -12,13 +13,13 @@ interface ProjectCache {
   kill_switch: boolean;
   safety_buffer: number;
   estimate_multiplier: number;
-  spent_today: number;
   last_sync: number;
 }
 
 const cache = new Map<string, ProjectCache>();
 const CACHE_TTL_MS = 10_000;
 
+/** Recorded spend of a project today (SQLite only; queued rows and in-flight estimates are added by the caller). */
 const getSpendFromDb = (projectId: string) => {
   const db = getDb();
   const spendStmt = db.prepare(`
@@ -31,7 +32,16 @@ const getSpendFromDb = (projectId: string) => {
   return row?.total || 0;
 };
 
-export const budgetGuard = async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * Admission control for proxied requests.
+ *
+ * Deliberately has no `await` anywhere. Everything between reading the spend and holding this
+ * request's estimate (project check, provider/model/global checks, reservation) runs in one
+ * synchronous block, so concurrent requests on this event loop cannot be admitted against the same
+ * headroom. The spend compared with each limit is recorded (SQLite) + queued (completed, row not
+ * flushed yet) + reserved (estimates of requests still running).
+ */
+export const budgetGuard = (req: Request, res: Response, next: NextFunction) => {
   const db = getDb();
   let authHeader = req.headers['authorization'] || req.headers['x-api-key'] || '';
   if (Array.isArray(authHeader)) authHeader = authHeader[0];
@@ -59,7 +69,6 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
       kill_switch: dbProject.kill_switch === 1,
       safety_buffer: dbProject.safety_buffer ?? 0.05,
       estimate_multiplier: dbProject.estimate_multiplier ?? 3.0,
-      spent_today: getSpendFromDb(dbProject.id),
       last_sync: now
     };
     cache.set(cacheKey, project);
@@ -80,7 +89,14 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
 
   // 1. LEGACY: Project-level Budget Check (v1.0.x)
   if (project.daily_budget != null && project.kill_switch) {
-      const spent = project.spent_today;
+      // Read fresh every time (the project row is cached for 10 s, the spend must not be): a cached
+      // total would miss rows flushed since it was taken.
+      const projectTarget = { scope: 'project', value: project.id };
+      const recorded = getSpendFromDb(project.id);
+      const queued = spendLedger.queuedUsd(projectTarget, getPeriodStartDate('daily').getTime());
+      const inFlight = spendLedger.reservedUsd(projectTarget);
+      const spent = recorded + queued + inFlight;
+      const parts = { recorded_usd: recorded, queued_usd: queued, in_flight_estimated_usd: inFlight };
       const limit = project.daily_budget;
       const buffer = project.safety_buffer;
       const utilization = spent / limit;
@@ -92,7 +108,7 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
           return res.status(429).json({ 
               error: { 
                   type: 'budget_exceeded', scope: 'project', message: msg, 
-                  spent_usd: spent, limit_usd: limit, 
+                  spent_usd: spent, ...parts, limit_usd: limit, 
                   suggestion: "Budget resets at midnight. Switch to a cheaper model or wait."
               } 
           });
@@ -105,7 +121,7 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
           return res.status(429).json({
               error: {
                   type: 'budget_buffer', scope: 'project', message: msg,
-                  spent_usd: spent, limit_usd: limit, remaining_usd: limit - spent, safety_buffer_usd: buffer,
+                  spent_usd: spent, ...parts, limit_usd: limit, remaining_usd: limit - spent, safety_buffer_usd: buffer,
                   suggestion: "Remaining budget is within safety buffer. Reduce buffer in Settings to allow smaller requests."
               }
           });
@@ -118,15 +134,17 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
           return res.status(429).json({
               error: {
                   type: 'budget_insufficient', scope: 'project', message: msg,
-                  spent_usd: spent, limit_usd: limit, remaining_usd: limit - spent, estimated_cost_usd: estimatedCost,
+                  spent_usd: spent, ...parts, limit_usd: limit, remaining_usd: limit - spent, estimated_cost_usd: estimatedCost,
                   suggestion: "Try a shorter prompt or switch to a cheaper model."
               }
           });
       }
   }
 
-  // 2. V1.7.0: Multi-layer Provider/Model Budgets
-  const budgetCheck = await BudgetService.checkKillSwitch(provider, model, inputTokens, estimatedCost, maxOutputTokens);
+  // 2. V1.7.0: Multi-layer Provider/Model Budgets. Checks and, if the request fits, reserves its
+  // estimate in the same synchronous step (see admit()).
+  const warning = readBudgetWarning(provider, model);
+  const budgetCheck = BudgetService.admit(provider, model, project.id, inputTokens, estimatedCost, maxOutputTokens);
   
   if (budgetCheck.blocked) {
       const details = budgetCheck.details;
@@ -144,6 +162,9 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
               message: budgetCheck.reason,
               limit_usd: details.limit,
               spent_usd: details.spent,
+              recorded_usd: details.recorded,
+              queued_usd: details.queued,
+              in_flight_estimated_usd: details.in_flight_estimated,
               remaining_usd: details.remaining,
               safety_buffer_usd: details.buffer,
               estimated_cost_usd: details.estimated,
@@ -156,21 +177,31 @@ export const budgetGuard = async (req: Request, res: Response, next: NextFunctio
       });
   }
 
+  // The estimate is held from here until the response ends. The proxy releases it explicitly right after
+  // it queues the final-cost row; this binding is the backstop for every other ending (client abort,
+  // a later guard refusing, the route rejecting the request, an unexpected error).
+  if (budgetCheck.reservation) spendLedger.bindToRequest(req, res, budgetCheck.reservation);
+
   // 3. Informational Warning Headers (Utilization > 80%)
-  try {
-      const status = await BudgetService.getBudgetStatus(provider, model);
-      if (status && status.percent >= 0.80) {
-          res.setHeader('X-Budget-Warning', `${status.name} spend at ${(status.percent * 100).toFixed(0)}% of ${status.period} budget ($${status.spent.toFixed(2)} / $${status.limit.toFixed(2)})`);
-          res.setHeader('X-Budget-Spent', status.spent.toFixed(2));
-          res.setHeader('X-Budget-Limit', status.limit.toFixed(2));
-          res.setHeader('X-Budget-Remaining', (status.limit - status.spent).toFixed(2));
-      }
-  } catch (err) {
-      console.warn('[BudgetGuard] Failed to set warning headers:', err);
+  if (warning && warning.percent >= 0.80) {
+      res.setHeader('X-Budget-Warning', `${warning.name} spend at ${(warning.percent * 100).toFixed(0)}% of ${warning.period} budget ($${warning.spent.toFixed(2)} / $${warning.limit.toFixed(2)})`);
+      res.setHeader('X-Budget-Spent', warning.spent.toFixed(2));
+      res.setHeader('X-Budget-Limit', warning.limit.toFixed(2));
+      res.setHeader('X-Budget-Remaining', (warning.limit - warning.spent).toFixed(2));
   }
 
   next();
 };
+
+/** Utilisation of the most-used matching budget, read BEFORE this request is reserved so it is not counted in its own headers. */
+function readBudgetWarning(provider: string, model: string) {
+  try {
+      return BudgetService.getBudgetStatusSync(provider, model);
+  } catch (err) {
+      console.warn('[BudgetGuard] Failed to read budget status for warning headers:', err);
+      return null;
+  }
+}
 
 function logBlockedRequest(db: any, projectId: string, path: string, message: string, provider = 'unknown', model = 'unknown') {
     db.prepare(`
@@ -179,15 +210,12 @@ function logBlockedRequest(db: any, projectId: string, path: string, message: st
     `).run(randomUUID(), projectId, provider, model, path, message);
 }
 
-export const incrementSpendCache = (cacheKey: string, costUsd: number) => {
-  const project = cache.get(cacheKey);
-  if (project && costUsd > 0) {
-    project.spent_today += costUsd;
-    if (project.daily_budget != null && project.spent_today >= project.daily_budget * 0.95) {
-      project.last_sync = 0;
-    }
-  }
-};
+/**
+ * @deprecated No-op, kept so existing imports keep working. The project guard used to add each
+ * finished request's cost to a cached total; it now reads recorded + queued + in-flight spend on
+ * every request, and adding to a cache as well would count the same cost twice.
+ */
+export const incrementSpendCache = (_cacheKey: string, _costUsd: number): void => {};
 
 /** Expose for testing */
 export const _getCacheForTest = () => cache;

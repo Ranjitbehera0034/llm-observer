@@ -13,7 +13,7 @@ import { redactDeep } from './security/piiRedaction';
 import { computeDrift } from './analysis/responseDrift';
 import { getSetting, getDriftBaseline, saveDriftBaseline, createAlert } from '@llm-observer/database';
 import chalk from 'chalk';
-import { incrementSpendCache } from './budgetGuard';
+import { spendLedger } from './services/spendLedger';
 import { requestEventEmitter } from './dashboardApi';
 import { internalLogger } from './internalLogger';
 import crypto from 'crypto';
@@ -117,7 +117,10 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
             request_body: requestBodyStr,
             created_at: new Date().toISOString()
         };
+        // Queue the (zero-cost) error row, then give the estimate back: the reservation is released in the
+        // same synchronous block that queues the row.
         internalLogger.add(errorRecord).catch(e => console.error('Failed to log proxy error:', e));
+        spendLedger.releaseForRequest(req);
 
         if (!res.headersSent) res.status(502).json({ error: 'Bad Gateway', details: err.message });
     });
@@ -132,7 +135,7 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
         return;
     }
 
-    const { providerName, requestInfo, requestStartTime, projectId, cacheKey, requestBodyStr, streamHandler } = meta;
+    const { providerName, requestInfo, requestStartTime, projectId, requestBodyStr, streamHandler } = meta;
     const isError = (proxyRes.statusCode || 200) >= 400;
 
     let dbResponseBody = '';
@@ -160,6 +163,16 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
 
     // We MUST capture headers before streaming starts
     const copiedHeaders = { ...proxyRes.headers };
+
+    // The upstream dropped the connection part-way through its response. 'end' never fires, so without
+    // this the client would be left hanging on a response that nothing finishes and the budget
+    // reservation would be held until the client gave up. No cost row is written for a partial
+    // response (the usage report never arrived); the reservation is returned.
+    proxyRes.on('close', () => {
+        if (proxyRes.complete) return;
+        spendLedger.releaseForRequest(req);
+        if (!res.writableEnded) res.destroy();
+    });
 
     if (isError && !requestInfo.isStreaming) {
         // BUFFER THE ERROR
@@ -350,10 +363,6 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
                 drift_flag: driftFlag
             };
 
-            if (usage?.costUsd && usage.costUsd > 0) {
-                incrementSpendCache(cacheKey, usage.costUsd);
-            }
-
             requestEventEmitter.emit('new_request', reqRecord);
 
             internalLogger.add({
@@ -370,6 +379,11 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
 
         } catch (err) {
             console.error('Error logging request:', err);
+        } finally {
+            // The final-cost row is on the queue (or could not be built); either way the estimate is
+            // given back now, in the same synchronous block, so spend is never counted twice or dropped
+            // in between. Idempotent with the response-level backstop in budgetGuard.
+            spendLedger.releaseForRequest(req);
         }
     }
 });

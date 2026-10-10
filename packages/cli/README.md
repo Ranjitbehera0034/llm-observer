@@ -78,7 +78,7 @@ All data stored in a local SQLite database at `~/.llm-observer/data.db`. No tele
 Live cost counter, request log with filters, latency tracking, model breakdown charts, cost trajectory, subagent trees, statistical A/B comparison, and a reasoning-chain debugger — all at `http://localhost:4001`.
 
 ### 🛡️ Budget guard
-Set a daily budget per project. When recorded spend exceeds the limit, the proxy can block new requests. This is best effort: spend is written to the database in short batches (about 5 seconds or 10 requests), so a burst of requests can overshoot the limit before the block applies.
+Set a daily budget per project. The proxy can block a request before it is sent when recorded, queued and in-flight estimated spend would exceed the limit (queued: finished requests not yet written to the database; in-flight: the estimated cost of requests still running). This is best effort: the estimate check only starts once that spend reaches 60% of the limit, so below that a single request of any size is admitted and can overshoot by its whole cost; above it, overshoot is bounded by the difference between a request's estimated and actual cost. It applies only to traffic sent through the proxy of a single process. Calls that bypass the proxy, requests the client aborts mid-response and models with no known price are not counted. It cannot promise to prevent a bill.
 
 ```bash
 llm-observer budget set 5.00 --daily
