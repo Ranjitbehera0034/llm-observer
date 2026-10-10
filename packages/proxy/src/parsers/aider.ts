@@ -4,6 +4,7 @@ import os from 'os';
 import { createHash } from 'crypto';
 import { getParsedFile, upsertParsedFile, insertSession, getPricingForModel } from '@llm-observer/database';
 import { getProviderForModel } from './utils';
+import { ParserAdapter, locator } from './adapter';
 
 /*
  * Aider has no default analytics log: it only writes one when started with
@@ -161,4 +162,19 @@ export const parse = async (onProgress?: (current: number, total: number) => voi
             error_message: String(err)
         });
     }
+};
+
+const located = locator(() => (fs.existsSync(getAiderAnalyticsPath()) ? [getAiderAnalyticsPath()] : []), paths => paths.map(p => path.dirname(p)));
+
+export const adapter: ParserAdapter = {
+    id: 'aider',
+    displayName: 'Aider',
+    verification: {
+        level: 'verified',
+        recording: 'aider',
+        note: 'Verified for the log format: golden-output tests against a scrubbed analytics log recorded from real Aider 0.86.2 on Linux. The model endpoint was a mock, so its token counts are the mock\'s (or Aider\'s own estimate when streamed), and costs are not checked against a bill. Other Aider versions, macOS and Windows were not recorded. Aider only writes this file when started with --analytics-log, and the log has no session id, so each message is one row.',
+    },
+    detect: located.detect,
+    watchPaths: located.watchPaths,
+    parse: opts => parse(opts?.onProgress),
 };

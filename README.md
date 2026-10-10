@@ -272,6 +272,8 @@ LLM_OBSERVER_PORT=3000 llm-observer start
 
 All files are read in **read-only mode**. LLM Observer never modifies any AI tool's data.
 
+New usage normally shows up within a few seconds: a file watcher notices a change in a tool's session directory and re-reads only that tool's files. Where the OS or Node version cannot watch directories recursively (Node 18 on Linux), those directories are checked every 30 seconds instead, and a full scan of every tool still runs every 5 minutes as a safety net. Set `LLM_OBSERVER_WATCH=0` to turn the watcher off and rely on the 5-minute scan alone. The table above is checked against the parser registry in CI (`packages/proxy/src/parsers/registry.ts`): a tool listed in one and not the other, or marked with a different status, fails the tests.
+
 ---
 
 ## What LLM Observer Does NOT Do

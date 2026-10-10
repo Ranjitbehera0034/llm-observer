@@ -10,7 +10,7 @@ import { startRateLimitPersistence } from './rateLimitGuard';
 import { syncManager } from './syncManager';
 import { usageSyncManager } from './sync';
 import { networkMonitor } from './services/networkMonitor';
-import { initParsers } from './parsers/manager';
+import { initParsers, stopParsers } from './parsers/manager';
 import { startLicenseRevalidation } from './licenseManager';
 import { startTelemetry } from './telemetry';
 import { createApp, createDashboardApp } from './app';
@@ -176,7 +176,8 @@ export function installSignalHandlers(
 ): void {
     const shutdown = createShutdownHandler({
         servers,
-        flush: () => internalLogger.flush(),
+        // Stop the parser file watchers and wait for an in-flight parse before the database closes under it.
+        flush: async () => { await stopParsers(); await internalLogger.flush(); },
         closeDatabase: closeDb,
         exit,
     });

@@ -4,6 +4,7 @@ import os from 'os';
 import readline from 'readline';
 import { insertSession, getPricingForModel } from '@llm-observer/database';
 import { estimateTokens, findFilesRecursive, shouldParseFile, markFileParsed, getProviderForModel } from './utils';
+import { ParserAdapter, locator } from './adapter';
 
 /**
  * OpenAI Codex CLI session logs: `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-<local time>-<thread id>.jsonl`
@@ -303,4 +304,19 @@ const parseSessionFile = async (filePath: string) => {
     } as any);
 
     markFileParsed(filePath, 'codex', mtime, 'success');
+};
+
+const located = locator(() => (fs.existsSync(getCodexDir()) ? [getCodexDir()] : []));
+
+export const adapter: ParserAdapter = {
+    id: 'codex',
+    displayName: 'OpenAI Codex CLI',
+    verification: {
+        level: 'verified',
+        recording: 'codex',
+        note: 'Verified for the log format: golden-output tests against scrubbed rollout files recorded from real Codex CLI 0.162.1 (codex exec) on Linux. The model endpoint was a mock, so its token counts are the mock\'s, and costs are not checked against a bill (the log holds no cost; LLM Observer prices the tokens). Older Codex versions, macOS, Windows and a real model or account were not recorded: logs in an older layout may not parse. A session whose requests all failed has no usage and gets no row.',
+    },
+    detect: located.detect,
+    watchPaths: located.watchPaths,
+    parse: opts => parse(opts?.onProgress),
 };

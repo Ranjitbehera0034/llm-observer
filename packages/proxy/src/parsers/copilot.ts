@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import { insertSession } from '@llm-observer/database';
 import { calculateCost, estimateTokens, safeReadSQLite, findFilesRecursive, shouldParseFile, markFileParsed, getProviderForModel } from './utils';
+import { ParserAdapter, locator } from './adapter';
 
 const getCopilotDirs = (): string[] => {
     const home = os.homedir();
@@ -154,4 +155,18 @@ const parseSessionFile = async (filePath: string) => {
     }
 
     markFileParsed(filePath, 'copilot', mtime, 'success');
+};
+
+const located = locator(() => getCopilotDirs());
+
+export const adapter: ParserAdapter = {
+    id: 'copilot',
+    displayName: 'GitHub Copilot',
+    verification: {
+        level: 'unverified',
+        note: 'Fixtures are hand-written, not recorded from the real tool.',
+    },
+    detect: located.detect,
+    watchPaths: located.watchPaths,
+    parse: opts => parse(opts?.onProgress),
 };
