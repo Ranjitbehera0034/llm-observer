@@ -45,14 +45,18 @@ and must be labelled as hand-written.
 
 ### Capturing a real recording
 
-Claude Code and Aider are marked **verified**, and only narrowly. Claude Code's recording is a scrubbed
+Claude Code, Aider and Codex CLI are marked **verified**, and only narrowly. Claude Code's recording is a scrubbed
 excerpt of one real Claude Code 2.1.291 log from Linux
 ([`fixtures/claude/recorded/`](packages/proxy/src/parsers/__tests__/fixtures/claude/recorded/claude-code-2.1.291-linux/README.md)).
 Aider's is a scrubbed analytics log written by real Aider 0.86.2 on Linux against a mock model endpoint
 ([`fixtures/aider/recorded/`](packages/proxy/src/parsers/__tests__/fixtures/aider/recorded/aider-0.86.2/README.md)),
-so it verifies the log format, not token counts or costs. Claude Code's older-format fixtures and every
-other parser's fixtures are hand-written (the old Aider file is kept, labelled synthetic, in
-[`fixtures/synthetic/aider/`](packages/proxy/src/parsers/__tests__/fixtures/synthetic/aider/README.md)),
+so it verifies the log format, not token counts or costs. Codex's is four scrubbed rollout files written by
+real Codex CLI 0.162.1 on Linux against a mock Responses-API endpoint
+([`fixtures/codex/recorded/`](packages/proxy/src/parsers/__tests__/fixtures/codex/recorded/codex-0.162.1/README.md)),
+again the format only. Claude Code's older-format fixtures and every other parser's fixtures are
+hand-written (the old Aider and Codex files are kept, labelled synthetic, in
+[`fixtures/synthetic/aider/`](packages/proxy/src/parsers/__tests__/fixtures/synthetic/aider/README.md) and
+[`fixtures/synthetic/codex/`](packages/proxy/src/parsers/__tests__/fixtures/synthetic/codex/README.md)),
 so those agree with their fixtures, not necessarily with the real tool. A parser
 is promoted to verified only with a recording from a real install:
 
@@ -62,6 +66,11 @@ is promoted to verified only with a recording from a real install:
    unless you want Aider's own remote analytics on: the local log is written either way. To record
    without a paid model, point `--openai-api-base` at a small mock `/v1/chat/completions` server and say
    so in the README (see the Aider recording for the exact command and what the mock changes).
+   For Codex CLI, install `@openai/codex` into a scratch prefix, give it a throwaway `HOME` and
+   `CODEX_HOME`, put a `[model_providers.<id>]` block with `wire_api = "responses"` and a loopback
+   `base_url` in `$CODEX_HOME/config.toml`, serve `POST /v1/responses` as server-sent events from a mock,
+   and run `codex exec --skip-git-repo-check "<prompt>"`; the rollout lands in `$CODEX_HOME/sessions/`
+   (see the Codex recording's README for the exact setup).
 2. Copy the file(s) the parser reads (see the table in the README) into
    `packages/proxy/src/parsers/__tests__/fixtures/<tool>/`. For SQLite stores, copy the
    `.db`/`.vscdb` file after closing the editor.
