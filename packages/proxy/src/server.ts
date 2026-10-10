@@ -193,7 +193,11 @@ export function installSignalHandlers(
 ): void {
     const shutdown = createShutdownHandler({
         servers,
-        flush: async () => { await shutdownOtlp(); await flushOnShutdown(); },
+        flush: async () => {
+            // A failing receiver shutdown must never keep the queued request logs from being written.
+            try { await shutdownOtlp(); } catch (err) { console.error('Failed to stop the OTLP receiver on shutdown:', err); }
+            await flushOnShutdown();
+        },
         closeDatabase: closeDb,
         exit,
     });
