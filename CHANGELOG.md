@@ -74,23 +74,71 @@ architecture review. Existing databases upgrade in place; a backup is taken firs
 - SIGTERM/SIGINT flush queued requests and close the database; a busy port exits with an actionable message.
 - Retention keeps budget alerts (they are the dedupe rows) and compares timestamps consistently.
 
+### Fixed - budgets
+- The kill switch counts recorded + queued + in-flight estimated spend and reserves an admitted request's
+  estimate until it finishes (released on completion, abort and upstream error). Below 60% of a limit the
+  estimate check is skipped, so one request can still overshoot there by its whole cost; above it, overshoot is
+  bounded by the gap between a request's estimated and actual cost. Single process, proxy traffic only.
+- A proxied upstream that drops mid-response no longer hangs the request.
+
+### Fixed - platforms
+- The Windows build failed (`cp src/migrations/*.sql` in the database package's tsup config); it now copies
+  with Node. `clean` scripts are portable.
+- `llm-observer stop` on Windows reads the process command line through PowerShell to confirm the pid is this
+  install's server, and the macOS SQLite lock test no longer waits 3 x 5 s. CI now builds, tests and runs the
+  packed-CLI smoke test on Ubuntu, macOS and Windows.
+- Desktop (Tauri): the bundled dashboard called relative `/api` URLs that the webview served from its own asset
+  host, so it never reached the server; the CORS allowlist also omitted the Tauri origins. The webview now
+  uses an absolute loopback API base, the sidecar ships the dashboard, exits when the app is killed (it used to
+  keep its ports), and no longer prints the first-run API key into the app log. Built and run under Xvfb on
+  Linux; `.github/workflows/desktop-check.yml` builds the sidecar and runs `cargo check`.
+
+### Added
+- **OpenTelemetry receiver (opt-in, Settings -> Security & Privacy):** a loopback-only OTLP/HTTP (JSON) endpoint
+  on 127.0.0.1:4318 for Claude Code telemetry, real time and first-party. Off by default; refuses browser
+  requests; stores only token counts, model, cost and session id; never double counts with the log parser.
+  Verified against payloads captured from Claude Code 2.1.294 on Linux (`docs/guide/otlp.md`). Migration 018.
+- **Parser adapters:** every parser is a `ParserAdapter` in one registry with its verification level, a
+  conformance test, and a documented "Adding a parser" guide. A debounced file watcher re-reads only the
+  affected tool's files within a few seconds of a change (`LLM_OBSERVER_WATCH=0` disables it; polling
+  fallback where recursive watching is unavailable). The Codex parser was rewritten after recording the real
+  format (it read 0 tokens from every real session before).
+- **Team tier (beta):** licence plan `team` (signed keys; `LEMONSQUEEZY_TEAM_VARIANT_IDS` /
+  `RAZORPAY_TEAM_PLAN_IDS` map purchases), team-server policy and rollup APIs, budgets from the team policy
+  enforced locally through the same kill switch (read-only in the UI, "set by your team"), `llm-observer team
+  join|status|leave`, and a Team page in the dashboard. Only daily aggregates leave the machine, as before.
+  Migration 017. See `docs/guide/team.md`.
+- `scripts/verify-license-server.js` (post-deploy checks) and an end-to-end test of the licence flow over real
+  HTTP using the real handlers; `docs/DEPLOY_LICENSE_SERVER.md`.
+- `scripts/validate-admin-sync.js`: runs the real pollers against a live Anthropic/OpenAI admin key (you
+  supply it in the environment), twice, and prints a PASS/FAIL reconciliation report plus redacted recordings.
+
 ### Changed
 - Budget days, weeks and months now start at local midnight (previously UTC for provider, model and global
   budgets). After upgrading outside UTC a budget alert for the current period may fire once more.
-- The kill switch is described as best effort: spend is written in short batches (about 5 seconds or 10
-  requests), so a burst can pass the limit. The UI says so.
-- Parsers are labelled verified / experimental / unverified in Settings and the README. Claude Code is tested
-  against a scrubbed excerpt of one real log (Claude Code 2.1.291, Linux) plus hand-written fixtures; the
-  others have no real recording yet. Admin-API sync is documented as designed to reconcile with your invoice
-  but not yet validated against a live account (`docs/RELEASE_CHECKLIST.md`).
+- The kill switch now counts recorded, queued (finished but not yet written) and in-flight estimated spend,
+  so a burst of concurrent requests can no longer all be admitted before any of them is counted. It is still
+  best effort and the UI says so (see "Fixed - budgets" below for the exact bound).
+- Parsers are labelled verified / experimental / unverified in Settings and the README. A parser is
+  "verified" only when its log format was recorded from the real tool: Claude Code 2.1.291, Aider 0.86.2 and
+  Codex CLI 0.162.1 (all on Linux; Aider and Codex against a mock model endpoint, so the token numbers are the
+  mock's). Cline, Copilot, Windsurf and Cursor have no recording and say so. Admin-API sync is documented as
+  designed to reconcile with your invoice but not yet validated against a live account
+  (`docs/RELEASE_CHECKLIST.md`).
 - README accuracy claims for session estimates ("~95% accurate", "within ~5%") were removed: they were never
   measured.
 
 ### Known limitations
-- Subscription tools (Cursor, Copilot, Windsurf) are not captured by the proxy, and the Cursor parser is
-  detect-only until its local store is decoded.
-- Kill-switch overshoot and the double count after a sync flips to `error` are not fixed; Team features,
-  OpenTelemetry (OTLP) ingestion and an adapter contract for new parsers remain on the roadmap.
+- Billing sync has never run against a live admin key. `scripts/validate-admin-sync.js` exists to do that in
+  five minutes with your own key; until its output is committed the reconciliation claim stays unproven.
+- Windows: `llm-observer stop` ends the server immediately (Node has no graceful signal for a detached
+  Windows process); press Ctrl+C in the window running `start` for a clean shutdown.
+- Cline, Copilot, Windsurf and Cursor parsers are unverified (no recording); Cursor is detect-only.
+- The Team tier is a beta vertical slice (see below), not a finished product: no invitations flow, no seat
+  billing, no SSO sign-in screen, and the team server has only been tested against in-memory fakes.
+- The kill switch only covers traffic sent through the proxy of one `llm-observer` process.
+- Desktop: macOS and Windows webviews, OS code signing, the auto-updater, autostart and the tray were not
+  exercised (`docs/guide/desktop.md` has the table).
 
 ## [2.0.1] - 2026-10-06
 
