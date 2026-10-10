@@ -62,13 +62,15 @@ export class BudgetService {
             const buffer = budget.safety_buffer_usd || 0.05;
             const effectiveLimit = limit - buffer;
             const utilization = spent / limit;
+            // Budgets reconciled from the team policy say so, so a developer knows who to ask.
+            const by = budget.source === 'team' ? ' This limit was set by your team.' : '';
 
             // Layer 1: Already Exceeded
             if (spent >= limit) {
                 return { 
                     blocked: true, 
                     type: 'budget_exceeded',
-                    reason: `${periodLabel(budget.period)} budget exceeded: $${spent.toFixed(2)} spent of $${limit.toFixed(2)} limit.`,
+                    reason: `${periodLabel(budget.period)} budget exceeded: $${spent.toFixed(2)} spent of $${limit.toFixed(2)} limit.${by}`,
                     details: { limit, spent, scope: budget.scope, scope_value: budget.scope_value, retry_after: getSecondsUntilPeriodReset(budget.period) }
                 };
             }
@@ -78,7 +80,7 @@ export class BudgetService {
                 return {
                     blocked: true,
                     type: 'budget_buffer',
-                    reason: `${periodLabel(budget.period)} budget nearly exhausted. $${(limit - spent).toFixed(2)} remaining (safety buffer: $${buffer.toFixed(2)}).`,
+                    reason: `${periodLabel(budget.period)} budget nearly exhausted. $${(limit - spent).toFixed(2)} remaining (safety buffer: $${buffer.toFixed(2)}).${by}`,
                     details: { limit, spent, remaining: limit - spent, buffer, scope: budget.scope, scope_value: budget.scope_value, retry_after: getSecondsUntilPeriodReset(budget.period) }
                 };
             }
@@ -90,7 +92,7 @@ export class BudgetService {
                     return {
                         blocked: true,
                         type: 'budget_insufficient',
-                        reason: `Insufficient ${budget.period} budget for this request. $${(limit - spent).toFixed(2)} remaining, estimated cost ~$${estimatedCost.toFixed(4)}.`,
+                        reason: `Insufficient ${budget.period} budget for this request. $${(limit - spent).toFixed(2)} remaining, estimated cost ~$${estimatedCost.toFixed(4)}.${by}`,
                         details: { 
                             limit, spent, estimated: estimatedCost, 
                             input_tokens: inputTokens, 

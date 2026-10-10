@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, Shield, ShieldAlert, ShieldCheck, Globe, Cpu, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Edit2, Shield, ShieldAlert, ShieldCheck, Globe, Cpu, AlertTriangle, RefreshCw, Lock } from 'lucide-react';
 import { BudgetMeter } from './BudgetMeter';
 import { API_BASE_URL } from '../config';
 
@@ -17,6 +17,8 @@ interface Budget {
     safety_buffer_usd: number;
     estimate_multiplier: number;
     is_active: boolean;
+    /** 'team' = set by the team policy: read-only here. */
+    source?: 'local' | 'team';
 }
 
 export function BudgetsTab() {
@@ -415,6 +417,11 @@ export function BudgetsTab() {
                                             <div>
                                                 <h4 className="font-bold text-white text-lg flex items-center gap-2">
                                                     {budget.name}
+                                                    {budget.source === 'team' && (
+                                                        <span title="This budget comes from your team's policy and cannot be changed here" className="flex items-center gap-1 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-indigo-500/10 text-indigo-300 border-indigo-500/20">
+                                                            <Lock className="w-3 h-3" aria-hidden="true" /> set by your team
+                                                        </span>
+                                                    )}
                                                     <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
                                                         budget.kill_switch ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-slate-800 text-slate-400 border-slate-700'
                                                     }`}>
@@ -453,6 +460,7 @@ export function BudgetsTab() {
                                                     type="checkbox" 
                                                     className="sr-only peer"
                                                     checked={budget.kill_switch}
+                                                    disabled={budget.source === 'team'}
                                                     onChange={() => toggleKillSwitch(budget)}
                                                 />
                                                 <div className="w-9 h-5 bg-slate-800 rounded-full peer peer-checked:bg-red-500/20 border border-slate-700 transition-all" />
@@ -464,6 +472,11 @@ export function BudgetsTab() {
                                             <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-1">Threshold</p>
                                             <p className="text-2xl font-black text-white italic tracking-tight">${budget.limit_usd.toFixed(2)}</p>
                                         </div>
+                                    {budget.source === 'team' ? (
+                                        <div className="flex items-center gap-2 text-slate-500" title="Read-only: set by your team">
+                                            <Lock className="w-5 h-5" aria-label="Read-only, set by your team" />
+                                        </div>
+                                    ) : (
                                     <div className="flex items-center gap-2">
                                         <button 
                                             onClick={() => startEdit(budget)}
@@ -478,6 +491,7 @@ export function BudgetsTab() {
                                             <Trash2 className="w-4 h-4" />
                                         </button>
                                     </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
