@@ -1,5 +1,11 @@
 # Signing desktop releases
 
+**Scope.** Everything on this page is the *updater* signature (minisign, checked by `tauri-plugin-updater`).
+It is not operating-system code signing: `release.yml` has no Apple certificate / notarisation or Windows
+signing configuration, so the macOS and Windows installers are unsigned and will trigger Gatekeeper and
+SmartScreen warnings. Also note that nothing in the app currently calls the updater (see
+[docs/guide/desktop.md](../../docs/guide/desktop.md)).
+
 `release.yml` (triggered by pushing a `v*` tag) builds the Tauri desktop app for
 macOS/Linux/Windows via `tauri-apps/tauri-action` and already forwards
 `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` from repo
@@ -19,9 +25,10 @@ must never be seen by anyone but you.
    **Never commit the private key file.**
 
 2. Put the **public** key into
-   [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json), replacing the
-   `plugins.updater.pubkey` placeholder (`REPLACE_WITH_REAL_UPDATER_PUBKEY_SEE_SIGNING_MD`)
-   with the string `tauri signer generate` printed. This file is safe to
+   [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) as `plugins.updater.pubkey`
+   (it currently holds a key, no longer the old placeholder; whether the matching private key is
+   in the repo secrets could not be checked from the code, so generate a new pair if you do not have it)
+   using the string `tauri signer generate` printed. This file is safe to
    commit — it's the public half.
 
 3. Store the **private** key and its password as repo secrets (Settings →

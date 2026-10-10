@@ -10,16 +10,6 @@
     "opener:default",
     "notification:default",
     "autostart:default",
-    "updater:default",
-    {
-      "identifier": "shell:allow-spawn",
-      "allow": [
-        {
-          "sidecar": true,
-          "name": "bin/llm-observer-proxy",
-          "args": true
-        }
-      ]
-    }
+    "updater:default"
   ]
 }

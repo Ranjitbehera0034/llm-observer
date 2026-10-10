@@ -5,7 +5,8 @@ const os = require('os');
 
 // This produces the Tauri "sidecar" for packages/desktop: the desktop app's
 // Rust code (src-tauri/src/lib.rs) spawns `bin/llm-observer-proxy-<target-triple>`
-// with the resource-relative path to resources/proxy/server.js as its argument.
+// with the resource-relative path to resources/proxy/server.js as its argument
+// (src-tauri/src/lib.rs also passes LLM_OBSERVER_PORT / LLM_OBSERVER_PROXY_PORT).
 //
 // Earlier this repo tried to snapshot everything (including better-sqlite3's
 // native binding) into a single file via `pkg`. That doesn't work reliably:
@@ -41,6 +42,16 @@ console.log(`Building sidecar bundle for ${tauriTarget}...`);
 console.log('Building proxy with tsup...');
 execSync('npm run build', { cwd: proxyRoot, stdio: 'inherit' });
 
+// The webview gets the dashboard from Tauri's frontendDist (packages/dashboard/dist),
+// but the bundled server also serves it (app.ts looks for ./dashboard next to
+// server.js), so http://127.0.0.1:<port>/ works in a browser too. Without this the
+// sidecar answered 404 "Dashboard assets not found" on every page.
+const dashboardDist = path.join(proxyRoot, 'dist', 'dashboard');
+if (!fs.existsSync(path.join(dashboardDist, 'index.html'))) {
+    console.error('dist/dashboard/index.html is missing: build the dashboard first ' +
+        '(npm run build --workspace=@llm-observer/dashboard), then rebuild the proxy so postbuild copies it.');
+    process.exit(1);
+}
 console.log('Tracing runtime dependencies (booting the real built server against a throwaway data dir)...');
 const traceDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sidecar-trace-'));
 const serverPath = path.join(proxyRoot, 'dist', 'server.js');
@@ -86,6 +97,10 @@ fs.writeFileSync(path.join(resourcesDir, 'package.json'), JSON.stringify({ type:
 // this needs to sit next to server.js in the bundle, not just in dist/.
 fs.cpSync(path.join(proxyRoot, 'dist', 'migrations'), path.join(resourcesDir, 'migrations'), { recursive: true });
 
+fs.cpSync(dashboardDist, path.join(resourcesDir, 'dashboard'), { recursive: true });
+// Preloaded by src-tauri/src/lib.rs so the server stops if the app dies without cleaning up.
+fs.copyFileSync(path.join(__dirname, 'sidecar-parent-watch.js'), path.join(resourcesDir, 'parent-watch.js'));
+
 const rootNodeModules = path.join(repoRoot, 'node_modules');
 const bundleNodeModules = path.join(resourcesDir, 'node_modules');
 fs.mkdirSync(bundleNodeModules, { recursive: true });
@@ -109,4 +124,4 @@ fs.copyFileSync(process.execPath, outputPath);
 if (platform !== 'win32') fs.chmodSync(outputPath, 0o755);
 
 console.log(`✅ Sidecar binary: bin/${output}`);
-console.log(`✅ Sidecar resources: resources/proxy/ (server.js + ${deps.length} runtime dependency dirs)`);
+console.log(`✅ Sidecar resources: resources/proxy/ (server.js + dashboard/ + ${deps.length} runtime dependency dirs)`);

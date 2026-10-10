@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Bell, Search, User } from 'lucide-react';
 import { NotificationsPanel } from './NotificationsPanel';
+import { API_BASE_URL } from '../config';
 
 export function Header() {
     const [unreadCount, setUnreadCount] = useState(0);
@@ -9,7 +10,7 @@ export function Header() {
     useEffect(() => {
         const fetchUnreadCount = async () => {
             try {
-                const res = await fetch('/api/alerts/unread-count');
+                const res = await fetch(`${API_BASE_URL}/api/alerts/unread-count`);
                 if (res.ok) {
                     const data = await res.json();
                     setUnreadCount(data.count);

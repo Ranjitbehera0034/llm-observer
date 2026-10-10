@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Bell, CheckCircle, ExternalLink, RefreshCw, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { API_BASE_URL } from '../config';
 
 interface Alert {
     id: string;
@@ -17,7 +18,7 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
 
     const fetchAlerts = async () => {
         try {
-            const res = await fetch('/api/alerts?all=false&limit=10');
+            const res = await fetch(`${API_BASE_URL}/api/alerts?all=false&limit=10`);
             if (res.ok) {
                 const data = await res.json();
                 setAlerts(data.data || []);
@@ -35,7 +36,7 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
 
     const acknowledgeAll = async () => {
         try {
-            const res = await fetch('/api/alerts/acknowledge-all', { method: 'POST' });
+            const res = await fetch(`${API_BASE_URL}/api/alerts/acknowledge-all`, { method: 'POST' });
             if (res.ok) {
                 setAlerts([]);
                 onClose();
@@ -47,7 +48,7 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
 
     const acknowledgeOne = async (id: string) => {
         try {
-            const res = await fetch(`/api/alerts/${id}/acknowledge`, { method: 'POST' });
+            const res = await fetch(`${API_BASE_URL}/api/alerts/${id}/acknowledge`, { method: 'POST' });
             if (res.ok) {
                 setAlerts(alerts.filter(a => a.id !== id));
             }
