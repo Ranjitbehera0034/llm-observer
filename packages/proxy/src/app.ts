@@ -16,6 +16,7 @@ import toolRoutes from './routes/tools.routes';
 import agentRoutes from './routes/agents.routes';
 import limitRoutes from './routes/limits.routes';
 import heatmapRoutes from './routes/heatmap.routes';
+import { otlpSettingsHook, otlpRoutes } from './otlp';
 import './types';
 
 const corsOptions = {
@@ -122,6 +123,9 @@ export function createDashboardApp(): express.Express {
     dashboardApp.use(localGuard);
     dashboardApp.use(cors(corsOptions));
     dashboardApp.use(express.json());
+    // Opt-in OTLP receiver: flipping otlp_receiver_enabled starts/stops its listener; status for Settings
+    dashboardApp.use('/api/settings', otlpSettingsHook);
+    dashboardApp.use('/api/otlp', otlpRoutes);
     // Mount the dashboard API router
     dashboardApp.use('/api', dashboardApi);
 

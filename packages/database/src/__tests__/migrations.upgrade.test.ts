@@ -471,3 +471,25 @@ describe('legacy database relocation', () => {
         moved.close();
     });
 });
+
+describe('018_otlp_ingestion', () => {
+    it('adds sessions.source (existing rows become "log") and the otlp_usage ledger', () => {
+        const before = realFiles().filter(f => f < '018');
+        const db = new Database(':memory:');
+        runMigrations(db, migrationsDirWith(before));
+        db.prepare(`INSERT INTO sessions (provider, session_id, started_at) VALUES ('claude-code', 'old-one', '2026-07-01T10:00:00.000Z')`).run();
+        expect(columns(db, 'sessions')).not.toContain('source');
+
+        const applied = runMigrations(db, REAL_MIGRATIONS);
+        expect(applied).toContain('018_otlp_ingestion.sql');
+
+        expect(columns(db, 'sessions')).toContain('source');
+        expect((db.prepare(`SELECT source FROM sessions WHERE session_id = 'old-one'`).get() as any).source).toBe('log');
+        expect(columns(db, 'otlp_usage')).toEqual(expect.arrayContaining([
+            'session_id', 'kind', 'dedupe_key', 'model', 'input_tokens', 'output_tokens',
+            'cache_read_tokens', 'cache_write_tokens', 'cost_usd', 'started_at', 'occurred_at',
+        ]));
+        // No column can hold prompt, response or tool text.
+        expect(columns(db, 'otlp_usage').filter(c => /prompt|response|content|text|body|param|email|user/i.test(c))).toEqual([]);
+    });
+});

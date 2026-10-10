@@ -29,6 +29,19 @@ describe('sessions repository', () => {
         expect((getSessionById(idAAgain) as any).estimated_cost_usd).toBe(2);
     });
 
+    it('defaults source to "log" and a parser upsert takes an OTLP-sourced row back (source reset to "log")', () => {
+        const id = insertSession(base('otlp-then-log'));
+        expect((getSessionById(id) as any).source).toBe('log');
+
+        getDb().prepare(`UPDATE sessions SET source = 'otlp', input_tokens = 5 WHERE id = ?`).run(id);
+        expect((getSessionById(id) as any).source).toBe('otlp');
+
+        insertSession({ ...base('otlp-then-log'), input_tokens: 7 });
+        const row = getSessionById(id) as any;
+        expect(row.source).toBe('log');
+        expect(row.input_tokens).toBe(7);
+    });
+
     it('persists tool, is_estimated and cost_source', () => {
         const id = insertSession({
             ...base('c'),

@@ -27,6 +27,11 @@ export default function Settings() {
     const [driftDetectionEnabled, setDriftDetectionEnabled] = useState(false);
     const [savingDriftToggle, setSavingDriftToggle] = useState(false);
     const [telemetryEnabled, setTelemetryEnabled] = useState(false);
+    // Opt-in OpenTelemetry (OTLP) receiver for Claude Code telemetry
+    const [otlpEnabled, setOtlpEnabled] = useState(false);
+    const [savingOtlpToggle, setSavingOtlpToggle] = useState(false);
+    const [otlpStatus, setOtlpStatus] = useState<{ listening: boolean; endpoint: string; envSnippet: string; lastError: string | null; lastReceivedAt: string | null; recordsStored: number } | null>(null);
+    const [otlpCopied, setOtlpCopied] = useState(false);
     const [savingTelemetryToggle, setSavingTelemetryToggle] = useState(false);
     const [showOpenAiKey, setShowOpenAiKey] = useState(false);
     const [showAnthropicKey, setShowAnthropicKey] = useState(false);
@@ -76,6 +81,7 @@ export default function Settings() {
                     setPiiRedactionEnabled(data.data.pii_redaction_enabled === 'true');
                     setDriftDetectionEnabled(data.data.response_drift_detection_enabled === 'true');
                     setTelemetryEnabled(data.data.telemetry_opt_in === 'true');
+                    setOtlpEnabled(data.data.otlp_receiver_enabled === 'true');
                     setScanInterval(data.data.network_monitor_interval || '5000');
                 }
             } catch (err) {
@@ -83,6 +89,7 @@ export default function Settings() {
             }
         };
         fetchSettings();
+        fetchOtlpStatus();
 
         const fetchMonitorStatus = async () => {
             try {
@@ -279,6 +286,46 @@ export default function Settings() {
             console.error('Failed to update response drift detection setting', err);
         } finally {
             setSavingDriftToggle(false);
+        }
+    };
+
+    const fetchOtlpStatus = async () => {
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/otlp/status`);
+            const data = await res.json();
+            if (data.data) setOtlpStatus(data.data);
+        } catch (err) {
+            console.error('Failed to fetch OTLP receiver status', err);
+        }
+    };
+
+    const toggleOtlp = async () => {
+        const next = !otlpEnabled;
+        setSavingOtlpToggle(true);
+        try {
+            const res = await fetch(`${API_BASE_URL}/api/settings`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ otlp_receiver_enabled: String(next) })
+            });
+            if (res.ok) setOtlpEnabled(next);
+            // the server starts/stops the listener before it answers, so this already shows the new state
+            await fetchOtlpStatus();
+        } catch (err) {
+            console.error('Failed to update OpenTelemetry receiver setting', err);
+        } finally {
+            setSavingOtlpToggle(false);
+        }
+    };
+
+    const copyOtlpSnippet = async () => {
+        if (!otlpStatus?.envSnippet) return;
+        try {
+            await navigator.clipboard.writeText(otlpStatus.envSnippet);
+            setOtlpCopied(true);
+            setTimeout(() => setOtlpCopied(false), 2000);
+        } catch {
+            // clipboard unavailable (insecure context): the text is selectable in the box
         }
     };
 
@@ -758,6 +805,54 @@ export default function Settings() {
                                             This is a lexical/statistical comparison against each model's own recent baseline,
                                             not a check against a "correct" answer — there is no ground truth for arbitrary
                                             prompts. It flags unusual shifts in style, not factual accuracy.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="card">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white mb-2">OpenTelemetry Receiver (Claude Code)</h2>
+                                        <p className="text-sm text-textMuted">Receive Claude Code's own usage telemetry in real time, instead of waiting for the log files to be read. Listens on this machine only.</p>
+                                    </div>
+                                    <button
+                                        onClick={toggleOtlp}
+                                        disabled={savingOtlpToggle}
+                                        aria-label="OpenTelemetry receiver"
+                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${otlpEnabled ? 'bg-primary' : 'bg-background border border-border'}`}
+                                    >
+                                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${otlpEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                                    </button>
+                                </div>
+                                {otlpEnabled && (
+                                    <div className="mb-4 space-y-3">
+                                        <p className="text-xs text-textMuted">
+                                            {otlpStatus?.listening
+                                                ? <>Listening on <span className="font-mono text-white">{otlpStatus.endpoint}</span>.{' '}
+                                                    {otlpStatus.lastReceivedAt ? `Last data ${new Date(otlpStatus.lastReceivedAt).toLocaleTimeString()}.` : 'Nothing received yet.'}</>
+                                                : <span className="text-amber-500">Not listening{otlpStatus?.lastError ? `: ${otlpStatus.lastError}` : '.'}</span>}
+                                        </p>
+                                        {otlpStatus?.envSnippet && (
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className="text-xs text-textMuted">Paste into the shell you start Claude Code from:</span>
+                                                    <button onClick={copyOtlpSnippet} className="text-xs text-primary hover:underline">{otlpCopied ? 'Copied' : 'Copy'}</button>
+                                                </div>
+                                                <pre className="p-3 bg-background border border-border rounded-lg text-xs text-white font-mono overflow-x-auto select-all">{otlpStatus.envSnippet}</pre>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                                <div className="p-4 bg-amber-500/5 rounded-xl border border-amber-500/20 border-dashed flex items-start gap-4">
+                                    <ShieldCheck className="w-6 h-6 text-amber-500 shrink-0" />
+                                    <div>
+                                        <h4 className="text-white font-semibold text-sm">Off by default</h4>
+                                        <p className="text-xs text-textMuted mt-1 leading-relaxed">
+                                            Only token counts, model, cost and session id are stored. Prompt text, responses and tool
+                                            details are dropped even if Claude Code is configured to send them, and browser requests are
+                                            refused. Use <span className="font-mono">127.0.0.1</span> (not <span className="font-mono">localhost</span>) as the host,
+                                            keep <span className="font-mono">OTEL_LOG_USER_PROMPTS</span> and <span className="font-mono">OTEL_LOG_TOOL_DETAILS</span> unset, and see docs/guide/otlp.md.
                                         </p>
                                     </div>
                                 </div>

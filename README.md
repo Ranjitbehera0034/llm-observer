@@ -275,6 +275,14 @@ All files are read in **read-only mode**. LLM Observer never modifies any AI too
 
 New usage normally shows up within a few seconds: a file watcher notices a change in a tool's session directory and re-reads only that tool's files. Where the OS or Node version cannot watch directories recursively (Node 18 on Linux), those directories are checked every 30 seconds instead, and a full scan of every tool still runs every 5 minutes as a safety net. Set `LLM_OBSERVER_WATCH=0` to turn the watcher off and rely on the 5-minute scan alone. The table above is checked against the parser registry in CI (`packages/proxy/src/parsers/registry.ts`): a tool listed in one and not the other, or marked with a different status, fails the tests.
 
+### Real-time Claude Code telemetry (OpenTelemetry, opt-in)
+
+Claude Code can push its own usage telemetry. Turn on **Settings → OpenTelemetry Receiver** and LLM Observer
+listens on `127.0.0.1:4318` (override with `LLM_OBSERVER_OTLP_PORT`) for OTLP over `http/json`; the card shows the
+exact `export` lines to paste into your shell. It is off by default, loopback only, refuses browser requests, and
+stores only token counts, model, cost and session id, never prompt or tool content. It does not double count with
+the log parser. Verified on Claude Code 2.1.294 (Linux) only; see [docs/guide/otlp.md](docs/guide/otlp.md).
+
 ---
 
 ## What LLM Observer Does NOT Do
