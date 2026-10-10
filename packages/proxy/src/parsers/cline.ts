@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import { insertSession } from '@llm-observer/database';
 import { calculateCost, findFilesRecursive, shouldParseFile, markFileParsed, getProviderForModel } from './utils';
+import { ParserAdapter, locator } from './adapter';
 
 const CLINE_EXTENSIONS = [
     'saoudrizwan.claude-dev',
@@ -182,4 +183,18 @@ const parseTaskFile = async (filePath: string) => {
     } as any);
 
     markFileParsed(filePath, 'cline', mtime, 'success');
+};
+
+const located = locator(() => getClineDirs());
+
+export const adapter: ParserAdapter = {
+    id: 'cline',
+    displayName: 'Cline / Roo Code',
+    verification: {
+        level: 'unverified',
+        note: 'Fixtures are hand-written, not recorded from the real tool.',
+    },
+    detect: located.detect,
+    watchPaths: located.watchPaths,
+    parse: opts => parse(opts?.onProgress),
 };

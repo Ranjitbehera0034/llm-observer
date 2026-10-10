@@ -19,10 +19,11 @@ jest.mock('@llm-observer/database', () => ({
     ),
 }));
 
-// Synthetic fixture derived from upstream aider/analytics.py, see fixtures/aider/README.md.
-const FIXTURE = path.join(__dirname, 'fixtures', 'aider', 'analytics.synthetic.jsonl');
+// HAND-WRITTEN fixture derived from upstream aider/analytics.py, see fixtures/synthetic/aider/README.md.
+// The real Aider 0.86.2 recording is checked by formatMatrix.test.ts; these tests pin edge cases.
+const FIXTURE = path.join(__dirname, 'fixtures', 'synthetic', 'aider', 'analytics.synthetic.jsonl');
 
-describe('Aider parser (synthetic upstream-shaped fixture)', () => {
+describe('Aider parser (synthetic hand-written fixture, not a recording)', () => {
     let tmpHome: string;
     let logPath: string;
 
@@ -112,5 +113,62 @@ describe('Aider parser (synthetic upstream-shaped fixture)', () => {
         fs.utimesSync(logPath, future, future);
         await aiderParser.parse();
         expect(store.size).toBe(3);
+    });
+
+    // The cases below are variations of lines seen in the real Aider 0.86.2 recording
+    // (fixtures/aider/recorded/aider-0.86.2), changed to cover paths the recording did not hit.
+    const line = (event: string, properties: Record<string, unknown>, time: number) =>
+        JSON.stringify({ event, properties, user_id: 'x', time }) + '\n';
+    const usage = (model: string, cost: number) => ({
+        main_model: model, weak_model: model, editor_model: model, edit_format: 'whole',
+        prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100, cost, total_cost: cost,
+    });
+
+    it('names models the way the price table does: litellm provider prefixes are dropped', async () => {
+        fs.writeFileSync(logPath, line('message_send', usage('openai/gpt-4o', 0), 1760001000)
+            + line('message_send', usage('openrouter/anthropic/claude-3.5-sonnet', 0.01), 1760001010));
+        await aiderParser.parse();
+        const r = rows();
+        expect(r[0].model_primary).toBe('gpt-4o');
+        // the table lookup uses the bare name, so a prefixed model with cost 0 is still priced
+        expect(r[0].cost_source).toBe('pricing_table');
+        expect(r[0].estimated_cost_usd).toBeCloseTo((1000 / 1e6) * 2.5 + (100 / 1e6) * 10, 8);
+        expect(r[1].model_primary).toBe('claude-3.5-sonnet');
+    });
+
+    it.each(['openai/REDACTED', 'anthropic/REDACTED', 'REDACTED', 'None', ''])(
+        'treats the model name %j as unknown, not as a model called that', async (name) => {
+            fs.writeFileSync(logPath, line('message_send', usage(name, 0), 1760001100));
+            await aiderParser.parse();
+            expect(rows()[0].model_primary).toBe('unknown');
+            expect(rows()[0].cost_source).toBe('unpriced');
+        });
+
+    it('uses message_send_starting for the start time and duration, and ignores one left by a failed request', async () => {
+        fs.writeFileSync(logPath,
+            line('launched', {}, 1760002000)
+            + line('message_send_starting', {}, 1760002001) // request that failed: no message_send follows
+            + line('message_send_starting', {}, 1760002010) // retry
+            + line('message_send', usage('openai/gpt-4o', 0.01), 1760002017)
+            + line('message_send', usage('openai/gpt-4o', 0.01), 1760002030) // no starting event of its own
+            + line('exit', { reason: '/exit' }, 1760002040));
+        await aiderParser.parse();
+        const [a, b] = rows();
+        expect(a.started_at).toBe(new Date(1760002010 * 1000).toISOString());
+        expect(a.ended_at).toBe(new Date(1760002017 * 1000).toISOString());
+        expect(a.duration_seconds).toBe(7);
+        expect(b.started_at).toBe(b.ended_at);
+        expect(b.duration_seconds).toBe(0);
+    });
+
+    it('does not carry a start time across launches', async () => {
+        fs.writeFileSync(logPath,
+            line('message_send_starting', {}, 1760003000) // launch ended before the reply
+            + line('exit', { reason: 'Control-C' }, 1760003001)
+            + line('launched', {}, 1760009000)
+            + line('message_send', usage('openai/gpt-4o', 0.01), 1760009005));
+        await aiderParser.parse();
+        expect(rows()[0].duration_seconds).toBe(0);
+        expect(rows()[0].started_at).toBe(new Date(1760009005 * 1000).toISOString());
     });
 });

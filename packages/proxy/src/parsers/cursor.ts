@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { getParsedFile, upsertParsedFile, deleteMockCursorSessions } from '@llm-observer/database';
+import { ParserAdapter, locator } from './adapter';
 
 const getCursorDbPath = () => {
     const home = os.homedir();
@@ -90,4 +91,18 @@ export const parse = async (onProgress?: (current: number, total: number) => voi
         error_message: 'Cursor tracking database schema is not decoded yet; no usage extracted.'
     });
     if (onProgress) onProgress(1, 1);
+};
+
+const located = locator(() => (fs.existsSync(getCursorDbPath()) ? [getCursorDbPath()] : []), paths => paths.map(p => path.dirname(p)));
+
+export const adapter: ParserAdapter = {
+    id: 'cursor',
+    displayName: 'Cursor IDE',
+    verification: {
+        level: 'experimental',
+        note: 'Cursor logs no token counts locally and its tracking database is not decoded, so no usage is read.',
+    },
+    detect: located.detect,
+    watchPaths: located.watchPaths,
+    parse: opts => parse(opts?.onProgress),
 };

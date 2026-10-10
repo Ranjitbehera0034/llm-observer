@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import { insertSession } from '@llm-observer/database';
 import { calculateCost, safeReadSQLite, findFilesRecursive, shouldParseFile, markFileParsed, getProviderForModel } from './utils';
+import { ParserAdapter, locator } from './adapter';
 
 const getWindsurfDirs = (): string[] => {
     const home = os.homedir();
@@ -183,4 +184,18 @@ const parseSessionFile = async (filePath: string) => {
     }
 
     markFileParsed(filePath, 'windsurf', mtime, 'success');
+};
+
+const located = locator(() => getWindsurfDirs());
+
+export const adapter: ParserAdapter = {
+    id: 'windsurf',
+    displayName: 'Windsurf',
+    verification: {
+        level: 'unverified',
+        note: 'Fixtures are hand-written, not recorded from the real tool.',
+    },
+    detect: located.detect,
+    watchPaths: located.watchPaths,
+    parse: opts => parse(opts?.onProgress),
 };

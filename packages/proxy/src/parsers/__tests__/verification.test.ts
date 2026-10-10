@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { PARSER_VERIFICATION } from '../verification';
 import { getProviderStatus } from '../manager';
 
@@ -13,11 +15,33 @@ describe('parser verification registry', () => {
         }
     });
 
-    it('only marks Claude Code verified, since every other fixture is hand-written or synthetic', () => {
+    it('only marks parsers verified that have a real recording in the format matrix; every other fixture is hand-written', () => {
         const verified = Object.entries(PARSER_VERIFICATION).filter(([, v]) => v.verification === 'verified').map(([k]) => k);
-        expect(verified).toEqual(['claude-code']);
+        expect(verified).toEqual(['claude-code', 'aider', 'codex']);
+        const matrix = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'format-matrix.json'), 'utf8'));
+        expect(Object.keys(matrix).filter(k => !k.startsWith('_')).sort()).toEqual(['aider', 'claude', 'codex']);
         expect(PARSER_VERIFICATION.cursor.verification).toBe('experimental');
-        expect(PARSER_VERIFICATION.aider.verification).toBe('experimental');
+        for (const id of ['cline', 'windsurf', 'copilot']) expect(PARSER_VERIFICATION[id].verification).toBe('unverified');
+    });
+
+    it('describes Aider verification as the log format only: mock endpoint, no bill check, hand-written fixture kept separate', () => {
+        const note = PARSER_VERIFICATION.aider.note;
+        expect(note).toMatch(/Aider 0\.86\.2/);
+        expect(note).toMatch(/log format/i);
+        expect(note).toMatch(/mock/i);
+        expect(note).toMatch(/not checked against a bill/i);
+        expect(note).toMatch(/--analytics-log/);
+        expect(note).not.toMatch(/synthetic/i);
+    });
+
+    it('describes Codex verification as the log format only: mock endpoint, no bill check, no cost in the log', () => {
+        const note = PARSER_VERIFICATION.codex.note;
+        expect(note).toMatch(/Codex CLI 0\.162\.1/);
+        expect(note).toMatch(/log format/i);
+        expect(note).toMatch(/mock/i);
+        expect(note).toMatch(/not checked against a bill/i);
+        expect(note).toMatch(/older/i);
+        expect(note).not.toMatch(/synthetic/i);
     });
 
     it('describes Claude Code verification as what it is: a scrubbed excerpt, not a bill check', () => {

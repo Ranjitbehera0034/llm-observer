@@ -1,5 +1,5 @@
 {
-  "_comment": "Golden-output manifest for the recorded-format regression matrix (see formatMatrix.test.ts). Each entry pairs a checked-in fixture with the exact values the parser must produce for it. ONLY real recordings (scrubbed with scripts/redact-claude-recording.js) belong here; never a hand-written fixture. Hand-written fixtures live under synthetic/ with their own manifest and test. To extend to another editor's parser, add a sibling top-level key here plus a matching adapter in formatMatrix.test.ts's ADAPTERS map. Costs are priced with the test's mocked table (3 / 15 / 0.3 USD per million), not a real price list.",
+  "_comment": "Golden-output manifest for the recorded-format regression matrix (see formatMatrix.test.ts). Each entry pairs a checked-in fixture with the exact values the parser must produce for it. ONLY real recordings (scrubbed with scripts/redact-claude-recording.js) belong here; never a hand-written fixture. Hand-written fixtures live under synthetic/ with their own manifest and test. To extend to another editor's parser, add a sibling top-level key here plus a matching adapter in formatMatrix.test.ts's ADAPTERS map. Claude costs are priced with the test's mocked table (3 / 15 / 0.3 USD per million), not a real price list; Aider costs are the ones Aider itself wrote into the log (token counts came from a mock model endpoint, see the fixture README). Codex logs carry no cost: its costs are priced with the same mocked table, and its token counts came from a mock Responses-API endpoint (see the fixture README).",
   "claude": [
     {
       "fixture": "recorded/claude-code-2.1.291-linux",
@@ -34,6 +34,146 @@
             "isEstimated": false,
             "costSource": "pricing_table",
             "costUsd": 0.1318035
+          }
+        ]
+      }
+    }
+  ],
+  "aider": [
+    {
+      "fixture": "recorded/aider-0.86.2",
+      "description": "scrubbed analytics log written by real Aider 0.86.2 (aider-chat on Python 3.12, Linux) against a mock OpenAI-compatible endpoint: four launches (three stdin-driven, one --message; one of them failed before any message_send), 5 message_send events with usage, model names openai/REDACTED and openai/gpt-4o-mini, plus the string None on a non-usage event. Token counts of the streamed launch are Aider's own estimates, the rest are the mock's fixed counts",
+      "expected": {
+        "eventsInFile": 34,
+        "sessionRows": 5,
+        "inputTokens": 5444,
+        "outputTokens": 256,
+        "rows": [
+          {
+            "line": 6,
+            "model": "unknown",
+            "inputTokens": 1100,
+            "outputTokens": 60,
+            "costUsd": 0,
+            "costSource": "unpriced",
+            "isEstimated": true,
+            "startedAt": "2026-01-12T09:00:02.000Z",
+            "durationSeconds": 0
+          },
+          {
+            "line": 9,
+            "model": "unknown",
+            "inputTokens": 1200,
+            "outputTokens": 70,
+            "costUsd": 0,
+            "costSource": "unpriced",
+            "isEstimated": true,
+            "startedAt": "2026-01-12T09:00:02.000Z",
+            "durationSeconds": 0
+          },
+          {
+            "line": 17,
+            "model": "gpt-4o-mini",
+            "inputTokens": 809,
+            "outputTokens": 13,
+            "costUsd": 0.00012915,
+            "costSource": "reported",
+            "isEstimated": false,
+            "startedAt": "2026-01-12T09:00:04.000Z",
+            "durationSeconds": 3
+          },
+          {
+            "line": 19,
+            "model": "gpt-4o-mini",
+            "inputTokens": 835,
+            "outputTokens": 13,
+            "costUsd": 0.00013305,
+            "costSource": "reported",
+            "isEstimated": false,
+            "startedAt": "2026-01-12T09:00:07.000Z",
+            "durationSeconds": 0
+          },
+          {
+            "line": 33,
+            "model": "gpt-4o-mini",
+            "inputTokens": 1500,
+            "outputTokens": 100,
+            "costUsd": 0.000285,
+            "costSource": "reported",
+            "isEstimated": false,
+            "startedAt": "2026-01-12T09:00:12.000Z",
+            "durationSeconds": 2
+          }
+        ]
+      }
+    }
+  ],
+  "codex": [
+    {
+      "fixture": "recorded/codex-0.162.1",
+      "description": "scrubbed rollout files written by real Codex CLI 0.162.1 (native linux-x64 binary, codex exec) against a mock OpenAI Responses-API endpoint: a plain reply, a tool call (exec_command) plus a resumed second turn in the same file, a request that failed with HTTP 500 (no usage logged), and a second model name. Every API response is logged twice (token_usage_record and event_msg/token_count); input_tokens includes cached_input_tokens and output_tokens includes reasoning_output_tokens",
+      "expected": {
+        "filesInRecording": 4,
+        "sessionRows": 3,
+        "filesWithoutUsage": [
+          "rollout-2026-01-12T09-00-20-00000000-0000-7000-8000-000000000025"
+        ],
+        "rows": [
+          {
+            "sessionId": "rollout-2026-01-12T09-00-00-00000000-0000-7000-8000-000000000001",
+            "model": "mock-model",
+            "messageCount": 2,
+            "inputTokens": 1000,
+            "cacheReadTokens": 0,
+            "outputTokens": 50,
+            "toolCalls": {},
+            "sessionType": "interactive",
+            "costUsd": 0.00375,
+            "costSource": "pricing_table",
+            "isEstimated": false,
+            "startedAt": "2026-01-12T09:00:00.073Z",
+            "endedAt": "2026-01-12T09:00:00.137Z",
+            "durationSeconds": 0,
+            "projectPath": "/fixture/project",
+            "projectName": "project"
+          },
+          {
+            "sessionId": "rollout-2026-01-12T09-00-19-00000000-0000-7000-8000-000000000010",
+            "model": "mock-model",
+            "messageCount": 4,
+            "inputTokens": 1500,
+            "cacheReadTokens": 2700,
+            "outputTokens": 160,
+            "toolCalls": {
+              "exec_command": 1
+            },
+            "sessionType": "agentic",
+            "costUsd": 0.00771,
+            "costSource": "pricing_table",
+            "isEstimated": false,
+            "startedAt": "2026-01-12T09:00:19.897Z",
+            "endedAt": "2026-01-12T09:00:20.617Z",
+            "durationSeconds": 1,
+            "projectPath": "/fixture/project",
+            "projectName": "project"
+          },
+          {
+            "sessionId": "rollout-2026-01-12T09-00-21-00000000-0000-7000-8000-000000000033",
+            "model": "gpt-5-codex",
+            "messageCount": 2,
+            "inputTokens": 1000,
+            "cacheReadTokens": 0,
+            "outputTokens": 50,
+            "toolCalls": {},
+            "sessionType": "interactive",
+            "costUsd": 0.00375,
+            "costSource": "pricing_table",
+            "isEstimated": false,
+            "startedAt": "2026-01-12T09:00:21.305Z",
+            "endedAt": "2026-01-12T09:00:21.352Z",
+            "durationSeconds": 0,
+            "projectPath": "/fixture/project",
+            "projectName": "project"
           }
         ]
       }

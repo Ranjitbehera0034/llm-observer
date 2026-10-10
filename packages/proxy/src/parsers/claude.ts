@@ -6,6 +6,7 @@ import { insertSession, insertSubagent, getSubagentsBySession, updateSessionTota
 import { upsertToolUsage } from '@llm-observer/database';
 import { findFilesRecursive, shouldParseFile, markFileParsed } from './utils';
 import { UsageTotals, emptyTotals, loadPricingRows, priceUsageByModel } from './claudePricing';
+import { ParserAdapter, locator } from './adapter';
 
 const getClaudeDir = () => {
     const home = os.homedir();
@@ -387,4 +388,19 @@ const updateParentWithSubagentTotals = (parentId: number, originalParentCost: nu
     }
 
     updateSessionTotals(parentId, totalSubagentCost, agents.length);
+};
+
+const located = locator(() => (fs.existsSync(getClaudeDir()) ? [getClaudeDir()] : []));
+
+export const adapter: ParserAdapter = {
+    id: 'claude-code',
+    displayName: 'Claude Code',
+    verification: {
+        level: 'verified',
+        recording: 'claude',
+        note: 'Golden-output tests against a scrubbed excerpt of one real Claude Code 2.1.291 log recorded on Linux (parent session plus one subagent file). Older log formats are covered by hand-written fixtures only. Dollar costs are not checked against a bill.',
+    },
+    detect: located.detect,
+    watchPaths: located.watchPaths,
+    parse: opts => parse(opts?.onProgress),
 };
