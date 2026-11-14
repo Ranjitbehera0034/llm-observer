@@ -1,3 +1,5 @@
+import { apiFetch } from '../utils/apiFetch';
+import { visibleInterval } from '../utils/visibleInterval';
 import { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 import { Clock, ShieldAlert, CheckCircle2 } from 'lucide-react';
@@ -30,8 +32,8 @@ function useCountdown(resetsAt: string | null) {
         };
 
         updateTimer();
-        const interval = setInterval(updateTimer, 1000);
-        return () => clearInterval(interval);
+        const interval = visibleInterval(updateTimer, 1000);
+        return () => interval?.();
     }, [resetsAt]);
 
     return timeLeft;
@@ -44,7 +46,7 @@ export default function Limits() {
     useEffect(() => {
         const fetchLimits = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/api/limits`);
+                const res = await apiFetch(`${API_BASE_URL}/api/limits`);
                 if (res.ok) {
                     const data = await res.json();
                     
@@ -52,7 +54,7 @@ export default function Limits() {
                     const providersWithHistory = await Promise.all(
                         (data.providers || []).map(async (p: any) => {
                             try {
-                                const histRes = await fetch(`${API_BASE_URL}/api/limits/${p.provider}`);
+                                const histRes = await apiFetch(`${API_BASE_URL}/api/limits/${p.provider}`);
                                 if (histRes.ok) {
                                     const histData = await histRes.json();
                                     return { ...p, history: histData.history || [] };
@@ -71,14 +73,14 @@ export default function Limits() {
         };
 
         fetchLimits();
-        const interval = setInterval(fetchLimits, 60000); // 1 minute
-        return () => clearInterval(interval);
+        const interval = visibleInterval(fetchLimits, 60000); // 1 minute
+        return () => interval?.();
     }, []);
 
     const StatusIcon = ({ status }: { status: string }) => {
         if (status === 'throttled' || status === 'critical') return <ShieldAlert className="w-5 h-5 text-red-500" />;
         if (status === 'warning') return <ShieldAlert className="w-5 h-5 text-amber-500" />;
-        if (status === 'monitoring') return <Clock className="w-5 h-5 text-indigo-400" />;
+        if (status === 'monitoring' || status === 'stale') return <Clock className="w-5 h-5 text-indigo-400" />;
         return <CheckCircle2 className="w-5 h-5 text-emerald-500" />;
     };
 
@@ -109,7 +111,7 @@ export default function Limits() {
                             <h2 className="text-xl font-bold text-white uppercase tracking-wider flex items-center gap-2">
                                 {p.provider}
                                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${p.source === 'oauth_api' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
-                                    {p.source === 'oauth_api' ? 'Live via OAuth' : 'Activity monitoring'}
+                                    {p.source === 'oauth_api' ? 'Observed quota' : p.source === 'mixed' ? 'Quota + activity' : 'Activity monitoring'}
                                 </span>
                             </h2>
                         </div>
@@ -119,6 +121,7 @@ export default function Limits() {
                                     <div className="flex justify-between items-end mb-2">
                                         <div className="flex items-center gap-2">
                                             <StatusIcon status={w.status} />
+                                            {w.stale && <span className="text-xs text-amber-400">Stale · refresh needed</span>}
                                             <span className="text-sm font-bold text-slate-300">{w.label}</span>
                                         </div>
                                         {w.utilization_pct !== null && (
@@ -131,16 +134,16 @@ export default function Limits() {
                                     {w.utilization_pct !== null ? (
                                         <div className="h-4 bg-slate-800 rounded-full overflow-hidden relative">
                                             <div 
-                                                className={`h-full transition-all duration-1000 ${w.status === 'throttled' ? 'bg-red-500' : w.status === 'critical' ? 'bg-red-400' : w.status === 'warning' ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                                                className={`h-full transition-all duration-1000 ${w.stale ? 'bg-slate-500' : w.status === 'throttled' ? 'bg-red-500' : w.status === 'critical' ? 'bg-red-400' : w.status === 'warning' ? 'bg-amber-400' : 'bg-emerald-500'}`}
                                                 style={{ width: `${Math.min(w.utilization_pct * 100, 100)}%` }}
                                             />
                                             <div className="absolute inset-0 flex items-center justify-center text-[9px] font-black mix-blend-difference text-white">
-                                                {Math.round(w.utilization_pct * 100)}% ({w.total_used} / {w.total_allowed})
+                                                {Math.round(w.utilization_pct * 100)}%{w.total_used != null && w.total_allowed != null ? ` (${w.total_used} / ${w.total_allowed})` : ''}
                                             </div>
                                         </div>
                                     ) : (
                                         <div className="text-xs text-slate-400 p-3 bg-slate-800/50 rounded-xl">
-                                            {w.total_used} requests 
+                                            {w.total_used} sessions
                                             {w.details?.sessions ? ` · ${w.details.sessions} sessions` : ''} 
                                             {w.details?.tokens ? ` · ${w.details.tokens} tokens` : ''}
                                         </div>

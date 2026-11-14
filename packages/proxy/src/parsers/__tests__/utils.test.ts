@@ -4,6 +4,8 @@ import Database from 'better-sqlite3';
 
 jest.mock('@llm-observer/database', () => ({
     getPricingForModel: jest.fn((provider: string, model: string) => {
+        if (model === 'claude-test') return { input: 3, output: 15, cached: 0.3 };
+        if (model === 'free-cache') return { input: 10, output: 30, cached: 0 };
         if (model === 'gpt-4') return { input: 10, output: 30, cached: 5 };
         return undefined;
     })
@@ -27,8 +29,26 @@ describe('Parser Utils', () => {
 
     it('should flag cost as estimated if pricing defaults occur', () => {
         const { costUsd, isEstimated } = calculateCost('unknown-model', 1_000_000, 1_000_000);
-        expect(costUsd).toBe(2); // (2M / 1M) * 1.0 = 2.0
+        expect(costUsd).toBeNull(); // Unknown pricing must never invent a dollar amount.
         expect(isEstimated).toBe(true);
+    });
+
+    it('adds Anthropic cache reads and cache writes to uncached input', () => {
+        const result = calculateCost('claude-test', 1_000_000, 1_000_000, 500_000, 200_000);
+        expect(result.costUsd).toBeCloseTo(18.9); // 3 + 15 + .15 + .75
+        expect(result.isEstimated).toBe(true); // Write TTL was not supplied.
+    });
+
+    it('accepts a legitimate zero cached-input price', () => {
+        expect(calculateCost('free-cache', 1_000_000, 0, 500_000).costUsd).toBe(5);
+    });
+
+    it.each([-1, NaN, Infinity])('does not price invalid token counts: %s', tokens => {
+        expect(calculateCost('gpt-4', tokens, 0).costUsd).toBeNull();
+    });
+
+    it('does not price impossible inclusive cache totals', () => {
+        expect(calculateCost('gpt-4', 1, 0, 2).costUsd).toBeNull();
     });
 
     it('safeReadSQLite should seamlessly read an unlocked valid SQLite database', async () => {

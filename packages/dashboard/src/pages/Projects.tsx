@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { useEffect, useState } from 'react';
 import { FolderOpen, Settings, MoreVertical, X, AlertTriangle, Plus, Trash2, Save } from 'lucide-react';
 import { BudgetMeter } from '../components/BudgetMeter';
@@ -35,7 +36,7 @@ export default function Projects() {
 
     const fetchProjects = () => {
         setLoading(true);
-        fetch(`${API_BASE_URL}/api/projects`)
+        apiFetch(`${API_BASE_URL}/api/projects`)
             .then(res => res.json())
             .then(resData => {
                 setProjects(resData.data);
@@ -85,7 +86,7 @@ export default function Projects() {
         setIsSubmitting(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/projects`, {
+            const res = await apiFetch(`${API_BASE_URL}/api/projects`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
@@ -107,7 +108,7 @@ export default function Projects() {
         setIsSubmitting(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/projects/${currentProject.id}`, {
+            const res = await apiFetch(`${API_BASE_URL}/api/projects/${currentProject.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
@@ -128,7 +129,7 @@ export default function Projects() {
         setIsSubmitting(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/projects/${currentProject.id}`, {
+            const res = await apiFetch(`${API_BASE_URL}/api/projects/${currentProject.id}`, {
                 method: 'DELETE'
             });
             const data = await res.json();

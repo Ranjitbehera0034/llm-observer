@@ -1,6 +1,6 @@
 {
   "name": "llm-observer",
-  "version": "2.0.0",
+  "version": "2.1.0-beta.1",
   "description": "Privacy-first, local-only LLM cost tracker. Track OpenAI, Anthropic, Gemini costs without sending data to the cloud.",
   "main": "dist/index.js",
   "scripts": {
@@ -51,7 +51,7 @@
     "url": "https://github.com/Ranjitbehera0034/llm-observer/issues"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "better-sqlite3": "^11.5.0",

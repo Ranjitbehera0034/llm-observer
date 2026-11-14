@@ -9,7 +9,7 @@ export interface RequestRow {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
-    cost_usd: number;
+    cost_usd: number | null;
     latency_ms: number;
     status_code: number;
     status: string;
@@ -126,7 +126,7 @@ export function RequestTable({ requests, onRowClick }: RequestTableProps) {
                                     </td>
                                     <td className="p-4 whitespace-nowrap text-right">
                                         <span className="text-sm font-black text-white tabular-nums tracking-tight">
-                                            ${req.cost_usd.toFixed(4)}
+                                            {req.cost_usd == null ? 'Unpriced' : `$${req.cost_usd.toFixed(4)}`}
                                         </span>
                                     </td>
                                     <td className="p-4 whitespace-nowrap text-right">

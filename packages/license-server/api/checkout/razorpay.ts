@@ -11,12 +11,12 @@
  *
  * Env:
  *   RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET  — API credentials (server-side only)
- *   RAZORPAY_PRO_AMOUNT_PAISE              — price in paise (default 159900 = ₹1,599)
+ *   Price is fixed in code at 79900 paise (₹799), matching entitlement validation.
  *   CHECKOUT_CALLBACK_URL                  — where Razorpay redirects after payment
  *
  * Razorpay Docs: https://razorpay.com/docs/payment-links/
  */
-export default async function handler(req: Request): Promise<Response> {
+async function handler(req: Request): Promise<Response> {
     const corsHeaders = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -46,17 +46,20 @@ export default async function handler(req: Request): Promise<Response> {
         return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400, headers: corsHeaders });
     }
 
-    const email = (body.email || '').trim();
+    const email = typeof body?.email === 'string' ? body.email.trim() : '';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return new Response(JSON.stringify({ error: 'A valid email is required — your license key is delivered there.' }), {
             status: 400, headers: corsHeaders
         });
     }
 
-    const amountPaise = parseInt(process.env.RAZORPAY_PRO_AMOUNT_PAISE || '159900', 10);
+    const amountPaise = 79900;
 
-    const rzpRes = await fetch('https://api.razorpay.com/v1/payment_links', {
+    let rzpRes: Response;
+    try {
+    rzpRes = await fetch('https://api.razorpay.com/v1/payment_links', {
         method: 'POST',
+        signal: AbortSignal.timeout(8000),
         headers: {
             'Authorization': 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64'),
             'Content-Type': 'application/json',
@@ -64,14 +67,19 @@ export default async function handler(req: Request): Promise<Response> {
         body: JSON.stringify({
             amount: amountPaise,
             currency: 'INR',
-            description: 'LLM Observer Pro — monthly license',
+            description: 'LLM Observer Pro — 30 days, no auto-renewal',
+            accept_partial: false,
             customer: { email },
             notify: { email: true },
-            notes: { plan: 'pro-monthly', product: 'llm-observer' },
+            notes: { plan: 'pro-30-days', product: 'llm-observer' },
             callback_url: process.env.CHECKOUT_CALLBACK_URL || 'https://www.llm-observer.com/thanks',
             callback_method: 'get',
         }),
     });
+
+    } catch {
+        return new Response(JSON.stringify({ error: 'Payment service unavailable. Please retry.' }), { status: 502, headers: corsHeaders });
+    }
 
     if (!rzpRes.ok) {
         const detail = await rzpRes.text();
@@ -91,3 +99,5 @@ export default async function handler(req: Request): Promise<Response> {
 
     return new Response(JSON.stringify({ url: link.short_url }), { status: 200, headers: corsHeaders });
 }
+
+export default { fetch: handler };

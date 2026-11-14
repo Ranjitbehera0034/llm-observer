@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+import { apiFetch } from '../utils/apiFetch';
 import { useState, useEffect } from 'react';
 import { Wrench, PieChart, BarChart3, AlertTriangle, ArrowRight, FileText, Terminal, Layers, Search, PenTool } from 'lucide-react';
 import { formatCurrency } from '../utils/format';
@@ -8,7 +10,7 @@ export default function Tools() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch(`${API_BASE_URL}/api/tools/usage`)
+        apiFetch(`${API_BASE_URL}/api/tools/usage`)
             .then(res => res.json())
             .then(data => {
                 setStats(data);
@@ -94,9 +96,9 @@ export default function Tools() {
                                     The <span className="text-primary">{pattern.target}</span> tool was called <b>{pattern.call_count}</b> times across <b>{pattern.sessions_affected}</b> sessions. 
                                     {pattern.target === 'Read' ? ' Consider adding the target files to a project-level context map to reduce repeated token costs.' : ' Consider batching these operations.'}
                                 </p>
-                                <button className="flex items-center gap-1 text-[10px] font-bold text-primary group-hover:gap-2 transition-all uppercase">
-                                    View Affected Sessions <ArrowRight className="w-3 h-3" />
-                                </button>
+                                <Link to="/sessions" className="flex items-center gap-1 text-[10px] font-bold text-primary group-hover:gap-2 transition-all uppercase">
+                                    Explore Sessions <ArrowRight className="w-3 h-3" />
+                                </Link>
                             </div>
                         ))
                     ) : (
@@ -113,19 +115,7 @@ export default function Tools() {
                     <BarChart3 className="w-5 h-5 text-success" />
                     Daily Operation Volume
                 </h2>
-                <div className="h-64 flex items-end gap-1 px-4">
-                    {/* Mock daily trend visualization */}
-                    {Array.from({length: 30}).map((_, i) => (
-                        <div key={i} className="flex-1 bg-primary/20 rounded-t-sm hover:bg-primary transition-all cursor-help relative group h-[calc(20%+60%*var(--h))]--">
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-white text-black text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 pointer-events-none">
-                                Day {i+1}: $0.42
-                            </div>
-                        </div>
-                    ))}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
-                         <span className="text-xs text-textMuted">Trend visualization coming in v1.11.0</span>
-                    </div>
-                </div>
+                <p className="text-sm text-textMuted">Daily operation charts are not available in this release. Explore recorded sessions for tool-call counts.</p>
             </div>
         </div>
     );

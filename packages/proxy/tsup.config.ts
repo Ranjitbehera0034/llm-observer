@@ -1,6 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
+    define: { __LICENSE_SERVER_URL__: JSON.stringify(process.env.LICENSE_SERVER_URL || '') },
     entry: ['src/index.ts', 'src/server.ts'],
     format: ['cjs'],
     minify: true,

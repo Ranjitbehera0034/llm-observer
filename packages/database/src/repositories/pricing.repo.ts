@@ -8,43 +8,51 @@ export interface PricingRecord {
     cached: number | null;
 }
 
-export const syncPricingToDb = (pricingData: PricingRecord[]) => {
-    const db = getDb();
+export const validatePricing = (items: PricingRecord[]) => {
+    if (!Array.isArray(items) || items.length > 10000) throw new Error('Invalid pricing catalog');
+    for (const item of items) {
+        if (!item || typeof item.provider !== 'string' || !item.provider.trim() || typeof item.model !== 'string' || !item.model.trim()
+            || ![item.input, item.output].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)
+            || (item.cached != null && (typeof item.cached !== 'number' || !Number.isFinite(item.cached) || item.cached < 0))) {
+            throw new Error('Invalid pricing record; existing prices were preserved');
+        }
+    }
+};
 
-    const deleteStmt = db.prepare('DELETE FROM model_pricing WHERE is_custom = 0');
-    const insertStmt = db.prepare(`
-        INSERT INTO model_pricing 
+// Catalog refreshes preserve custom overrides and models absent from the feed.
+export const syncPricingToDb = (pricingData: PricingRecord[]) => {
+    validatePricing(pricingData);
+    const db = getDb();
+    const stmt = db.prepare(`INSERT INTO model_pricing
         (provider, model, input_cost_per_1m, output_cost_per_1m, cached_input_cost_per_1m)
         VALUES (?, ?, ?, ?, ?)
-    `);
-
-    const performSync = db.transaction((items) => {
-        deleteStmt.run();
-        for (const item of items) {
-            insertStmt.run(item.provider, item.model, item.input, item.output, item.cached);
-        }
-    });
-
-    performSync(pricingData);
+        ON CONFLICT(provider, model) DO UPDATE SET
+        input_cost_per_1m = excluded.input_cost_per_1m,
+        output_cost_per_1m = excluded.output_cost_per_1m,
+        cached_input_cost_per_1m = excluded.cached_input_cost_per_1m,
+        updated_at = datetime('now')
+        WHERE model_pricing.is_custom = 0`);
+    db.transaction(() => {
+        for (const item of pricingData) stmt.run(item.provider, item.model, item.input, item.output, item.cached ?? null);
+    })();
 };
 
 export const addCustomPricing = (record: PricingRecord) => {
-    const db = getDb();
-
-    // Upsert logic for custom pricing
-    const stmt = db.prepare(`
-        INSERT INTO model_pricing 
+    validatePricing([record]);
+    getDb().prepare(`INSERT INTO model_pricing
         (provider, model, input_cost_per_1m, output_cost_per_1m, cached_input_cost_per_1m, is_custom)
         VALUES (?, ?, ?, ?, ?, 1)
-    `);
-
-    // SQLite by default doesn't have a unique constraint on provider+model out of the box unless we added it.
-    // Let's just delete the existing custom one if it exists to be safe, then insert.
-    db.transaction(() => {
-        db.prepare('DELETE FROM model_pricing WHERE provider = ? AND model = ?').run(record.provider, record.model);
-        stmt.run(record.provider, record.model, record.input, record.output, record.cached);
-    })();
+        ON CONFLICT(provider, model) DO UPDATE SET
+        input_cost_per_1m = excluded.input_cost_per_1m,
+        output_cost_per_1m = excluded.output_cost_per_1m,
+        cached_input_cost_per_1m = excluded.cached_input_cost_per_1m,
+        is_custom = 1, updated_at = datetime('now')
+    `).run(record.provider, record.model, record.input, record.output, record.cached ?? null);
 };
+
+export const getPricingHistory = (provider: string, model: string) => getDb().prepare(
+    'SELECT * FROM pricing_history WHERE provider = ? AND model = ? ORDER BY revision DESC LIMIT 100'
+).all(provider, model);
 
 export const getPricingForModel = (provider: string, model: string): PricingRecord | undefined => {
     const db = getDb();

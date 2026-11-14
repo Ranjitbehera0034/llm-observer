@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { RequestTable } from '../components/RequestTable';
 import type { RequestRow } from '../components/RequestTable';
@@ -29,7 +30,7 @@ export default function Requests() {
             model: modelSearch
         });
 
-        fetch(`${API_BASE_URL}/api/requests?${params.toString()}`)
+        apiFetch(`${API_BASE_URL}/api/requests?${params.toString()}`)
             .then(res => res.json())
             .then(resData => {
                 setRequests(resData.data ?? []);

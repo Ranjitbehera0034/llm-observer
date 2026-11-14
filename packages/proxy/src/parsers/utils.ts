@@ -14,28 +14,32 @@ export const calculateCost = (
     outputTokens: number,
     cacheReadTokens?: number,
     cacheCreateTokens?: number
-): { costUsd: number; isEstimated: boolean } => {
-    let provider = 'unknown';
-    const lowerModel = model.toLowerCase();
-    
-    if (lowerModel.includes('claude')) provider = 'anthropic';
-    else if (lowerModel.includes('gpt') || lowerModel.includes('o1') || lowerModel.includes('o3') || lowerModel.includes('codex') || lowerModel.includes('o4')) provider = 'openai';
-
+): { costUsd: number | null; isEstimated: boolean } => {
+    const provider = getProviderForModel(model);
     const pricing = getPricingForModel(provider, model);
-    if (!pricing) {
-        const fallbackCost = ((inputTokens + outputTokens) / 1_000_000) * 1.0; // 1$/1M placeholder
-        return { costUsd: isNaN(fallbackCost) ? 0 : fallbackCost, isEstimated: true };
+    const counts = [inputTokens, outputTokens, cacheReadTokens ?? 0, cacheCreateTokens ?? 0];
+    if (!pricing || counts.some(n => !Number.isFinite(n) || n < 0)) {
+        return { costUsd: null, isEstimated: true };
+    }
+    if (![pricing.input, pricing.output].every(n => Number.isFinite(n) && n >= 0)) {
+        return { costUsd: null, isEstimated: true };
+    }
+    const reads = cacheReadTokens ?? 0;
+    const writes = cacheCreateTokens ?? 0;
+    if (reads > 0 && (pricing.cached == null || !Number.isFinite(pricing.cached) || pricing.cached < 0)) {
+        return { costUsd: null, isEstimated: true };
     }
 
-    let cost = 0;
-    cost += (inputTokens / 1_000_000) * pricing.input;
-    cost += (outputTokens / 1_000_000) * pricing.output;
-
-    if (cacheReadTokens && pricing.cached) {
-        cost -= (cacheReadTokens / 1_000_000) * (pricing.input - pricing.cached);
+    // Anthropic reports uncached input separately; OpenAI includes cached
+    // input in its input total. Never subtract Anthropic cache reads twice.
+    if (provider !== 'anthropic' && (reads > inputTokens || writes > 0)) {
+        return { costUsd: null, isEstimated: true };
     }
-
-    return { costUsd: Math.max(0, cost), isEstimated: false };
+    const uncached = provider === 'anthropic' ? inputTokens : inputTokens - reads;
+    const cost = (uncached * pricing.input + outputTokens * pricing.output
+        + reads * (pricing.cached ?? 0) + writes * pricing.input * 1.25) / 1_000_000;
+    // Callers currently provide no write TTL; the five-minute rate is an estimate.
+    return { costUsd: cost, isEstimated: writes > 0 };
 };
 
 export const safeReadSQLite = async (sourcePath: string): Promise<Database.Database | null> => {
@@ -86,7 +90,8 @@ export const findFilesRecursive = (dir: string, pattern: RegExp): string[] => {
         for (const file of list) {
             const filePath = path.join(dir, file);
             let stat;
-            try { stat = fs.statSync(filePath); } catch (e) { continue; }
+            try { stat = fs.lstatSync(filePath); } catch (e) { continue; }
+            if (stat.isSymbolicLink()) continue;
             if (stat && stat.isDirectory()) {
                 results = results.concat(findFilesRecursive(filePath, pattern));
             } else if (pattern.test(filePath)) {

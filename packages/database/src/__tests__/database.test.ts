@@ -1,4 +1,4 @@
-import { initDb, getDb } from '../index';
+import { initDb, getDb, insertSession, getSessionSummary } from '../index';
 import { createProject, getProject, deleteProject } from '../repositories/projects.repo';
 import { createBudgetLimit, getBudgetLimits, deleteBudgetLimit } from '../repositories/budgets.repo';
 
@@ -42,6 +42,19 @@ describe('Database Layer Repositories', () => {
             
             deleteBudgetLimit(id);
         });
+    });
+
+    it('preserves unpriced sessions without confusing them with free usage', () => {
+        insertSession({ provider: 'test', session_id: 'unpriced', started_at: '2026-01-01T00:00:00Z', estimated_cost_usd: null });
+        insertSession({ provider: 'test', session_id: 'free', started_at: '2026-01-01T00:00:00Z', estimated_cost_usd: 0 });
+        insertSession({ provider: 'test', session_id: 'paid', started_at: '2026-01-01T00:00:00Z', estimated_cost_usd: 2, parent_cost_usd: 1 });
+        const rows = getDb().prepare('SELECT session_id, estimated_cost_usd, parent_cost_usd FROM sessions ORDER BY session_id').all();
+        expect(rows).toEqual([
+            { session_id: 'free', estimated_cost_usd: 0, parent_cost_usd: 0 },
+            { session_id: 'paid', estimated_cost_usd: 2, parent_cost_usd: 1 },
+            { session_id: 'unpriced', estimated_cost_usd: null, parent_cost_usd: null }
+        ]);
+        expect(getSessionSummary()).toMatchObject({ total_cost: 2, unpriced_sessions: 1, total_sessions: 3 });
     });
 
     it('verifies migration idempotency', () => {

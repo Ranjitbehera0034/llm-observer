@@ -76,6 +76,9 @@ settingsRouter.get('/settings', (req, res) => {
         // Redact sensitive API key values
         const redacted: Record<string, string> = {};
         for (const [key, value] of Object.entries(settingsMap)) {
+            // The billing API exposes only public entitlement status. Never
+            // expose saved keys, HMACs, or signed portal links in settings.
+            if (key.startsWith('license_') || key.startsWith('activity_')) continue;
             if (key.endsWith('_api_key') && value && (value as string).length > 8) {
                 const v = value as string;
                 redacted[key] = v.substring(0, 4) + '****' + v.substring(v.length - 4);
@@ -93,6 +96,10 @@ settingsRouter.get('/settings', (req, res) => {
 settingsRouter.put('/settings', express.json(), (req, res) => {
     try {
         const payload = req.body;
+        // Only verified license activation may change entitlement state.
+        if (Object.keys(payload).some(key => key.startsWith('license_') || key.startsWith('activity_'))) {
+            return res.status(400).json({ error: 'Protected settings must be changed through their dedicated controls.' });
+        }
         const filteredPayload: Record<string, string> = {};
         for (const [key, value] of Object.entries(payload)) {
             // Ignore any values that contain the redact mask "****"

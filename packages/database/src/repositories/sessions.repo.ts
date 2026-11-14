@@ -17,14 +17,14 @@ export interface SessionRecord {
   cache_read_tokens?: number;
   cache_write_tokens?: number;
   cache_hit_rate?: number;
-  estimated_cost_usd?: number;
+  estimated_cost_usd?: number | null;
   session_type?: string; // 'interactive', 'agentic', 'mixed'
   tool_calls_json?: string; 
   has_subagents?: boolean;
   subagent_count?: number;
   raw_metadata_json?: string;
   total_subagent_cost_usd?: number;
-  parent_cost_usd?: number;
+  parent_cost_usd?: number | null;
   deepest_agent_depth?: number;
   file_path?: string;
   file_modified_at?: number;
@@ -91,7 +91,7 @@ export const insertSession = (session: SessionRecord): number => {
     session.cache_read_tokens || 0,
     session.cache_write_tokens || 0,
     session.cache_hit_rate || 0,
-    session.estimated_cost_usd || 0,
+    session.estimated_cost_usd === null ? null : (session.estimated_cost_usd ?? 0),
     session.session_type || null,
     session.tool_calls_json || '{}',
     session.has_subagents ? 1 : 0,
@@ -100,7 +100,7 @@ export const insertSession = (session: SessionRecord): number => {
     session.file_path || null,
     session.file_modified_at || null,
     session.total_subagent_cost_usd || 0,
-    session.parent_cost_usd || session.estimated_cost_usd || 0,
+    session.parent_cost_usd === null ? null : session.parent_cost_usd ?? (session.estimated_cost_usd === null ? null : (session.estimated_cost_usd ?? 0)),
     session.deepest_agent_depth || 0
   );
 
@@ -171,6 +171,7 @@ export const getSessionSummary = (filters: any = {}) => {
   let query = `
     SELECT 
       COUNT(*) as total_sessions,
+      SUM(CASE WHEN estimated_cost_usd IS NULL THEN 1 ELSE 0 END) as unpriced_sessions,
       SUM(estimated_cost_usd) as total_cost,
       SUM(input_tokens + output_tokens) as total_tokens,
       AVG(duration_seconds) as avg_duration,
@@ -207,6 +208,7 @@ export const getSessionSummary = (filters: any = {}) => {
   return {
     total_sessions: baseStats.total_sessions || 0,
     total_cost: baseStats.total_cost || 0,
+    unpriced_sessions: baseStats.unpriced_sessions || 0,
     total_tokens: baseStats.total_tokens || 0,
     avg_duration_seconds: baseStats.avg_duration || 0,
     agentic_count: baseStats.agentic_sessions || 0,
@@ -247,7 +249,7 @@ export const getMostExpensiveSessions = (limit: number = 10) => {
   `).all(limit);
 };
 
-export const updateSessionTotals = (id: number, subagentCost: number, subagentCount: number) => {
+export const updateSessionTotals = (id: number, subagentCost: number | null, subagentCount: number) => {
   const db = getDb();
   db.prepare(`
     UPDATE sessions 

@@ -1,89 +1,43 @@
 import crypto from 'crypto';
 
-const SIGNING_SECRET = process.env.LICENSE_SIGNING_SECRET || 'dev-secret-change-in-prod';
+function secret(): string {
+    const value = process.env.LICENSE_SIGNING_SECRET;
+    if (!value || value.length < 32) throw new Error('LICENSE_SIGNING_SECRET must contain at least 32 characters');
+    return value;
+}
 
-/**
- * Generates a deterministic, signed PRO_ license key from payment metadata.
- *
- * Format: PRO_{PROVIDER}_{SHORT_HASH}_{SUBSCRIPTION_ID}
- *
- * The HMAC signature makes keys unforgeable without the secret.
- * The same payment event always generates the same key (idempotent).
- */
-const fingerprintFor = (providerTag: string, shortSubId: string): string => {
-    const hmac = crypto.createHmac('sha256', SIGNING_SECRET);
-    hmac.update(`${providerTag}:${shortSubId}`);
-    return hmac.digest('hex').substring(0, 8).toUpperCase();
-};
-
+// Full, case-preserving provider IDs avoid collisions from truncated payment IDs.
 export function generateLicenseKey(opts: {
-    provider: 'lemonsqueezy' | 'razorpay';
-    subscriptionId: string;
-    customerId: string;
+    provider: 'lemonsqueezy' | 'razorpay'; subscriptionId: string; customerId: string;
 }): string {
-    // Keep subscription ID but truncate for readability
-    const shortSubId = opts.subscriptionId.replace(/[^a-zA-Z0-9]/g, '').substring(0, 12).toUpperCase();
-    const providerTag = opts.provider === 'lemonsqueezy' ? 'LS' : 'RZP';
-
-    // The fingerprint is an HMAC over exactly the components embedded in the
-    // key, so /license/validate can re-derive and verify it offline.
-    const fingerprint = fingerprintFor(providerTag, shortSubId);
-
-    return `PRO_${providerTag}_${fingerprint}_${shortSubId}`;
+    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(opts.subscriptionId)) throw new Error('Invalid payment reference');
+    const tag = opts.provider === 'lemonsqueezy' ? 'LS' : 'RZP';
+    const reference = Buffer.from(opts.subscriptionId).toString('base64url');
+    const signature = crypto.createHmac('sha256', secret()).update(`${tag}:${reference}`).digest('hex');
+    return `PRO_${tag}_${signature}_${reference}`;
 }
 
-/**
- * Verifies a license key is structurally valid (quick local check).
- * Full validation should also check against your DB / KV store.
- */
 export function isValidLicenseKeyFormat(key: string): boolean {
-    return /^PRO_(LS|RZP)_[A-F0-9]{8}_[A-Z0-9]{1,12}$/.test(key);
+    return typeof key === 'string' && /^PRO_(LS|RZP)_[a-f0-9]{64}_[A-Za-z0-9_-]{2,134}$/.test(key);
 }
 
-/**
- * Cryptographically verifies a PRO_ key: re-derives the HMAC fingerprint from
- * the key's own components and compares timing-safely. A key that merely
- * matches the format but wasn't issued by this server fails here.
- */
-export function verifyLicenseKey(key: string): boolean {
-    if (!isValidLicenseKeyFormat(key)) return false;
-    const [, providerTag, fingerprint, shortSubId] = key.split('_');
-    const expected = fingerprintFor(providerTag, shortSubId);
-    try {
-        return crypto.timingSafeEqual(Buffer.from(fingerprint), Buffer.from(expected));
-    } catch {
-        return false;
-    }
+export function decodeLicenseKey(key: string): { provider: 'lemonsqueezy' | 'razorpay'; id: string } | null {
+    if (!isValidLicenseKeyFormat(key)) return null;
+    const match = /^PRO_(LS|RZP)_([a-f0-9]{64})_(.+)$/.exec(key)!;
+    const [, tag, signature, reference] = match;
+    const expected = crypto.createHmac('sha256', secret()).update(`${tag}:${reference}`).digest('hex');
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+    const id = Buffer.from(reference, 'base64url').toString();
+    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) return null;
+    return { provider: tag === 'LS' ? 'lemonsqueezy' : 'razorpay', id };
 }
 
-/**
- * Verifies an HMAC-SHA256 signature from a payment provider webhook.
- * Uses timing-safe comparison to prevent timing attacks.
- */
-export function verifyWebhookSignature(opts: {
-    rawBody: Buffer;
-    signature: string;
-    secret: string;
-}): boolean {
-    const hmac = crypto.createHmac('sha256', opts.secret);
-    hmac.update(opts.rawBody);
-    const expected = hmac.digest('hex');
+export function verifyLicenseKey(key: string): boolean { return decodeLicenseKey(key) !== null; }
 
-    try {
-        return crypto.timingSafeEqual(
-            Buffer.from(opts.signature, 'hex'),
-            Buffer.from(expected, 'hex')
-        );
-    } catch {
-        return false;
-    }
+export function verifyWebhookSignature(opts: { rawBody: Buffer; signature: string; secret: string }): boolean {
+    if (!/^[a-fA-F0-9]{64}$/.test(opts.signature)) return false;
+    const expected = crypto.createHmac('sha256', opts.secret).update(opts.rawBody).digest();
+    return crypto.timingSafeEqual(Buffer.from(opts.signature, 'hex'), expected);
 }
 
-/**
- * Reads the raw body from a Vercel Request (needed for HMAC verification).
- * Vercel passes the body as a Buffer in the raw request.
- */
-export async function getRawBody(req: Request): Promise<Buffer> {
-    const arrayBuffer = await req.arrayBuffer();
-    return Buffer.from(arrayBuffer);
-}
+export async function getRawBody(req: Request): Promise<Buffer> { return Buffer.from(await req.arrayBuffer()); }

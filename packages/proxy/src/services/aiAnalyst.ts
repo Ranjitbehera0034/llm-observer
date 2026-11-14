@@ -4,7 +4,8 @@ import { getDb, getSetting, updateSetting, encrypt, decrypt } from '@llm-observe
 const KEY_SETTING = 'ai_analyst_api_key';
 const LAST_RESULT_SETTING = 'ai_analyst_last_result';
 
-export const ANALYST_MODEL = 'claude-opus-4-8';
+export const ANALYST_MODEL = 'claude-sonnet-5-5';
+export const getAnalystModel = () => getSetting('ai_analyst_model') || ANALYST_MODEL;
 
 /* PRIVACY RULE: only aggregated metadata (token totals, costs, tool call counts,
  * cache rates) is ever sent to the API. No prompts, responses, file paths, or
@@ -88,8 +89,9 @@ export const buildSpendSnapshot = () => {
                ROUND(AVG(cache_hit_rate), 4) AS avg_cache_hit_rate
         FROM sessions
         WHERE model_primary IS NOT NULL AND model_primary != ''
+          AND julianday(started_at) >= julianday('now','-30 days')
         GROUP BY provider, model_primary
-        ORDER BY estimated_cost_usd DESC
+        ORDER BY estimated_cost_usd DESC LIMIT 50
     `).all();
 
     let topTools: any[] = [];
@@ -108,7 +110,7 @@ export const buildSpendSnapshot = () => {
     } catch { /* table absent */ }
 
     return {
-        window: 'all local session history',
+        window: 'last 30 days; at most 50 model groups; tool counts cover retained history',
         spend_by_model: byModel,
         top_tools_by_calls: topTools,
         budgets_configured: budgetCount
@@ -119,18 +121,23 @@ const SYSTEM_PROMPT = `You are the cost analyst inside LLM Observer, a local, pr
 
 Ground every recommendation in the numbers you were given — cite them. Focus on the levers that matter for coding-agent workloads: cache economics (cache reads/writes usually dominate agentic sessions), model selection per task type, redundant tool usage, and budget guardrails. If the data is too thin for a recommendation category, say so rather than inventing one. Keep each recommendation self-contained and actionable.`;
 
-export const runAnalysis = async (client?: Anthropic): Promise<AnalystResult> => {
+let pendingAnalysis: Promise<AnalystResult> | null = null;
+export const runAnalysis = (client?: Anthropic): Promise<AnalystResult> => {
+    if (!pendingAnalysis) pendingAnalysis = executeAnalysis(client).finally(() => { pendingAnalysis = null; });
+    return pendingAnalysis;
+};
+const executeAnalysis = async (client?: Anthropic): Promise<AnalystResult> => {
     const apiKey = getAnalystKey();
     if (!client && !apiKey) {
         throw Object.assign(new Error('No API key configured for AI Analyst'), { code: 'NO_KEY' });
     }
-    const anthropic = client ?? new Anthropic({ apiKey: apiKey! });
+    const anthropic = client ?? new Anthropic({ apiKey: apiKey!, timeout: 120000, maxRetries: 0 });
 
     const snapshot = buildSpendSnapshot();
 
     const response = await anthropic.messages.create({
-        model: ANALYST_MODEL,
-        max_tokens: 16000,
+        model: getAnalystModel(),
+        max_tokens: 4096,
         thinking: { type: 'adaptive' },
         output_config: { format: { type: 'json_schema', schema: ANALYSIS_SCHEMA as any } },
         system: SYSTEM_PROMPT,
@@ -151,6 +158,10 @@ export const runAnalysis = async (client?: Anthropic): Promise<AnalystResult> =>
     if (!textBlock) throw new Error('No analysis returned by the model.');
 
     const parsed = JSON.parse(textBlock.text);
+    if (typeof parsed.summary !== 'string' || parsed.summary.length > 10000 || !Array.isArray(parsed.recommendations) || parsed.recommendations.length > 30 || parsed.recommendations.some((r: any) =>
+        typeof r.title !== 'string' || !r.title.trim() || r.title.length > 200 || typeof r.detail !== 'string' || r.detail.length > 10000 ||
+        !['model-choice','caching','agent-efficiency','budget','other'].includes(r.category) ||
+        !Number.isFinite(r.estimated_monthly_savings_usd) || r.estimated_monthly_savings_usd < 0)) throw new Error('Analysis returned an invalid recommendation format.');
     const result: AnalystResult = {
         summary: parsed.summary,
         recommendations: parsed.recommendations,

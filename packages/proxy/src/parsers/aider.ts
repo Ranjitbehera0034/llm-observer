@@ -3,8 +3,8 @@ import path from 'path';
 import os from 'os';
 import readline from 'readline';
 import { getParsedFile, upsertParsedFile, insertSession } from '@llm-observer/database';
-import { randomUUID } from 'crypto';
-import { getPricingForModel } from '@llm-observer/database';
+import { createHash } from 'crypto';
+import { calculateCost } from './utils';
 
 const getAiderAnalyticsPath = () => {
     return path.join(os.homedir(), '.aider', 'analytics.jsonl');
@@ -23,7 +23,7 @@ export const parse = async (onProgress?: (current: number, total: number) => voi
     const mtime = stat.mtimeMs;
 
     const registryEntry = getParsedFile(filePath);
-    if (registryEntry && registryEntry.last_modified_at >= mtime) {
+    if (registryEntry && registryEntry.status === 'success' && registryEntry.last_modified_at >= mtime) {
         return; // Unchanged
     }
 
@@ -35,32 +35,28 @@ export const parse = async (onProgress?: (current: number, total: number) => voi
             crlfDelay: Infinity
         });
 
+        // Stable fallback identities prevent replaying old events as new sessions
+        // whenever this append-only analytics file grows.
+        let lineNumber = 0;
         // Aider analytics has explicit token counts and model info
         for await (const line of rl) {
+            lineNumber++;
             if (!line.trim()) continue;
             try {
                 const event = JSON.parse(line);
-                const sessionId = event.id || event.request_id || randomUUID();
+                const sessionId = event.id || event.request_id || `aider-${createHash('sha256')
+                    .update(JSON.stringify([filePath, lineNumber, line])).digest('hex')}`;
                 
                 const inputTokens = event.input_tokens || event.prompt_tokens || 0;
                 const outputTokens = event.output_tokens || event.completion_tokens || 0;
                 const model = event.model || 'unknown';
 
-                let estimatedCost = event.cost || 0;
-
-                // Fallback cost calc if aider doesn't provide it
-                if (!estimatedCost && model !== 'unknown') {
-                    // map common models to provider to fetch pricing
-                    let provider = 'openai';
-                    if (model.includes('claude')) provider = 'anthropic';
-                    if (model.includes('gemini')) provider = 'google';
-                    if (model.includes('mistral')) provider = 'mistral';
-                    
-                    const pricing = getPricingForModel(provider, model);
-                    if (pricing) {
-                        estimatedCost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output;
-                    }
-                }
+                // A source-reported zero is valid; missing or invalid cost is not.
+                const reported = typeof event.cost === 'number' && Number.isFinite(event.cost) && event.cost >= 0;
+                const hasTokens = (event.input_tokens ?? event.prompt_tokens) != null
+                    && (event.output_tokens ?? event.completion_tokens) != null;
+                const estimatedCost = reported ? event.cost : hasTokens
+                    ? calculateCost(model, inputTokens, outputTokens).costUsd : null;
 
                 insertSession({
                     provider: 'aider',

@@ -2,6 +2,7 @@ export interface StreamUsage {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    cached_tokens?: number;
 }
 
 export class StreamHandler {
@@ -36,14 +37,22 @@ export class StreamHandler {
 
     private extractUsage(parsed: any): void {
         switch (this.provider) {
+            case 'moonshot':
+            case 'deepseek':
+            case 'openrouter':
+            case 'xai':
+            case 'custom':
             case 'openai':
             case 'groq':
             case 'mistral':
-                if (parsed.usage) {
+                if (parsed.response?.usage) parsed = parsed.response;
+                if (parsed.usage) parsed.usage = { ...parsed.usage, prompt_tokens: parsed.usage.prompt_tokens ?? parsed.usage.input_tokens, completion_tokens: parsed.usage.completion_tokens ?? parsed.usage.output_tokens };
+                if (parsed.usage && [parsed.usage.prompt_tokens, parsed.usage.completion_tokens].every(n => Number.isSafeInteger(n) && n >= 0)) {
                     this.usage = {
                         prompt_tokens: parsed.usage.prompt_tokens || 0,
                         completion_tokens: parsed.usage.completion_tokens || 0,
-                        total_tokens: parsed.usage.total_tokens || 0,
+                        total_tokens: parsed.usage.total_tokens ?? parsed.usage.prompt_tokens + parsed.usage.completion_tokens,
+                        ...((parsed.usage.prompt_tokens_details?.cached_tokens ?? parsed.usage.input_tokens_details?.cached_tokens ?? parsed.usage.prompt_cache_hit_tokens) !== undefined ? { cached_tokens: parsed.usage.prompt_tokens_details?.cached_tokens ?? parsed.usage.input_tokens_details?.cached_tokens ?? parsed.usage.prompt_cache_hit_tokens } : {}),
                     };
                 }
                 // Groq specific x_groq usage

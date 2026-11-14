@@ -18,7 +18,7 @@ licenseRouter.get('/status', async (req, res) => {
 licenseRouter.post('/activate', express.json(), async (req, res) => {
     try {
         const { key } = req.body;
-        if (!key) return res.status(400).json({ error: 'License key is required' });
+        if (typeof key !== 'string' || !key.trim()) return res.status(400).json({ error: 'License key is required' });
 
         const result = await activateLicense(key);
         if (result.success) {

@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { useState, useEffect } from 'react';
 import { Lightbulb, Sparkles, TrendingDown, Clock, ShieldCheck, ArrowRight, Bot, KeyRound, Trash2 } from 'lucide-react';
 import { API_BASE_URL } from '../config';
@@ -29,18 +30,19 @@ interface AnalystResult {
 function AiAnalystPanel() {
     const [configured, setConfigured] = useState<boolean | null>(null);
     const [keyInput, setKeyInput] = useState('');
+    const [model, setModel] = useState('');
     const [result, setResult] = useState<AnalystResult | null>(null);
     const [running, setRunning] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        fetch(`${API_BASE_URL}/api/optimize/ai/key`).then(r => r.json()).then(d => setConfigured(d.configured)).catch(() => setConfigured(false));
-        fetch(`${API_BASE_URL}/api/optimize/ai/last`).then(r => r.json()).then(d => setResult(d.result)).catch(() => {});
+        apiFetch(`${API_BASE_URL}/api/optimize/ai/key`).then(r => r.json()).then(d => { setConfigured(d.configured); setModel(d.model || ''); }).catch(() => setConfigured(false));
+        apiFetch(`${API_BASE_URL}/api/optimize/ai/last`).then(r => r.json()).then(d => setResult(d.result)).catch(() => {});
     }, []);
 
     const saveKey = async () => {
         setError(null);
-        const res = await fetch(`${API_BASE_URL}/api/optimize/ai/key`, {
+        const res = await apiFetch(`${API_BASE_URL}/api/optimize/ai/key`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ apiKey: keyInput.trim() })
         });
@@ -50,14 +52,14 @@ function AiAnalystPanel() {
     };
 
     const removeKey = async () => {
-        await fetch(`${API_BASE_URL}/api/optimize/ai/key`, { method: 'DELETE' });
+        await apiFetch(`${API_BASE_URL}/api/optimize/ai/key`, { method: 'DELETE' });
         setConfigured(false);
     };
 
     const analyze = async () => {
         setRunning(true); setError(null);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/optimize/ai/analyze`, { method: 'POST' });
+            const res = await apiFetch(`${API_BASE_URL}/api/optimize/ai/analyze`, { method: 'POST', signal: AbortSignal.timeout(130000) });
             const data = await res.json();
             if (!res.ok) { setError(data.error); return; }
             setResult(data.result);
@@ -104,6 +106,9 @@ function AiAnalystPanel() {
                     </div>
                 ) : null}
             </div>
+            <div className="flex gap-3 items-center mt-4"><label className="text-sm">Anthropic model <input aria-label="Analyst model" value={model} onChange={e => setModel(e.target.value)} className="bg-surface border border-border p-2 rounded ml-2" /></label>
+                <button onClick={async () => { try { const r = await apiFetch(`${API_BASE_URL}/api/optimize/ai/model`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({model}) }); if (!r.ok) throw new Error('Could not save model ID'); setError(null); } catch (e) { setError(e instanceof Error ? e.message : 'Request failed'); } }} className="border border-border p-2 rounded">Save model</button></div>
+            <p className="text-xs text-textMuted mt-2">Each analysis makes one billable call using your API key, capped at 4,096 output tokens. Your chat subscription does not cover API charges. Saved recommendations can be collected in Task inbox.</p>
             {error && <p className="text-sm text-red-400 mt-2">{error}</p>}
             {result && (
                 <div className="mt-6 space-y-4">
@@ -134,7 +139,7 @@ export default function Insights() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch(`${API_BASE_URL}/api/stats/optimizer`)
+        apiFetch(`${API_BASE_URL}/api/stats/optimizer`)
             .then(res => res.json())
             .then(res => {
                 setInsights(res.data || []);
@@ -189,7 +194,7 @@ export default function Insights() {
             ) : insights.length === 0 ? (
                 <div className="card text-center py-20 bg-surfaceHighlight/30 border-dashed border-white/10">
                     <ShieldCheck className="w-16 h-16 text-white/5 mx-auto mb-6" />
-                    <h3 className="text-xl font-bold text-white mb-2">Maximum Efficiency Reached</h3>
+                    <h3 className="text-xl font-bold text-white mb-2">No recommendations yet</h3>
                     <p className="text-textMuted max-w-sm mx-auto">
                         Our engine hasn't found any significant savings opportunities for your current traffic. Keep up the great work!
                     </p>

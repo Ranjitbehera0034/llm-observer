@@ -26,5 +26,5 @@ export interface IProvider {
     parseResponse(responseBody: any, requestData: any): ProviderResponse;
 
     /** Specifically calculate cost for a given token usage and model */
-    calculateCost(model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean };
+    calculateCost(model: string, promptTokens: number, completionTokens: number, cachedTokens?: number): { costUsd: number, unknown: boolean };
 }

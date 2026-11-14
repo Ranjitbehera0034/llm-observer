@@ -61,7 +61,7 @@ describe('Rate Limit Tracking System', () => {
             jest.spyOn(database, 'insertRateLimitSnapshot');
             poller.estimateAnthropicRateLimits();
             expect(database.insertRateLimitSnapshot).toHaveBeenCalledWith(
-                expect.objectContaining({ is_estimated: true, window_type: '5h' })
+                expect.objectContaining({ is_estimated: true, window_type: 'activity_5h' })
             );
         });
         

@@ -1,3 +1,5 @@
+import { apiFetch } from '../utils/apiFetch';
+import { visibleInterval } from '../utils/visibleInterval';
 import { useState, useEffect, useCallback } from 'react';
 import { 
     LayoutDashboard, 
@@ -39,7 +41,7 @@ interface OverviewData {
     total_usd: number;
     tracked_api: {
         total_usd: number;
-        providers: Record<string, { total_usd: number; source: 'sync' | 'proxy' }>;
+        providers: Record<string, { total_usd: number; source: 'sync' | 'proxy' | 'mixed' }>;
     };
     subscriptions: {
         total_monthly_commitment_usd: number;
@@ -85,15 +87,15 @@ export default function Overview() {
     const fetchData = useCallback(async () => {
         try {
             const [todayRes, weekRes, monthRes, timelineRes, budgetsRes, appsRes, sessionsRes, scoreRes, limitsRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/api/overview?period=today`),
-                fetch(`${API_BASE_URL}/api/overview?period=week`),
-                fetch(`${API_BASE_URL}/api/overview?period=month`),
-                fetch(`${API_BASE_URL}/api/overview/timeline?days=30`),
-                fetch(`${API_BASE_URL}/api/budgets`),
-                fetch(`${API_BASE_URL}/api/apps?period=today`),
-                fetch(`${API_BASE_URL}/api/sessions/expensive?limit=3`),
-                fetch(`${API_BASE_URL}/api/optimize/score`),
-                fetch(`${API_BASE_URL}/api/limits`)
+                apiFetch(`${API_BASE_URL}/api/overview?period=today`),
+                apiFetch(`${API_BASE_URL}/api/overview?period=week`),
+                apiFetch(`${API_BASE_URL}/api/overview?period=month`),
+                apiFetch(`${API_BASE_URL}/api/overview/timeline?days=30`),
+                apiFetch(`${API_BASE_URL}/api/budgets`),
+                apiFetch(`${API_BASE_URL}/api/apps?period=today`),
+                apiFetch(`${API_BASE_URL}/api/sessions/expensive?limit=3`),
+                apiFetch(`${API_BASE_URL}/api/optimize/score`),
+                apiFetch(`${API_BASE_URL}/api/limits`)
             ]);
             
             if (todayRes.ok) setTodayData(await todayRes.json());
@@ -120,13 +122,13 @@ export default function Overview() {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 60_000);
-        return () => clearInterval(interval);
+        const interval = visibleInterval(fetchData, 60_000);
+        return () => interval?.();
     }, [fetchData]);
 
     const handleAddSub = async (preset: Partial<SubscriptionRecord>) => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/subscriptions`, {
+            const res = await apiFetch(`${API_BASE_URL}/api/subscriptions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(preset)
@@ -143,7 +145,7 @@ export default function Overview() {
     const handleDeleteSub = async (id: number) => {
         if (!confirm('Remove this subscription?')) return;
         try {
-            await fetch(`${API_BASE_URL}/api/subscriptions/${id}`, { method: 'DELETE' });
+            await apiFetch(`${API_BASE_URL}/api/subscriptions/${id}`, { method: 'DELETE' });
             fetchData();
         } catch (err) {
             console.error('Failed to delete subscription', err);
@@ -275,6 +277,7 @@ export default function Overview() {
                                 <div className="flex items-center gap-2">
                                     <div className={`w-1.5 h-1.5 rounded-full ${p.source === 'sync' ? 'bg-indigo-400' : 'bg-slate-500'}`} />
                                     <span className="text-[10px] font-bold text-white uppercase">{id}</span>
+                                    <span className="text-[9px] text-slate-400">{p.source === 'mixed' ? 'Synced + estimated' : p.source === 'sync' ? 'Synced' : 'Estimated'}</span>
                                 </div>
                                 <span className="text-[10px] font-mono text-slate-400">${p.total_usd?.toFixed(2)}</span>
                             </div>
@@ -374,7 +377,7 @@ export default function Overview() {
                                         <span className="text-[10px] font-bold text-white uppercase truncate max-w-[100px]">{session.project_name}</span>
                                         <span className="text-[8px] text-slate-500 font-mono capitalize">{session.provider.replace('-', ' ')}</span>
                                     </div>
-                                    <span className="text-[10px] font-black text-emerald-400">${(session.estimated_cost_usd || 0).toFixed(2)}</span>
+                                    <span className="text-[10px] font-black text-emerald-400">{session.estimated_cost_usd == null ? 'Unpriced' : `$${session.estimated_cost_usd.toFixed(2)}`}</span>
                                 </div>
                             ))
                         )}

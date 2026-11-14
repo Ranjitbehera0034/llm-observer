@@ -13,6 +13,7 @@ export const getDbPath = () => {
 };
 
 const migrateLegacyDb = (newPath: string) => {
+    if (process.env.LLM_OBSERVER_DATA_DIR) return;
     // Check common legacy locations
     const legacyPaths = [
         path.join(process.cwd(), 'data.db'),
@@ -84,8 +85,10 @@ export const initDb = (dbPath?: string): Database.Database => {
                 const migrationPath = path.join(migrationsDir, file);
                 const sql = fs.readFileSync(migrationPath, 'utf8');
                 try {
-                    db.exec(sql);
-                    db.prepare('INSERT INTO _schema_version_v2 (name) VALUES (?)').run(file);
+                    db.transaction(() => {
+                        db!.exec(sql);
+                        db!.prepare('INSERT INTO _schema_version_v2 (name) VALUES (?)').run(file);
+                    })();
                     console.log(`Migration applied: ${file}`);
                 } catch (err: any) {
                     console.error(`Failed to apply migration ${file}:`, err);

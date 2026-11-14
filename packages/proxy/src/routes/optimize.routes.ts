@@ -1,7 +1,8 @@
+import { updateSetting } from '@llm-observer/database';
 import { Router } from 'express';
 import { runOptimizationEngine } from '../optimization/engine';
 import { allRules } from '../optimization/rules';
-import { setAnalystKey, clearAnalystKey, hasAnalystKey, runAnalysis, getLastResult } from '../services/aiAnalyst';
+import { setAnalystKey, clearAnalystKey, hasAnalystKey, runAnalysis, getLastResult, getAnalystModel } from '../services/aiAnalyst';
 
 const router = Router();
 
@@ -9,7 +10,14 @@ const router = Router();
 
 // GET /api/optimize/ai/key — is a key configured? (never returns the key)
 router.get('/ai/key', (_req, res) => {
-    res.json({ configured: hasAnalystKey() });
+    res.json({ configured: hasAnalystKey(), model: getAnalystModel(), max_output_tokens: 4096 });
+});
+
+router.post('/ai/model', (req, res) => {
+    const model = req.body?.model;
+    if (typeof model !== 'string' || !/^claude-[a-z0-9.-]{1,100}$/.test(model)) return res.status(400).json({ error: 'Enter an Anthropic model ID available to your API key.' });
+    updateSetting('ai_analyst_model', model);
+    res.json({ model });
 });
 
 // POST /api/optimize/ai/key — store an Anthropic API key, encrypted at rest

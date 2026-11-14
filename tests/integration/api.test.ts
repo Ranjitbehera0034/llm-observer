@@ -8,7 +8,7 @@
 
 import request from 'supertest';
 import express from 'express';
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, afterEach, afterAll, vi } from 'vitest';
 
 // ─── Mock @llm-observer/database before any imports ──────────────────────────
 vi.mock('@llm-observer/database', () => {
@@ -54,7 +54,11 @@ vi.mock('@llm-observer/database', () => {
 });
 
 // Now import the router (after mock is set up)
+vi.stubEnv('LICENSE_SERVER_URL', 'https://license.test.invalid/license/validate');
 const { dashboardApi } = await import('../../packages/proxy/src/dashboardApi');
+const { getSetting } = await import('@llm-observer/database');
+afterEach(() => { vi.unstubAllGlobals(); });
+afterAll(() => { vi.unstubAllEnvs(); });
 
 // ─── Build the test Express app ───────────────────────────────────────────────
 const app = express();
@@ -105,12 +109,30 @@ describe('POST /api/license/activate', () => {
         expect(res.status).toBe(400);
     });
 
-    it('activates a PRO_ local key', async () => {
+    it('rejects a PRO_ prefix unless the license service confirms entitlement', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ valid: false, error: 'Invalid license' }), { status: 400 }));
+        vi.stubGlobal('fetch', fetchMock);
+        const res = await request(app)
+            .post('/api/license/activate')
+            .send({ key: 'PRO_TEST_KEY_123' });
+        expect(res.status).toBe(400);
+        expect(getSetting('license_key')).toBe('');
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('activates only after the license service returns a valid paid-through date', async () => {
+        const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ valid: true, valid_until: new Date(Date.now() + 86400000).toISOString() })));
+        vi.stubGlobal('fetch', fetchMock);
         const res = await request(app)
             .post('/api/license/activate')
             .send({ key: 'PRO_TEST_KEY_123' });
         expect(res.status).toBe(200);
         expect(res.body).toHaveProperty('success', true);
+        expect(fetchMock.mock.calls[0][0]).toBe('https://license.test.invalid/license/validate');
+        expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ license_key: 'PRO_TEST_KEY_123' });
+        const status = await request(app).get('/api/license/status');
+        expect(status.body.data.isPro).toBe(true);
+        expect(status.body.data).not.toHaveProperty('licenseKey');
     });
 });
 
@@ -121,6 +143,12 @@ describe('GET /api/settings', () => {
         expect(res.body).toHaveProperty('data');
         expect(typeof res.body.data).toBe('object');
     });
+
+    it('never exposes saved license keys, signatures, or entitlement metadata', async () => {
+        const res = await request(app).get('/api/settings');
+        expect(Object.keys(res.body.data).some(key => key.startsWith('license_'))).toBe(false);
+        expect(JSON.stringify(res.body)).not.toContain('PRO_TEST_KEY_123');
+    });
 });
 
 describe('PUT /api/settings', () => {
@@ -130,6 +158,17 @@ describe('PUT /api/settings', () => {
             .send({ openai_api_key: 'sk-test-12345', groq_api_key: 'gsk_test' });
         expect(res.status).toBe(200);
         expect(res.body).toHaveProperty('success', true);
+    });
+
+    it('rejects attempts to replace billing state through general settings', async () => {
+        const originalKey = getSetting('license_key');
+        const res = await request(app).put('/api/settings').send({
+            license_key: 'PRO_FORGED', license_status: 'active',
+            license_valid_until: '2099-01-01', license_verified_at: String(Date.now()),
+        });
+        expect(res.status).toBe(400);
+        expect(getSetting('license_key')).toBe(originalKey);
+        expect(getSetting('license_valid_until')).not.toBe('2099-01-01');
     });
 });
 
@@ -145,95 +184,14 @@ describe('GET /api/requests', () => {
     });
 });
 
-describe('POST /api/webhooks/razorpay', () => {
-    const secret = 'test_razorpay_secret';
-    beforeAll(() => { process.env.RAZORPAY_WEBHOOK_SECRET = secret; });
-    afterAll(() => { delete process.env.RAZORPAY_WEBHOOK_SECRET; });
-
-    it('returns 200 for valid subscription.activated event', async () => {
-        const payload = {
-            event: 'subscription.activated',
-            payload: {
-                subscription: {
-                    entity: {
-                        id: 'sub_test123',
-                        customer_id: 'cust_test456',
-                        amount: 29900,
-                        currency: 'INR',
-                    }
-                }
-            }
-        };
-
-        const signature = require('crypto').createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
-
-        const res = await request(app)
-            .post('/api/webhooks/razorpay')
-            .set('x-razorpay-signature', signature)
-            .send(payload);
-
-        expect(res.status).toBe(200);
-        expect(res.body).toHaveProperty('received', true);
-        expect(res.body).toHaveProperty('activated', true);
-    });
-
-    it('ignores non-activatable events', async () => {
-        const payload = { event: 'refund.created', payload: {} };
-        const signature = require('crypto').createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
-        
-        const res = await request(app)
-            .post('/api/webhooks/razorpay')
-            .set('x-razorpay-signature', signature)
-            .send(payload);
-            
-        expect(res.status).toBe(200);
-        expect(res.body.action).toBe('ignored');
-    });
-});
-
-describe('POST /api/webhooks/lemonsqueezy', () => {
-    const secret = 'test_lemonsqueezy_secret';
-    beforeAll(() => { process.env.LEMONSQUEEZY_WEBHOOK_SECRET = secret; });
-    afterAll(() => { delete process.env.LEMONSQUEEZY_WEBHOOK_SECRET; });
-
-    it('activates license on subscription_created', async () => {
-        const payload = {
-            data: {
-                id: '9999',
-                attributes: {
-                    customer_id: 77,
-                    user_email: 'test@example.com',
-                    total: 900,
-                    currency: 'USD',
-                }
-            }
-        };
-
-        const signature = require('crypto').createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
-
-        const res = await request(app)
-            .post('/api/webhooks/lemonsqueezy')
-            .set('x-event-name', 'subscription_created')
-            .set('x-signature', signature)
-            .send(payload);
-
-        expect(res.status).toBe(200);
-        expect(res.body.received).toBe(true);
-        expect(res.body.activated).toBe(true);
-    });
-
-    it('ignores unknown events', async () => {
-        const payload = { data: {} };
-        const signature = require('crypto').createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
-        
-        const res = await request(app)
-            .post('/api/webhooks/lemonsqueezy')
-            .set('x-event-name', 'review.created')
-            .set('x-signature', signature)
-            .send(payload);
-            
-        expect(res.status).toBe(200);
-        expect(res.body.action).toBe('ignored');
+describe.each(['razorpay', 'lemonsqueezy'])('retired desktop payment webhook: %s', provider => {
+    it('returns 404 without changing the saved entitlement', async () => {
+        const originalKey = getSetting('license_key');
+        const originalStatus = getSetting('license_status');
+        const res = await request(app).post(`/api/webhooks/${provider}`).send({ event: 'subscription.activated', data: { id: 'forged' } });
+        expect(res.status).toBe(404);
+        expect(getSetting('license_key')).toBe(originalKey);
+        expect(getSetting('license_status')).toBe(originalStatus);
     });
 });
 

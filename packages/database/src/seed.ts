@@ -249,8 +249,9 @@ const initialPricing: PricingEntry[] = [
 export const getInitialPricing = () => initialPricing;
 
 export const seedPricing = () => {
-    // Rely on syncPricingToDb to handle wiping stale default data while safely protecting user-injected is_custom overrides.
-    syncPricingToDb(initialPricing);
+    // Add/update default models while preserving custom overrides.
+    const existing = new Set((getDb().prepare('SELECT provider, model FROM model_pricing').all() as {provider:string;model:string}[]).map(p => `${p.provider}:${p.model}`));
+    syncPricingToDb(initialPricing.filter(p => !existing.has(`${p.provider}:${p.model}`)));
     console.log(`Pricing data seeded: ${initialPricing.length} defaults synced.`);
 };
 
@@ -270,28 +271,7 @@ export const seedSyncProviders = () => {
  * Call this to refresh pricing without wiping the table.
  */
 export const refreshPricing = (pricingData?: PricingEntry[]) => {
-    const db = getDb();
-    const data = pricingData || initialPricing;
-
-    const upsertStmt = db.prepare(`
-        INSERT INTO model_pricing 
-            (provider, model, input_cost_per_1m, output_cost_per_1m, cached_input_cost_per_1m, updated_at)
-        VALUES (?, ?, ?, ?, ?, datetime('now'))
-        ON CONFLICT(provider, model) DO UPDATE SET
-            input_cost_per_1m = excluded.input_cost_per_1m,
-            output_cost_per_1m = excluded.output_cost_per_1m,
-            cached_input_cost_per_1m = excluded.cached_input_cost_per_1m,
-            updated_at = datetime('now')
-    `);
-
-    const upsertMany = db.transaction((items: PricingEntry[]) => {
-        for (const item of items) {
-            upsertStmt.run(item.provider, item.model, item.input, item.output, item.cached);
-        }
-    });
-
-    upsertMany(data);
-    console.log(`Pricing refreshed: ${data.length} models updated.`);
+    syncPricingToDb(pricingData || initialPricing);
 };
 
 /**

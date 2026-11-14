@@ -1,3 +1,5 @@
+import { apiFetch } from '../utils/apiFetch';
+import { visibleInterval } from '../utils/visibleInterval';
 import { useEffect, useState, useRef } from 'react';
 import { DollarSign, TrendingUp, AlertTriangle } from 'lucide-react';
 import { API_BASE_URL } from '../config';
@@ -18,7 +20,7 @@ export function SpendCounter() {
 
     useEffect(() => {
         // 1. Initial Fetch
-        fetch(`${API_BASE_URL}/api/stats/overview`)
+        apiFetch(`${API_BASE_URL}/api/stats/overview`)
             .then(res => res.json())
             .then(data => {
                 setStats(data);
@@ -60,8 +62,8 @@ export function SpendCounter() {
         };
 
         // 3. Periodic Poll (for sync)
-        const pollId = setInterval(() => {
-            fetch(`${API_BASE_URL}/api/stats/overview`)
+        const pollId = visibleInterval(() => {
+            apiFetch(`${API_BASE_URL}/api/stats/overview`)
                 .then(res => res.json())
                 .then(data => setStats(data))
                 .catch(console.error);
@@ -69,7 +71,7 @@ export function SpendCounter() {
 
         return () => {
             sseRef.current?.close();
-            clearInterval(pollId);
+            pollId?.();
         };
     }, []);
 
@@ -83,6 +85,7 @@ export function SpendCounter() {
         const duration = 1000;
         const startTime = performance.now();
 
+        let frame = 0;
         const animate = (now: number) => {
             const elapsed = now - startTime;
             const progress = Math.min(elapsed / duration, 1);
@@ -90,10 +93,11 @@ export function SpendCounter() {
             setDisplaySpend(current);
 
             if (progress < 1) {
-                requestAnimationFrame(animate);
+                frame = requestAnimationFrame(animate);
             }
         };
-        requestAnimationFrame(animate);
+        frame = requestAnimationFrame(animate);
+        return () => cancelAnimationFrame(frame);
     }, [stats?.todaySpendUsd]);
 
     if (!stats) return <div className="h-64 animate-pulse bg-surface rounded-3xl" />;

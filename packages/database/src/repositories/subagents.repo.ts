@@ -14,7 +14,7 @@ export interface SubagentRecord {
   output_tokens?: number;
   cache_read_tokens?: number;
   cache_write_tokens?: number;
-  estimated_cost_usd?: number;
+  estimated_cost_usd?: number | null;
   tool_calls_json?: string;
   file_path?: string;
   created_at?: string;
@@ -63,7 +63,7 @@ export const insertSubagent = (agent: SubagentRecord): number => {
     agent.output_tokens || 0,
     agent.cache_read_tokens || 0,
     agent.cache_write_tokens || 0,
-    agent.estimated_cost_usd || 0,
+    agent.estimated_cost_usd === null ? null : (agent.estimated_cost_usd ?? 0),
     agent.tool_calls_json || '{}',
     agent.file_path || null
   );

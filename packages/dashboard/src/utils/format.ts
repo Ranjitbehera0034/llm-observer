@@ -1,5 +1,5 @@
 export const formatCurrency = (value: number | undefined | null) => {
-    if (value === undefined || value === null) return '$0.00';
+    if (value === undefined || value === null || !Number.isFinite(value)) return 'Unpriced';
     return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',

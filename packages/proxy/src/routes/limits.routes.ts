@@ -16,8 +16,12 @@ router.get('/', (req, res) => {
         
         return {
             provider: p,
-            source: snapshots.some(s => !s.is_estimated) ? 'oauth_api' : 'session_count',
+            source: snapshots.every(s => !s.is_estimated) ? 'oauth_api' : snapshots.every(s => s.is_estimated) ? 'session_count' : 'mixed',
             windows: snapshots.map(s => {
+                const observedAt = Date.parse(s.captured_at);
+                const ageMs = Date.now() - observedAt;
+                const stale = !Number.isFinite(ageMs) || ageMs > 15 * 60 * 1000 || ageMs < -60_000
+                    || (s.resets_at !== null && Date.parse(s.resets_at) <= Date.now());
                 let status = 'ok';
                 if (s.utilization_pct !== null) {
                     if (s.utilization_pct >= 1.0) status = 'throttled';
@@ -34,11 +38,14 @@ router.get('/', (req, res) => {
                     total_used: s.total_used,
                     utilization_pct: s.utilization_pct,
                     resets_at: s.resets_at,
-                    status,
+                    status: stale ? 'stale' : status,
+                    stale,
+                    captured_at: s.captured_at,
+                    source: s.is_estimated ? 'session_count' : 'oauth_api',
                     is_estimated: s.is_estimated
                 };
             }),
-            last_updated: snapshots[0]?.captured_at
+            last_updated: snapshots.map(s => s.captured_at).sort().at(-1)
         };
     }).filter(Boolean);
     
@@ -88,6 +95,7 @@ function getWindowLabel(type: string): string {
         '7d': '7-Day Rolling',
         'opus': 'Opus (7-Day)',
         'sonnet': 'Sonnet (7-Day)',
+        'activity_5h': 'Sessions in Last 5 Hours',
         'activity_daily': "Today's Activity",
         'activity_weekly': 'This Week'
     };

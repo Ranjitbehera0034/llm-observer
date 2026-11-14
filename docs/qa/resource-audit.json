@@ -1,0 +1,303 @@
+{
+  "timestamp": "2026-10-07T13:10:04.501Z",
+  "platform": "darwin arm64",
+  "node": "v24.11.1",
+  "dataDirectory": "/var/folders/j9/68ccl9ss57g2x6q1t5yt4y3h0000gn/T/llm-observer-perf-p3TyFG",
+  "scope": "Backend only; synthetic 10,000 sessions; personal imports disabled; no provider keys; 60-second idle + API burst + 30-second recovery. Not a battery-life measurement.",
+  "startupMs": 120.04025,
+  "requests": 210,
+  "failures": [],
+  "p50Ms": 3.6432500000009895,
+  "p95Ms": 4.3879999999990105,
+  "maxMs": 8.623249999996915,
+  "samples": [
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:08:39.127Z",
+      "cpuPercent": 0,
+      "rssMiB": 95.15625
+    },
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:08:44.137Z",
+      "cpuPercent": 0,
+      "rssMiB": 95.203125
+    },
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:08:49.141Z",
+      "cpuPercent": 0,
+      "rssMiB": 95.203125
+    },
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:08:54.148Z",
+      "cpuPercent": 0,
+      "rssMiB": 93.828125
+    },
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:08:59.152Z",
+      "cpuPercent": 0,
+      "rssMiB": 93.828125
+    },
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:09:04.159Z",
+      "cpuPercent": 0,
+      "rssMiB": 94.046875
+    },
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:09:09.165Z",
+      "cpuPercent": 0,
+      "rssMiB": 94.046875
+    },
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:09:14.172Z",
+      "cpuPercent": 0,
+      "rssMiB": 94.046875
+    },
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:09:19.179Z",
+      "cpuPercent": 0,
+      "rssMiB": 94.046875
+    },
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:09:24.187Z",
+      "cpuPercent": 0,
+      "rssMiB": 94.046875
+    },
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:09:29.195Z",
+      "cpuPercent": 0,
+      "rssMiB": 94.046875
+    },
+    {
+      "phase": "idle",
+      "at": "2026-10-07T13:09:34.202Z",
+      "cpuPercent": 0,
+      "rssMiB": 94.046875
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.277Z",
+      "cpuPercent": 0,
+      "rssMiB": 97
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.284Z",
+      "cpuPercent": 0,
+      "rssMiB": 97.390625
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.292Z",
+      "cpuPercent": 0,
+      "rssMiB": 97.5
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.298Z",
+      "cpuPercent": 0,
+      "rssMiB": 98.125
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.305Z",
+      "cpuPercent": 0,
+      "rssMiB": 98.765625
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.311Z",
+      "cpuPercent": 0,
+      "rssMiB": 99.375
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.318Z",
+      "cpuPercent": 0,
+      "rssMiB": 100.09375
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.324Z",
+      "cpuPercent": 0,
+      "rssMiB": 100.640625
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.330Z",
+      "cpuPercent": 0,
+      "rssMiB": 102.296875
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.337Z",
+      "cpuPercent": 0,
+      "rssMiB": 102.296875
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.343Z",
+      "cpuPercent": 0,
+      "rssMiB": 102.34375
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.349Z",
+      "cpuPercent": 0,
+      "rssMiB": 102.359375
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.355Z",
+      "cpuPercent": 0,
+      "rssMiB": 102.375
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.361Z",
+      "cpuPercent": 0,
+      "rssMiB": 102.40625
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.367Z",
+      "cpuPercent": 0,
+      "rssMiB": 102.4375
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.373Z",
+      "cpuPercent": 0,
+      "rssMiB": 102.453125
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.379Z",
+      "cpuPercent": 0,
+      "rssMiB": 102.515625
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.385Z",
+      "cpuPercent": 0,
+      "rssMiB": 102.9375
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.391Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 103.453125
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.398Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 103.953125
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.404Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 104.46875
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.410Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 105.03125
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.416Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 105.90625
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.422Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 105.921875
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.429Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 105.953125
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.435Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 105.953125
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.441Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 105.96875
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.447Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 105.96875
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.453Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 105.96875
+    },
+    {
+      "phase": "loaded",
+      "at": "2026-10-07T13:09:34.459Z",
+      "cpuPercent": 26.5,
+      "rssMiB": 105.96875
+    },
+    {
+      "phase": "recovery",
+      "at": "2026-10-07T13:09:39.466Z",
+      "cpuPercent": 0,
+      "rssMiB": 106
+    },
+    {
+      "phase": "recovery",
+      "at": "2026-10-07T13:09:44.473Z",
+      "cpuPercent": 0,
+      "rssMiB": 106
+    },
+    {
+      "phase": "recovery",
+      "at": "2026-10-07T13:09:49.479Z",
+      "cpuPercent": 0,
+      "rssMiB": 106
+    },
+    {
+      "phase": "recovery",
+      "at": "2026-10-07T13:09:54.486Z",
+      "cpuPercent": 0,
+      "rssMiB": 106
+    },
+    {
+      "phase": "recovery",
+      "at": "2026-10-07T13:09:59.493Z",
+      "cpuPercent": 0,
+      "rssMiB": 106
+    },
+    {
+      "phase": "recovery",
+      "at": "2026-10-07T13:10:04.501Z",
+      "cpuPercent": 0,
+      "rssMiB": 106
+    }
+  ]
+}

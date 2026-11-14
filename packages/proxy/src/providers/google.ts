@@ -62,7 +62,7 @@ export class GoogleProvider implements IProvider {
             completionTokens,
             totalTokens,
             costUsd: costResult.costUsd,
-            pricing_unknown: costResult.unknown,
+            pricing_unknown: costResult.unknown || !responseBody?.usageMetadata,
             hasTools: requestData.hasTools,
         };
     }

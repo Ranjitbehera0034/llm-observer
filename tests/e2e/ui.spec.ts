@@ -15,7 +15,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function seedTestData(page: Page) {
     // Inject a test request via the Teams Sync API so the DB always has data
-    await page.request.post('http://localhost:4001/api/teams/default/sync', {
+    await page.request.post('/api/teams/default/sync', {
         data: {
             requests: [
                 {
@@ -111,7 +111,7 @@ test.describe('M3 — Request Detail', () => {
 
     test('M3.3 — Positive: Error status badge visible for error requests', async ({ page }) => {
         // Inject an error request
-        await page.request.post('http://localhost:4001/api/teams/default/sync', {
+        await page.request.post('/api/teams/default/sync', {
             data: {
                 requests: [{
                     provider: 'openai', model: 'gpt-4', cost_usd: 0,

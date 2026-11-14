@@ -1,3 +1,6 @@
+import { useSearchParams } from 'react-router-dom';
+import { apiFetch } from '../utils/apiFetch';
+import { visibleInterval } from '../utils/visibleInterval';
 import React, { useEffect, useState, useCallback } from 'react';
 import { Database, Filter, Search, RotateCcw, Clock, Zap, Cpu, TerminalSquare, Activity, Info, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -18,7 +21,7 @@ interface SessionRow {
     input_tokens: number;
     output_tokens: number;
     cache_read_tokens: number;
-    estimated_cost_usd: number;
+    estimated_cost_usd: number | null;
     session_type: string;
     has_subagents: boolean;
     subagent_count: number;
@@ -38,7 +41,9 @@ export default function Sessions() {
     // Filters
     const [providerFilter, setProviderFilter] = useState('');
     const [typeFilter, setTypeFilter] = useState('');
-    const [searchParam, setSearchParam] = useState('');
+    const [urlSearchParams] = useSearchParams();
+    const [searchParam, setSearchParam] = useState(urlSearchParams.get('search') || '');
+    useEffect(() => { setSearchParam(urlSearchParams.get('search') || ''); setPage(1); }, [urlSearchParams]);
 
     const loadData = useCallback(() => {
         setLoading(true);
@@ -50,10 +55,10 @@ export default function Sessions() {
             search: searchParam
         });
 
-        Promise.all([
-            fetch(`${API_BASE_URL}/api/sessions?${params.toString()}`).then(r => r.json()),
-            fetch(`${API_BASE_URL}/api/sessions/summary`).then(r => r.json()),
-            fetch(`${API_BASE_URL}/api/sessions/providers`).then(r => r.json())
+        return Promise.all([
+            apiFetch(`${API_BASE_URL}/api/sessions?${params.toString()}`).then(r => r.json()),
+            apiFetch(`${API_BASE_URL}/api/sessions/summary`).then(r => r.json()),
+            apiFetch(`${API_BASE_URL}/api/sessions/providers`).then(r => r.json())
         ]).then(([sessionsRes, summaryRes, providersRes]) => {
             setSessions(sessionsRes.data || []);
             setSummary(summaryRes || {});
@@ -69,26 +74,24 @@ export default function Sessions() {
         loadData();
     }, [loadData]);
 
-    // Polling for parsing progress
+    // Keep one serialized polling loop while parsing, even when progress changes.
+    const isParsing = Object.values(providers).some((p: any) => p?.status === 'parsing');
     useEffect(() => {
-        let interval: any;
-        const isParsing = Object.values(providers).some((p: any) => p?.status === 'parsing');
-        if (isParsing) {
-            interval = setInterval(() => {
-                fetch(`${API_BASE_URL}/api/sessions/providers`).then(r => r.json()).then(data => {
-                    setProviders(data);
-                    if (!Object.values(data).some((p: any) => p?.status === 'parsing')) {
-                        loadData();
-                    }
-                });
-            }, 1000);
-        }
-        return () => clearInterval(interval);
-    }, [providers, loadData]);
+        if (!isParsing) return;
+        return visibleInterval(async () => {
+            const res = await apiFetch(`${API_BASE_URL}/api/sessions/providers`);
+            if (!res.ok) throw new Error('Could not refresh import progress');
+            const data = await res.json();
+            setProviders(data);
+            if (!Object.values(data).some((p: any) => p?.status === 'parsing')) {
+                await loadData();
+            }
+        }, 1000);
+    }, [isParsing, loadData]);
 
     const handleRefresh = async () => {
         try {
-            await fetch(`${API_BASE_URL}/api/sessions/refresh`, { method: 'POST' });
+            await apiFetch(`${API_BASE_URL}/api/sessions/refresh`, { method: 'POST' });
             // wait a couple seconds for parse to complete
             setTimeout(loadData, 2000);
         } catch (e) {
@@ -112,7 +115,7 @@ export default function Sessions() {
             const session = sessions.find(s => s.id === id);
             if (session?.has_subagents) {
                 setLoadingSubagents(true);
-                fetch(`${API_BASE_URL}/api/sessions/${id}/agents`)
+                apiFetch(`${API_BASE_URL}/api/sessions/${id}/agents`)
                     .then(res => res.json())
                     .then(data => {
                         setSubagents(data.subagents || []);
@@ -130,6 +133,11 @@ export default function Sessions() {
 
     return (
         <div className="max-w-7xl mx-auto p-8 animate-fade-in pb-20">
+            {Object.entries(providers).filter(([, provider]: [string, any]) => provider?.error).map(([name, provider]: [string, any]) => (
+                <div key={name} role="status" className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
+                    {name}: {provider.error}
+                </div>
+            ))}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                 <div>
                     <h1 className="text-4xl font-black text-white tracking-tight flex items-center gap-3">
@@ -164,6 +172,7 @@ export default function Sessions() {
                 <div className="glass-panel p-6 border-white/5 relative overflow-hidden group">
                     <p className="text-xs font-black text-textMuted uppercase tracking-widest mb-1">Total Estimated Cost</p>
                     <p className="text-3xl font-black text-white">${(summary.total_cost || 0).toFixed(2)}</p>
+                    {summary.unpriced_sessions > 0 && <p className="text-xs text-amber-400">Partial total · {summary.unpriced_sessions} unpriced sessions excluded</p>}
                     <Zap className="absolute -right-2 -bottom-2 w-20 h-20 text-white/[0.02] group-hover:text-primary/[0.04] transition-colors" />
                 </div>
                 <div className="glass-panel p-6 border-white/5 relative overflow-hidden group">
@@ -300,7 +309,7 @@ export default function Sessions() {
                                         <span className="text-sm text-textMuted font-mono group-hover:text-indigo-400 transition-colors">{session.project_name}</span>
                                     </td>
                                     <td className="py-4 px-6 text-right font-mono text-sm font-medium text-emerald-400">
-                                        {formatCurrency(session.estimated_cost_usd)}
+                                        {session.estimated_cost_usd == null ? 'Unpriced' : formatCurrency(session.estimated_cost_usd)}
                                     </td>
                                     <td className="py-4 px-6 text-right">
                                         <div className="flex items-center justify-end gap-3 text-sm text-textMuted group-hover:text-white transition-colors">

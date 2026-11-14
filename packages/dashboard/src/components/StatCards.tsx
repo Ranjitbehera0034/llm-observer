@@ -1,3 +1,5 @@
+import { apiFetch } from '../utils/apiFetch';
+import { visibleInterval } from '../utils/visibleInterval';
 import { useEffect, useState, useRef } from 'react';
 import { Clock, AlertCircle, Hash } from 'lucide-react';
 import { API_BASE_URL } from '../config';
@@ -14,7 +16,7 @@ export function StatCards() {
 
     useEffect(() => {
         const fetchStats = () => {
-            fetch(`${API_BASE_URL}/api/stats/overview`)
+            apiFetch(`${API_BASE_URL}/api/stats/overview`)
                 .then(res => res.json())
                 .then(data => setStats(data))
                 .catch(console.error);
@@ -33,11 +35,11 @@ export function StatCards() {
             } catch (e) { }
         };
 
-        const pollId = setInterval(fetchStats, 30000);
+        const pollId = visibleInterval(fetchStats, 30000);
 
         return () => {
             sseRef.current?.close();
-            clearInterval(pollId);
+            pollId?.();
         };
     }, []);
 

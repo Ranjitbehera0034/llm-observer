@@ -1,3 +1,5 @@
+import { COMPATIBLE_PROVIDERS } from './providers/compatible';
+import { startActivityReporting } from './services/activityReporting';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -23,7 +25,7 @@ const app = express();
 
 const corsOptions = {
     origin: ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4001', 'http://127.0.0.1:4001', process.env.DASHBOARD_URL].filter(Boolean) as string[],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key']
 };
 
@@ -42,6 +44,14 @@ app.use(express.json({ limit: '5mb' }));
 app.use(budgetGuard);
 // Apply rate limit guard globally before proxying
 app.use(rateLimitGuard);
+
+// OpenAI-compatible upstreams share a wire format, not pricing identities.
+for (const name of Object.keys(COMPATIBLE_PROVIDERS)) {
+    app.all(`/v1/${name}/*`, (req,res) => {
+        req.url = req.url.replace(`/v1/${name}`, '/v1');
+        void handleProxyRequest(req,res,name);
+    });
+}
 
 // Route handlers based on provider path
 app.all('/v1/openai/*', (req, res) => {
@@ -178,6 +188,7 @@ async function bootstrap() {
         });
 
         // 5. Start background tasks
+        startActivityReporting();
         startAnomalyDetection();
         startRetentionCleanup();
         startCostOptimizer();
@@ -185,7 +196,7 @@ async function bootstrap() {
         startRateLimitPoller();
         syncManager.start();
         usageSyncManager.start();
-        networkMonitor.start();
+        void networkMonitor.start().catch(err => console.error('[NetworkMonitor] Startup failed:', err));
         initParsers();
 
     } catch (err) {

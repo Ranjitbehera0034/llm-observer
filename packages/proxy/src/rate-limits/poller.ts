@@ -1,11 +1,10 @@
 import fetch from 'node-fetch';
+import { createHash } from 'crypto';
 import { readClaudeOAuth } from './credentials';
 import { 
     insertRateLimitSnapshot, 
     getRateLimitConfig, 
-    getLatestSnapshots, 
-    cleanupOldSnapshots,
-    RateLimitSnapshot
+    cleanupOldSnapshots
 } from '@llm-observer/database';
 // Assuming we have access to sessions DB logic to count sessions, import them:
 import { getDb } from '@llm-observer/database';
@@ -13,67 +12,51 @@ import { getDb } from '@llm-observer/database';
 // Rate limit poller cycle in MS (5 minutes)
 const POLL_INTERVAL = 5 * 60 * 1000;
 let pollerInterval: NodeJS.Timeout | null = null;
+let polling = false;
 
-// Mock interface for Anthropic Rate Limit API (which doesn't really exist publicly, but we parse what we get)
-// From plan: 5h, 7d, opus, sonnet, extra with total_allowed, total_used, resets_at etc.
-// The plan provided assumes an API response like `GET https://api.claude.ai/api/organizations/{org_id}/rate_limits`
-// Wait, we don't have the org_id. From prior knowledge, Claude Code gets org via `GET https://api.claude.ai/api/organizations`.
-// For the scope of this file as designed by the plan, let's implement the fetching logic:
-
-async function getAnthropicOrgId(token: string): Promise<string | null> {
-    try {
-        const res = await fetch('https://api.claude.ai/api/organizations', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) return null;
-        const data = await res.json() as any[];
-        if (data && data.length > 0) {
-            return data[0].uuid; // Assumes org ID is in uuid field
-        }
-        return null;
-    } catch {
-        // ignore
-    }
-    return null;
-}
+// This is a private provider endpoint; accept only validated, observed fields.
+// Reference: CodexBar docs/claude.md, OAuth usage mapping (2026-11-14).
+let quotaCredential = '';
+let quotaRetryAfter = 0;
 
 export async function fetchAnthropicRateLimitsLive(token: string): Promise<void> {
-    const orgId = await getAnthropicOrgId(token);
-    if (!orgId) throw new Error('Could not fetch org ID');
-
-    const res = await fetch(`https://api.claude.ai/api/organizations/${orgId}/rate_limits`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+    const credential = createHash('sha256').update(token).digest('hex');
+    if (credential !== quotaCredential) {
+        quotaCredential = credential;
+        quotaRetryAfter = 0;
+    }
+    if (Date.now() < quotaRetryAfter) throw new Error('Anthropic quota refresh is cooling down after rate limiting.');
+    const res = await fetch('https://api.anthropic.com/api/oauth/usage', {
+        headers: { Authorization: `Bearer ${token}`, 'anthropic-beta': 'oauth-2025-04-20' },
+        timeout: 15_000, size: 1_000_000, redirect: 'error'
     });
-
-    if (!res.ok) {
-        throw new Error(`Rate limit API failed: ${res.status}`);
+    if (res.status === 429) {
+        const retry = res.headers.get('retry-after');
+        const delay = retry && /^\d+$/.test(retry) ? Number(retry) * 1000 : retry ? Date.parse(retry) - Date.now() : 0;
+        quotaRetryAfter = Date.now() + Math.max(30 * 60 * 1000, Number.isFinite(delay) ? delay : 0);
     }
-
+    if (!res.ok) throw new Error(`Anthropic quota refresh failed: HTTP ${res.status}`);
     const data = await res.json() as any;
-    // Assume data has the format expected: an array or object containing different limits
-    // For this implementation, we will map standard limits. 
-    // Plan lists windows: "5h", "7d", "opus", "sonnet", "extra"
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Invalid Anthropic quota response.');
+    const mapping: Record<string, string> = { five_hour: '5h', seven_day: '7d', seven_day_sonnet: 'sonnet', seven_day_opus: 'opus' };
+    let observed = 0;
     const now = new Date().toISOString();
-    
-    // We mock the mapping of raw response to our schema since actual response format wasn't strictly provided.
-    // Let's assume data.rate_limits exists
-    const limits = data.rate_limits || [];
-    for (const limit of limits) {
-        const pct = limit.total_allowed ? (limit.total_used / limit.total_allowed) : 0;
-        
+    for (const [field, window] of Object.entries(mapping)) {
+        const value = field === 'seven_day' ? data.seven_day ?? data.seven_day_oauth_apps : data[field];
+        if (value == null) continue;
+        if (typeof value.utilization !== 'number' || !Number.isFinite(value.utilization) || value.utilization < 0 || value.utilization > 100) continue;
+        if (value.resets_at != null && (typeof value.resets_at !== 'string' || !Number.isFinite(Date.parse(value.resets_at)))) continue;
+        const pct = value.utilization / 100;
         insertRateLimitSnapshot({
-            provider: 'anthropic',
-            window_type: limit.type || 'unknown',
-            total_allowed: limit.total_allowed || 0,
-            total_used: limit.total_used || 0,
-            utilization_pct: pct,
-            resets_at: limit.resets_at || null,
-            is_estimated: false,
-            captured_at: now
+            provider: 'anthropic', window_type: window,
+            total_allowed: null, total_used: null, utilization_pct: pct,
+            resets_at: value.resets_at ?? null, is_estimated: false, captured_at: now
         });
-
-        checkAlerts('anthropic', limit.type || 'unknown', pct);
+        observed++;
+        try { checkAlerts('anthropic', window, pct); }
+        catch (error) { console.error('Quota alert failed:', error); }
     }
+    if (!observed) throw new Error('No supported quota measurements available; previous observations retained.');
 }
 
 // Fallback estimation using session counts
@@ -82,13 +65,13 @@ export function estimateAnthropicRateLimits(): void {
     const now = new Date().toISOString();
     
     // Count sessions in last 5 hours
-    const count5hResp = db.prepare(`SELECT COUNT(*) as count FROM sessions WHERE provider = 'anthropic' AND started_at >= datetime('now', '-5 hours')`).get() as any;
+    const count5hResp = db.prepare(`SELECT COUNT(*) as count FROM sessions WHERE provider = 'anthropic' AND julianday(started_at) >= julianday('now', '-5 hours')`).get() as any;
     const count5h = count5hResp.count;
 
     // Output snapshot for 5h
     insertRateLimitSnapshot({
         provider: 'anthropic',
-        window_type: '5h',
+        window_type: 'activity_5h',
         total_allowed: null, // Unknown since estimated
         total_used: count5h,
         utilization_pct: null,
@@ -105,13 +88,13 @@ export function performActivityMonitoring(provider: string): void {
     const dailyResp = db.prepare(`
         SELECT COUNT(*) as count, SUM(input_tokens + output_tokens) as tokens 
         FROM sessions 
-        WHERE provider = ? AND started_at >= datetime('now', 'start of day')
+        WHERE provider = ? AND julianday(started_at) >= julianday('now', 'start of day')
     `).get(provider) as any;
 
     const weeklyResp = db.prepare(`
         SELECT COUNT(*) as count, SUM(input_tokens + output_tokens) as tokens 
         FROM sessions 
-        WHERE provider = ? AND started_at >= datetime('now', '-7 days')
+        WHERE provider = ? AND julianday(started_at) >= julianday('now', '-7 days')
     `).get(provider) as any;
 
     insertRateLimitSnapshot({
@@ -174,25 +157,28 @@ function fireAlert(provider: string, window_type: string, type: string, pct: num
 }
 
 export async function pollRateLimits() {
+    if (polling) return;
+    polling = true;
     try {
-        // Cleaning up old snapshots
-        cleanupOldSnapshots(30);
+        try { cleanupOldSnapshots(30); }
+        catch (error) { console.error('Rate-limit cleanup failed:', error); }
 
-        // Anthropic Polling
-        const token = await readClaudeOAuth();
-        if (token) {
-            await fetchAnthropicRateLimitsLive(token);
-        } else {
-            estimateAnthropicRateLimits();
+        try {
+            const token = await readClaudeOAuth();
+            if (token) await fetchAnthropicRateLimitsLive(token);
+            else estimateAnthropicRateLimits();
+        } catch (error) {
+            // Preserve the last known quota; activity is a separate observation.
+            console.error('Anthropic quota refresh failed:', error);
+            try { estimateAnthropicRateLimits(); }
+            catch (fallbackError) { console.error('Anthropic activity refresh failed:', fallbackError); }
         }
-
-        // Activity monitoring for Cursor, OpenAI, Aider
-        performActivityMonitoring('cursor');
-        performActivityMonitoring('openai');
-        performActivityMonitoring('aider');
-
-    } catch (err) {
-        console.error('Error during rate limit polling:', err);
+        for (const provider of ['cursor', 'openai', 'aider']) {
+            try { performActivityMonitoring(provider); }
+            catch (error) { console.error(`${provider} activity refresh failed:`, error); }
+        }
+    } finally {
+        polling = false;
     }
 }
 

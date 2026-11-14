@@ -1,3 +1,4 @@
+import { CompatibleProvider, COMPATIBLE_PROVIDERS } from './providers/compatible';
 import { Request, Response } from 'express';
 import httpProxy from 'http-proxy';
 import { Readable } from 'stream';
@@ -27,6 +28,7 @@ export const proxy = httpProxy.createProxyServer({
 
 
 const providers: Record<string, IProvider> = {
+    ...Object.fromEntries(Object.entries(COMPATIBLE_PROVIDERS).map(([name,url]) => [name,new CompatibleProvider(name,url)])),
     openai: new OpenAIProvider(),
     anthropic: new AnthropicProvider(),
     google: new GoogleProvider(),
@@ -243,7 +245,7 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
             if (requestInfo.isStreaming && extractedUsage) {
                 let p = extractedUsage.prompt_tokens || 0;
                 let c = extractedUsage.completion_tokens || 0;
-                const costResult = providers[providerName].calculateCost(requestInfo.model, p, c);
+                const costResult = providers[providerName].calculateCost(requestInfo.model, p, c, extractedUsage.cached_tokens ?? 0);
                 usage = {
                     promptTokens: p,
                     completionTokens: c,
@@ -334,7 +336,7 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
                 status: statusCode >= 400 ? 'error' : 'success',
                 is_streaming: requestInfo.isStreaming ? 1 : 0,
                 has_tools: requestInfo.hasTools ? 1 : 0,
-                pricing_unknown: usage?.pricing_unknown ? 1 : 0,
+                pricing_unknown: !usage || usage.pricing_unknown ? 1 : 0,
                 tags: (req.headers['x-tags'] || req.headers['x-llm-observer-tags']) as string || undefined,
                 request_body: requestBodyStr,
                 response_body: dbResponseBody,
@@ -349,7 +351,7 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
                 incrementSpendCache(cacheKey, usage.costUsd);
             }
 
-            requestEventEmitter.emit('new_request', reqRecord);
+            requestEventEmitter.emit('new_request', { ...reqRecord, cost_usd: reqRecord.pricing_unknown ? null : reqRecord.cost_usd });
 
             internalLogger.add({
                 ...reqRecord,
@@ -361,7 +363,7 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
                 metadata: reqRecord.metadata
             }).catch((err: any) => console.error('Failed to enqueue request log:', err));
 
-            console.log(chalk.green(`✓ [${providerName}] ${requestInfo.model} | ${usage?.totalTokens || 0} tokens | ${latency}ms | $${(usage?.costUsd || 0).toFixed(6)}`));
+            console.log(chalk.green(`✓ [${providerName}] ${requestInfo.model} | ${usage?.totalTokens || 0} tokens | ${latency}ms | $${reqRecord.pricing_unknown ? 'unpriced' : reqRecord.cost_usd.toFixed(6)}`));
 
         } catch (err) {
             console.error('Error logging request:', err);

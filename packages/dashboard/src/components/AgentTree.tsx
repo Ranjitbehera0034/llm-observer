@@ -17,7 +17,7 @@ const getAgentTypeIcon = (type: string) => {
 };
 
 export function AgentTree({ parent, subagents }: AgentTreeProps) {
-    const totalCost = (parent.estimated_cost_usd || 0) + subagents.reduce((sum, a) => sum + (a.estimated_cost_usd || 0), 0);
+    const totalCost = parent.estimated_cost_usd; // Already includes separately tracked subagents.
 
     return (
         <div className="space-y-4">
@@ -35,12 +35,12 @@ export function AgentTree({ parent, subagents }: AgentTreeProps) {
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
                             <span className="text-sm font-medium text-white">Parent Session</span>
-                            <span className="text-sm font-mono text-white">{formatCurrency(parent.parent_cost_usd || parent.estimated_cost_usd)}</span>
+                            <span className="text-sm font-mono text-white">{formatCurrency(parent.parent_cost_usd)}</span>
                         </div>
                         <div className="flex items-center gap-4 text-xs text-textMuted">
                             <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {parent.duration_seconds}s</span>
                             <span className="flex items-center gap-1"><Zap className="w-3 h-3" /> {parent.input_tokens + parent.output_tokens} tokens</span>
-                            <span className="text-primary/60">{Math.round(((parent.parent_cost_usd || parent.estimated_cost_usd) / totalCost) * 100)}% of total</span>
+                            <span className="text-primary/60">{Math.round(((parent.parent_cost_usd) / totalCost) * 100)}% of total</span>
                         </div>
                     </div>
                 </div>

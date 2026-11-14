@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../config';
 
@@ -6,7 +7,7 @@ export function Heatmap() {
     const [mode, setMode] = useState<'sessions' | 'cost'>('sessions');
 
     useEffect(() => {
-        fetch(`${API_BASE_URL}/api/heatmap?days=30&mode=${mode}`)
+        apiFetch(`${API_BASE_URL}/api/heatmap?days=30&mode=${mode}`)
             .then(r => r.json())
             .then(setData)
             .catch(console.error);

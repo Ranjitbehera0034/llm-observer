@@ -91,6 +91,65 @@ describe('Unified Overview API (v1.3.1)', () => {
         });
     });
 
+    describe('Partial billing coverage', () => {
+        it('retains proxy spend when sync is active but has no records', async () => {
+            seedSyncConfig('anthropic');
+            seedProxy('anthropic', 8);
+            const res = await request(app).get('/api/overview');
+            expect(res.body.tracked_api.total_usd).toBe(8);
+        });
+
+        it('retains proxy spend when usage exists but billing has not arrived', async () => {
+            seedUsage('anthropic', 10);
+            db.prepare('UPDATE usage_records SET cost_usd = NULL').run();
+            seedProxy('anthropic', 8);
+            const res = await request(app).get('/api/overview');
+            expect(res.body.tracked_api.total_usd).toBe(8);
+            expect(res.body.tracked_api.providers.anthropic.source).toBe('proxy');
+        });
+
+        it('retains estimates outside covered buckets in both totals and timeline', async () => {
+            seedSyncConfig('anthropic');
+            seedUsage('anthropic', 10);
+            seedProxy('anthropic', 8);
+            // Place the proxy request exactly at the exclusive end of the hour.
+            db.prepare("UPDATE requests SET created_at = strftime('%Y-%m-%dT%H:%M:%fZ', created_at, '+1 hour')").run();
+            const res = await request(app).get('/api/overview');
+            expect(res.body.tracked_api.total_usd).toBe(18);
+            expect(res.body.tracked_api.providers.anthropic.source).toBe('mixed');
+            const timeline = await request(app).get('/api/overview/timeline');
+            expect(timeline.body.reduce((sum: number, day: any) => sum + day.tracked_api_usd, 0)).toBe(18);
+        });
+
+        it('does not suppress another model and respects zero-cost coverage', async () => {
+            seedUsage('anthropic', 0);
+            seedProxy('anthropic', 8);
+            let res = await request(app).get('/api/overview');
+            expect(res.body.tracked_api.total_usd).toBe(0);
+            db.prepare("UPDATE requests SET model = 'other-model'").run();
+            res = await request(app).get('/api/overview');
+            expect(res.body.tracked_api.total_usd).toBe(8);
+        });
+
+        it('does not suppress requests using a bucket excluded from the selected period', async () => {
+            seedUsage('anthropic', 10, 1);
+            db.prepare("UPDATE usage_records SET bucket_width = '1d'").run();
+            seedProxy('anthropic', 8);
+            const d = new Date();
+            d.setHours(1, 0, 0, 0); // Covered by yesterday's noon-to-noon bucket.
+            db.prepare('UPDATE requests SET created_at = ?').run(d.toISOString());
+            const res = await request(app).get('/api/overview');
+            expect(res.body.tracked_api.total_usd).toBe(8);
+        });
+
+        it('does not double count covered records when sync is disabled', async () => {
+            seedUsage('anthropic', 10);
+            seedProxy('anthropic', 8);
+            const res = await request(app).get('/api/overview');
+            expect(res.body.tracked_api.total_usd).toBe(10);
+        });
+    });
+
     describe('Subscription Proration', () => {
         it('calculates daily burn correctly (today)', async () => {
             // Started 5 days ago

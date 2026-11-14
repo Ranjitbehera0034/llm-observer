@@ -100,7 +100,8 @@ describe('AI Analyst', () => {
 
         // Privacy: the request body contains aggregates, never prompts/paths
         const callArg = mockCreate.mock.calls[0][0];
-        expect(callArg.model).toBe('claude-opus-4-8');
+        expect(callArg.model).toBe('claude-sonnet-5-5');
+        expect(callArg.max_tokens).toBe(4096);
         const sent = JSON.stringify(callArg.messages);
         expect(sent).toContain('cache_read_tokens');
         expect(sent).not.toContain('/Users/');

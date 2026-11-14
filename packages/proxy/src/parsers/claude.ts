@@ -25,7 +25,8 @@ const findFilesRecursive = (dir: string, pattern: RegExp): string[] => {
     const list = fs.readdirSync(dir);
     for (const file of list) {
         const filePath = path.join(dir, file);
-        const stat = fs.statSync(filePath);
+        const stat = fs.lstatSync(filePath);
+        if (stat.isSymbolicLink()) continue;
         if (stat && stat.isDirectory()) {
             if (file === 'subagents') continue; // Subagents handled explicitly by parents
             results = results.concat(findFilesRecursive(filePath, pattern));
@@ -44,6 +45,7 @@ interface UsageTotals {
     cacheRead: number;
     cacheWrite: number;
     cacheWrite1h: number;
+    invalid?: boolean;
 }
 
 const emptyTotals = (): UsageTotals => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cacheWrite1h: 0 });
@@ -57,7 +59,7 @@ const extractModel = (event: any): string | undefined =>
 
 // One API response can span multiple JSONL lines (one per content block), each repeating
 // the same usage object. Summing naively over-counts ~2x; billing is per (message.id, requestId).
-const accumulateUsage = (event: any, totals: UsageTotals, seenRequests: Set<string>): void => {
+const accumulateUsage = (event: any, totals: UsageTotals, seenRequests: Set<string>, byModel: Map<string, UsageTotals>): void => {
     const msg = getEventMessage(event);
     const usage = msg?.usage || event.usage;
     if (!usage) return;
@@ -66,11 +68,24 @@ const accumulateUsage = (event: any, totals: UsageTotals, seenRequests: Set<stri
         if (seenRequests.has(dedupeKey)) return;
         seenRequests.add(dedupeKey);
     }
-    totals.input += usage.input_tokens || usage.prompt_tokens || 0;
-    totals.output += usage.output_tokens || usage.completion_tokens || 0;
-    totals.cacheRead += usage.cache_read_input_tokens || usage.cache_read_tokens || 0;
-    totals.cacheWrite += usage.cache_creation_input_tokens || usage.cache_creation_tokens || 0;
-    totals.cacheWrite1h += usage.cache_creation?.ephemeral_1h_input_tokens || 0;
+    const values = {
+        input: usage.input_tokens ?? usage.prompt_tokens ?? 0,
+        output: usage.output_tokens ?? usage.completion_tokens ?? 0,
+        cacheRead: usage.cache_read_input_tokens ?? usage.cache_read_tokens ?? 0,
+        cacheWrite: usage.cache_creation_input_tokens ?? usage.cache_creation_tokens ?? 0,
+        cacheWrite1h: usage.cache_creation?.ephemeral_1h_input_tokens ?? 0
+    };
+    const model = extractModel(event) || 'unknown';
+    const bucket = byModel.get(model) ?? emptyTotals();
+    if (!Object.values(values).every(n => Number.isSafeInteger(n) && n >= 0) || values.cacheWrite1h > values.cacheWrite) {
+        bucket.invalid = true;
+    } else {
+        for (const key of ['input', 'output', 'cacheRead', 'cacheWrite', 'cacheWrite1h'] as const) {
+            totals[key] += values[key];
+            bucket[key] += values[key];
+        }
+    }
+    byModel.set(model, bucket);
 };
 
 const countToolUses = (event: any, toolCalls: Record<string, number>): void => {
@@ -96,10 +111,11 @@ const resolvePricing = (model: string) => {
 };
 
 // Anthropic bills cache writes at 1.25x input (5-minute TTL) and 2x input (1-hour TTL).
-const computeCost = (model: string, totals: UsageTotals): number => {
-    if (!model) return 0;
+const computeCost = (model: string, totals: UsageTotals): number | null => {
+    if (!model || totals.invalid) return null;
     const pricing = resolvePricing(model);
-    if (!pricing) return 0;
+    if (!pricing || ![pricing.input, pricing.output].every(n => Number.isFinite(n) && n >= 0)) return null;
+    if (totals.cacheRead > 0 && (pricing.cached == null || !Number.isFinite(pricing.cached) || pricing.cached < 0)) return null;
     const cacheWrite5m = Math.max(0, totals.cacheWrite - totals.cacheWrite1h);
     const inputCost = (totals.input / 1_000_000) * pricing.input;
     const outputCost = (totals.output / 1_000_000) * pricing.output;
@@ -107,6 +123,16 @@ const computeCost = (model: string, totals: UsageTotals): number => {
     const cacheWriteCost = (cacheWrite5m / 1_000_000) * pricing.input * 1.25
         + (totals.cacheWrite1h / 1_000_000) * pricing.input * 2;
     return inputCost + outputCost + cacheReadCost + cacheWriteCost;
+};
+const priceModels = (byModel: Map<string, UsageTotals>): number | null => {
+    if (!byModel.size) return null;
+    let cost = 0;
+    for (const [model, usage] of byModel) {
+        const value = computeCost(model, usage);
+        if (value === null) return null;
+        cost += value;
+    }
+    return cost;
 };
 export const parse = async (onProgress?: (current: number, total: number) => void): Promise<void> => {
     const claudeDir = getClaudeDir();
@@ -142,7 +168,7 @@ const parseSessionFile = async (filePath: string) => {
     const mtime = stat.mtimeMs;
     
     const registryEntry = getParsedFile(filePath);
-    if (registryEntry && registryEntry.last_modified_at >= mtime) {
+    if (registryEntry && registryEntry.status === 'success' && registryEntry.last_modified_at >= mtime) {
         // Skip unchanged file
         return;
     }
@@ -160,6 +186,7 @@ const parseSessionFile = async (filePath: string) => {
     let started_at: string | null = null;
     let ended_at: string | null = null;
     const totals = emptyTotals();
+    const byModel = new Map<string, UsageTotals>();
     const seenRequests = new Set<string>();
     let totalLines = 0;
     let conversationMessages = 0;
@@ -197,7 +224,7 @@ const parseSessionFile = async (filePath: string) => {
                 modelCounts[model] = (modelCounts[model] || 0) + 1;
             }
 
-            accumulateUsage(event, totals, seenRequests);
+            accumulateUsage(event, totals, seenRequests, byModel);
             countToolUses(event, toolCalls);
 
         } catch (e) {
@@ -231,7 +258,7 @@ const parseSessionFile = async (filePath: string) => {
     }
 
     // Determine estimated cost ('anthropic' as provider since it's claude-code)
-    const estimatedCost = computeCost(primaryModel, totals);
+    const estimatedCost = priceModels(byModel);
 
     // Determine session type
     const toolCallCount = Object.values(toolCalls).reduce((a, b) => a + b, 0);
@@ -294,7 +321,7 @@ const parseSessionFile = async (filePath: string) => {
                 const subagentStat = fs.statSync(subagentFilePath);
                 const subagentRegistryEntry = getParsedFile(subagentFilePath);
                 
-                if (!subagentRegistryEntry || subagentRegistryEntry.last_modified_at < subagentStat.mtimeMs) {
+                if (!subagentRegistryEntry || subagentRegistryEntry.status !== 'success' || subagentRegistryEntry.last_modified_at < subagentStat.mtimeMs) {
                     await parseSubagentFile(subagentFilePath, parentId);
                 }
             }
@@ -334,6 +361,7 @@ const parseSubagentFile = async (filePath: string, parentId: number) => {
     let started_at: string | null = null;
     let ended_at: string | null = null;
     const totals = emptyTotals();
+    const byModel = new Map<string, UsageTotals>();
     const seenRequests = new Set<string>();
     let totalLines = 0;
     let conversationMessages = 0;
@@ -355,7 +383,7 @@ const parseSubagentFile = async (filePath: string, parentId: number) => {
             if (event.timestamp) ended_at = new Date(event.timestamp).toISOString();
             const model = extractModel(event);
             if (model) modelCounts[model] = (modelCounts[model] || 0) + 1;
-            accumulateUsage(event, totals, seenRequests);
+            accumulateUsage(event, totals, seenRequests, byModel);
             countToolUses(event, toolCalls);
         } catch (e) {}
     }
@@ -367,7 +395,7 @@ const parseSubagentFile = async (filePath: string, parentId: number) => {
     const cacheReadTokens = totals.cacheRead;
     const cacheWriteTokens = totals.cacheWrite;
     let primaryModel = Object.entries(modelCounts).sort((a,b) => b[1] - a[1])[0]?.[0] || '';
-    const agentCost = computeCost(primaryModel, totals);
+    const agentCost = priceModels(byModel);
 
     insertSubagent({
         parent_session_id: parentId,
@@ -411,21 +439,9 @@ export const classifyAgentType = (toolCalls: Record<string, number>, input: numb
     return 'general';
 };
 
-const updateParentWithSubagentTotals = (parentId: number, originalParentCost: number) => {
+const updateParentWithSubagentTotals = (parentId: number, _originalParentCost: number | null) => {
     const agents = getSubagentsBySession(parentId);
-    const totalSubagentCost = agents.reduce((sum: number, a: any) => sum + (a.estimated_cost_usd || 0), 0);
-    
-    // Consistency check: total session cost vs (parent interactive cost + subagent totals)
-    // estimated_cost_usd in sessions table represents the summary from the parent log file
-    // which *should* already account for subagent token counts if Claude Code logs them correctly,
-    // OR it might only represent the parent's interactive overhead. 
-    // Usually, parent log in Claude Code shows aggregate usage *including* what it thinks subagents did.
-    // However, our subagent parser reads the discrete logs.
-    const combinedCost = originalParentCost + totalSubagentCost;
-    
-    if (Math.abs(combinedCost - originalParentCost) > 0.01 && totalSubagentCost > 0) {
-        console.log(`[Claude Parser] Session ${parentId}: Parent cost $${originalParentCost.toFixed(4)}, Subagents total $${totalSubagentCost.toFixed(4)}.`);
-    }
-
-    updateSessionTotals(parentId, totalSubagentCost, agents.length);
+    const total = agents.some(a => a.estimated_cost_usd == null)
+        ? null : agents.reduce((sum, a) => sum + a.estimated_cost_usd!, 0);
+    updateSessionTotals(parentId, total, agents.length);
 };

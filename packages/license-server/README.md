@@ -1,160 +1,58 @@
-# LLM Observer — License Server
+# LLM Observer payment service
 
-The cloud relay that bridges payment webhooks (Razorpay / Lemon Squeezy) to your local LLM Observer installation. Runs as a Vercel Serverless deployment.
+The application works free without a cloud service. Pro requires a configured HTTPS license service. Do not enable checkout until a complete test-mode purchase passes.
 
-```
-packages/license-server/
-├── api/
-│   ├── health.ts                    # GET  /health
-│   ├── license/
-│   │   └── validate.ts              # POST /license/validate
-│   └── webhook/
-│       ├── lemonsqueezy.ts          # POST /webhook/lemonsqueezy
-│       └── razorpay.ts              # POST /webhook/razorpay
-└── src/
-    ├── keyGenerator.ts              # HMAC-signed PRO_ key generation
-    └── emailService.ts              # Resend email delivery (dark-mode HTML)
-```
+## Plans
 
----
+- Pro: $9/month or $79/year through Lemon Squeezy recurring products.
+- India: ₹799 for a 30-day Razorpay pass, explicitly **no automatic renewal**.
+- Free: one project and 7-day request retention. Pro: 100 projects and 90-day request retention. Session history is separate from request retention.
+- Teams: pilot, not a self-service product.
 
-## How It Works
+## Deployment
 
-```
-Customer pays via Razorpay/Lemon Squeezy
-           ↓
-Payment provider fires webhook → this server
-           ↓
-Verifies HMAC-SHA256 signature
-           ↓
-Generates signed PRO_ license key (deterministic — same payment = same key)
-           ↓
-Sends dark-mode HTML email via Resend
-           ↓
-Customer pastes key into LLM Observer Settings → Instant activation ✅
-```
+Deploy this directory to Vercel using the existing `vercel.json`. Set the exact environment names in `.env.example` in the deployment dashboard. The signing secret must contain at least 32 random characters. Never ship provider API keys in the desktop app or website.
 
----
+Lemon Squeezy: create monthly and annual variants, set their comma-separated IDs plus store ID and API key. Register `/webhook/lemonsqueezy` for `subscription_created` and `subscription_payment_success`. Invoices reference `attributes.subscription_id`, so renewals reuse the original key.
 
-## 1. Deploy to Vercel in 2 minutes
+Razorpay: register `/webhook/razorpay` for `payment_link.paid`. Checkout creates a non-recurring ₹799 link tagged with the product and plan. The service reads the link and its captured payment before issuing a key. Partial payments are disabled.
 
-```bash
-cd packages/license-server
+Configure `RESEND_API_KEY` and a verified `EMAIL_FROM`. Configure `CHECKOUT_CALLBACK_URL` to the deployed thank-you page. Webhooks fail closed without a signature secret; delivery failures return a retryable status. Resend receives a stable idempotency key.
 
-# Install Vercel CLI
-npm install -g vercel
+The payment providers hold durable entitlement state. Validation queries current subscription/invoice or payment-link/payment records. It rejects wrong products, refunds, unpaid/expired subscriptions and expired passes. Cancellation retains access until `ends_at`. A failed renewal suspends access until a successful retry. Test subscriptions require `PAYMENTS_TEST_MODE=true` on a separate test deployment.
 
-# Deploy
-vercel --prod
-```
+## Public configuration
 
-Vercel will give you a URL like: `https://llm-observer-license.vercel.app`
+- Release build: `LICENSE_SERVER_URL=https://<your-service>/license/validate` (also supports runtime override for development).
+- Main landing page: `VITE_LEMONSQUEEZY_CHECKOUT_URL`, `VITE_LEMONSQUEEZY_YEARLY_CHECKOUT_URL`, `VITE_LICENSE_SERVER_URL` (origin).
+- Separate Next website: corresponding `NEXT_PUBLIC_` variables.
 
----
+Missing checkout configuration displays an unavailable state instead of a placeholder payment link. Buyers should not configure environment variables themselves.
 
-## 2. Configure Environment Variables
+## Verification
 
-In Vercel Dashboard → Your Project → Settings → Environment Variables:
+Run `npm test --workspace=@llm-observer/license-server` and `npm run build --workspace=@llm-observer/license-server`.
 
-| Variable | Where to get it |
-|---|---|
-| `RESEND_API_KEY` | [resend.com](https://resend.com) → API Keys (free: 100/day) |
-| `EMAIL_FROM` | `licenses@yourdomain.com` (must be verified in Resend) |
-| `LEMONSQUEEZY_WEBHOOK_SECRET` | LS Dashboard → Settings → Webhooks → Signing Secret |
-| `RAZORPAY_WEBHOOK_SECRET` | Razorpay Dashboard → Settings → Webhooks → Secret |
-| `LICENSE_SIGNING_SECRET` | Run: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+Before opening sales, verify with provider test accounts: first payment, email receipt/key, activation on a clean app installation, duplicate webhook, renewal, failed renewal, cancellation through paid-through date, refund, expiry, email retry, invalid key, service outage, and reinstall on another device. Automated tests mock provider and email responses; they do not certify live merchant configuration.
 
----
+Clients refresh entitlement every six hours. During outages a previously verified lease lasts at most 72 hours, never beyond the paid-through date. No raw prompts, responses or session history are sent for licensing. Status responses do not reveal license keys.
 
-## 3. Register Webhooks
+## Existing customers
 
-### Lemon Squeezy
-1. Dashboard → Settings → Webhooks → Add Webhook
-2. URL: `https://your-vercel-url.vercel.app/webhook/lemonsqueezy`
-3. Events: ✅ `subscription_created` ✅ `subscription_payment_success` ✅ `order_created`
-4. Copy the Signing Secret → add to Vercel env
+New keys preserve full provider IDs and use full SHA-256 signatures. Old truncated keys cannot reliably identify every original payment. Before rolling out to paying customers, reissue from verified provider records and email customers their replacement keys. Keep signing secrets stable across deployments. Do not silently grant perpetual access to old prefix-only keys.
 
-### Razorpay
-1. Dashboard → Settings → Webhooks → Add New Webhook
-2. URL: `https://your-vercel-url.vercel.app/webhook/razorpay`
-3. Events: ✅ `subscription.activated` ✅ `subscription.charged` ✅ `payment.captured`
-4. Enter a secret → add to Vercel env
+Recovery: resend the original purchase email. Customers may use the same key on a replacement device; this release does not claim seat enforcement. Subscriptions are managed through Lemon Squeezy's portal. Razorpay passes do not renew automatically.
 
----
+## Customer visibility (optional)
 
-## 4. Point LLM Observer to the Validator
+Apply `sql/customer-reporting.sql` to a dedicated Supabase/PostgREST database. Configure `CUSTOMER_STORE_URL` (the `/rest/v1` base), `CUSTOMER_STORE_SERVICE_KEY` and a distinct random `CUSTOMER_ADMIN_TOKEN` of at least 32 characters. Service/admin secrets never belong in desktop builds or public environment variables. Visit `/customers.html` on the license server and enter the owner token to view dated billing snapshots and opt-in installations. Pagination returns 100 records per collection. Demo records are browser-only and do not create accounts or licenses.
 
-In the local proxy, set:
-```bash
-LICENSE_SERVER_URL=https://your-vercel-url.vercel.app/license/validate
-```
+Webhook delivery and license validation maintain billing snapshots. Enable all supported Lemon Squeezy subscription lifecycle events; backfill older customers separately from verified provider records. A snapshot is not a live invoice query. Inactive states are consolidated as `inactive`, while current entitlement is always verified at activation. Razorpay payment-link refund reconciliation still requires provider validation. An outage in customer reporting does not revoke a valid license.
 
-Or in `.env`:
-```
-LICENSE_SERVER_URL=https://llm-observer-license.vercel.app/license/validate
-```
+Activity is opt-in in app Settings. The server verifies supplied licenses; it never trusts a client-supplied plan. Free installations have random IDs, not identities. `last_seen` reports the app running, not user engagement. A missing heartbeat means unknown activity. Stop and forget authenticates deletion with the installation secret; offline deletion is retryable. Billing records remain separate. Apply gateway rate limits before enabling public ingestion and schedule the SQL cleanup for activity older than 90 days. Test RLS, RPC credential mismatch, deletion, and isolation in staging before rollout; unit mocks do not validate deployed PostgreSQL permissions.
 
----
+## International Pro checkout
 
-## 5. Test Locally
+`POST /checkout/lemonsqueezy` accepts `{ email, plan: "monthly" | "yearly" }` and creates a hosted checkout through Lemon Squeezy's API. Configure the monthly/yearly variant IDs and include both in `LEMONSQUEEZY_VARIANT_IDS`. Only the server chooses variants; submitted prices/variant IDs are ignored. Prices, taxes, supported countries/payment methods, and trial policy are shown by the merchant checkout. Do not advertise worldwide availability without checking the provider's country restrictions. `PAYMENTS_TEST_MODE=true` is for staging only. A completed redirect is not proof of payment: signed webhook verification and provider-backed license validation enable Pro.
 
-```bash
-# Start Vercel dev environment
-cd packages/license-server
-npm run dev
-
-# Health check
-curl http://localhost:3000/health
-
-# Simulate a Lemon Squeezy webhook (dev mode — no signature check)
-curl -X POST http://localhost:3000/webhook/lemonsqueezy \
-  -H "Content-Type: application/json" \
-  -H "x-event-name: subscription_created" \
-  -d '{
-    "data": {
-      "id": "sub_999",
-      "attributes": {
-        "user_email": "you@example.com",
-        "total": 900,
-        "currency": "USD"
-      }
-    }
-  }'
-
-# Simulate Razorpay
-curl -X POST http://localhost:3000/webhook/razorpay \
-  -H "Content-Type: application/json" \
-  -d '{
-    "event": "subscription.activated",
-    "payload": {
-      "subscription": { "entity": { "id": "sub_123", "customer_id": "cust_456", "amount": 29900, "currency": "INR" } },
-      "payment": { "entity": { "email": "you@example.com", "amount": 29900 } }
-    }
-  }'
-```
-
-> **Note**: Without `RESEND_API_KEY` set, the webhook will fail after key generation. Set up Resend first.
-
----
-
-## Resend Setup (Free Tier)
-
-1. Sign up at [resend.com](https://resend.com) — free, no credit card
-2. Add your domain (or use the sandbox `onboarding@resend.dev` for testing)
-3. Generate an API key → set as `RESEND_API_KEY`
-
-Resend free tier: **100 emails/day, 3,000/month** — plenty for early launch.
-
----
-
-## License Key Format
-
-Generated keys follow this pattern:
-```
-PRO_LS_A1B2C3D4_SUB12345678
-PRO_RZP_E5F6G7H8_SUBRSUB123
-     │   │        │
-     │   │        └── Subscription ID (sanitized, max 12 chars)
-     │   └── 8-char HMAC fingerprint (unforgeable without the secret)
-     └── Provider: LS = Lemon Squeezy, RZP = Razorpay
-```
+The Next.js landing repository forwards `/api/checkout` to the configured `LICENSE_SERVER_URL` origin using a server-side request. The public app and the merchant keys remain separate. Live checkout cannot be enabled without an approved merchant account and the required deployment secrets.

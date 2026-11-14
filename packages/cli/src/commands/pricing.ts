@@ -2,11 +2,9 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import fetch from 'node-fetch';
 import { syncPricingToDb, addCustomPricing } from '@llm-observer/database';
-import path from 'path';
 
-// Just a placeholder URL. In reality, you'd host a pricing.json file somewhere like GitHub Pages.
-// For the sake of this prompt, we can fallback to the seed data locally.
-const PRICING_URL = 'https://raw.githubusercontent.com/run-llama/llm-observer/main/pricing.json';
+
+const PRICING_URL = 'https://raw.githubusercontent.com/Ranjitbehera0034/llm-observer/main/pricing.json';
 
 export function setupPricingCommands(program: Command) {
     const pricingCmd = program.command('pricing').description('Manage LLM pricing data');
@@ -18,24 +16,17 @@ export function setupPricingCommands(program: Command) {
             console.log(chalk.blue(`Fetching latest pricing data...\\n`));
 
             try {
-                let newPricing = [];
-                try {
-                    const res = await fetch(PRICING_URL);
-                    if (res.ok) {
-                        newPricing = await res.json() as any[];
-                    } else {
-                        throw new Error('Remote URL returned ' + res.status);
-                    }
-                } catch (e: any) {
-                    console.log(chalk.yellow(`Could not fetch remote pricing (${e.message}). Falling back to local seed data...`));
-                    const { getInitialPricing } = require('@llm-observer/database');
-                    newPricing = getInitialPricing();
-                }
+                const res = await fetch(PRICING_URL, { signal: AbortSignal.timeout(8000) as any, size: 2_000_000 });
+                if (!res.ok) throw new Error(`Registry returned ${res.status}; existing prices preserved`);
+                const raw = await res.json() as any[];
+                if (!Array.isArray(raw)) throw new Error('Invalid pricing catalog');
+                const newPricing = raw.map(item => ({provider:item.provider,model:item.model,input:item.input ?? item.input_cost_per_1m,output:item.output ?? item.output_cost_per_1m,cached:item.cached ?? item.cached_input_cost_per_1m ?? null}));
 
                 syncPricingToDb(newPricing);
                 console.log(chalk.green(`Successfully updated pricing for ${newPricing.length} models.`));
 
             } catch (err: any) {
+                process.exitCode = 1;
                 console.error(chalk.red(`Failed to update pricing: ${err.message}`));
             }
         });
@@ -55,10 +46,11 @@ export function setupPricingCommands(program: Command) {
                     model: options.model,
                     input: options.input,
                     output: options.output,
-                    cached: options.cached || null
+                    cached: options.cached ?? null
                 });
                 console.log(chalk.green(`Successfully added custom pricing for ${options.provider}:${options.model}`));
             } catch (err: any) {
+                process.exitCode = 1;
                 console.error(chalk.red(`Failed to add custom pricing: ${err.message}`));
             }
         });
