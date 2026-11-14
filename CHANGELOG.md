@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 2.1.0-beta.1 release candidate (not yet published)
+- Added server-created Lemon Squeezy monthly/annual Pro checkout, provider-verified licenses, and optional owner customer reporting with distinct paid/trial status. Merchant configuration and staging purchase verification are required before sales.
+- Added opt-in installation activity reporting and authenticated forgetting. No usage reporting is enabled by default; unreported activity remains unknown.
+- Added a persistent task inbox for manual tasks, local optimizer recommendations and saved AI analysis. Collection is local and does not autonomously execute tasks or call a paid model.
+- Added Moonshot/Kimi, DeepSeek, OpenRouter and xAI compatible proxy routes. New model IDs are captured; missing rates remain unpriced.
+- Corrected unknown/mixed-model session costs, Codex nested events, quota freshness, credential parsing and polling failure isolation. Added pricing history and preserved custom rates during catalog refresh.
+- Made analyst model IDs editable and bounded each run to one explicit API call with a 4,096 output-token cap.
+- Hardened retention, dashboard polling and release verification; unsupported team commands now report unavailable.
+- **Upgrade note:** legacy truncated license keys require verified reissue. Back up local data before testing the beta. Desktop signing, live gateways/providers and hosted customer SQL permissions remain staging checks.
+
 ### Fixed
 - `packages/license-server`'s first real Vercel deploy attempt failed with
   `Function Runtimes must have a valid version` -- `vercel.json`'s
