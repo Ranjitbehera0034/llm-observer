@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added opt-in installation activity reporting and authenticated forgetting. No usage reporting is enabled by default; unreported activity remains unknown.
 - Added a provider access hub for official chat/API purchase pages, and made subscription recording explicitly manual with actual customer-entered cost. Direct resale/one-checkout access needs provider authorization and a separate credit ledger.
 - Added local-only prompt mode: cloud proxy requests fail before forwarding, and Ollama is restricted to loopback. Direct calls outside Observer remain outside this control.
+- Added OpenCode session import and stopped automatic reading of Claude Code OAuth credentials for quota polling; local session activity remains available without that credential.
 - Clarified per-request token and estimated-cost reporting; missing provider usage now appears as unknown instead of zero in Live Traffic.
 - Added a persistent task inbox for manual tasks, local optimizer recommendations and saved AI analysis. Collection is local and does not autonomously execute tasks or call a paid model.
 - Added Moonshot/Kimi, DeepSeek, OpenRouter and xAI compatible proxy routes. New model IDs are captured; missing rates remain unpriced.

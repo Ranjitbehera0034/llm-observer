@@ -273,7 +273,7 @@ All files are read in **read-only mode**. LLM Observer never modifies any AI too
 - **Does not store your prompts or responses** — Database contains token counts, costs, and metadata only, for data parsed passively from editor session logs. (The optional local proxy is the one path that does store `request_body`/`response_body` — it's an explicit opt-in, off by default, and exists specifically to give you per-request detail when you choose to route traffic through it.)
 - **Does not redact anything by default** — PII redaction exists but is opt-in; off until you turn it on in Settings
 - **Does not intercept traffic by default** — Proxy is optional and off by default
-- **No usage telemetry** — Pro licensing contacts the configured license service; optional team sync sends aggregated statistics. Another opt-in network feature is the AI Analyst, sends only aggregated metadata (never prompts/responses) to Claude, and only if you supply your own API key. Separately, the CLI does a background check against the public npm registry for newer versions (no data sent beyond the package name, same as running `npm outdated`) — disable with `NO_UPDATE_NOTIFIER=1` or `--no-update-notifier`.
+- **No default activity reporting** — Optional installation activity is off by default and sends no prompts or responses. Pro licensing contacts the configured license service; optional team sync sends aggregated statistics. AI Analyst sends aggregate usage to your chosen model only when you trigger it with your own API key. The CLI checks the public npm registry for newer versions; disable this with `NO_UPDATE_NOTIFIER=1` or `--no-update-notifier`.
 - **Does not require root privileges** — Runs as your user account
 - **Does not modify AI tool behavior** — Unless you explicitly enable proxy with kill switch
 - **Does not claim compliance certifications it doesn't have** — no SOC 2, no HIPAA. Everything here is "your data never leaves your machine unless you tell it to," which is a real, verifiable property — not a substitute for a real audited compliance program
@@ -430,7 +430,7 @@ Session-estimated costs are within ~5% of actual billing. For exact numbers, add
 <details>
 <summary><strong>Is my data safe?</strong></summary>
 <br />
-Everything stays in a local SQLite database. No cloud, no telemetry, no account. Admin keys are AES-256-GCM encrypted. The database stores costs and metadata — never prompts or responses, except for the optional local proxy (off by default) which you'd explicitly route traffic through.
+Session and request data stays in a local SQLite database by default. Free tracking needs no account. Optional connected features and Pro licensing use network services as described above. The local session parser stores costs and metadata, not prompts or responses; the optional local proxy stores request and response bodies when you route traffic through it.
 </details>
 
 <details>

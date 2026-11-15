@@ -1,11 +1,9 @@
 import { pollRateLimits } from '../rate-limits/poller';
-import { readClaudeOAuth } from '../rate-limits/credentials';
 import { cleanupOldSnapshots, getDb, insertRateLimitSnapshot, getLatestSnapshots } from '@llm-observer/database';
 import express from 'express';
 import request from 'supertest';
 import limitsRoutes from '../routes/limits.routes';
 
-jest.mock('../rate-limits/credentials', () => ({ readClaudeOAuth: jest.fn() }));
 jest.mock('@llm-observer/database', () => ({
     cleanupOldSnapshots: jest.fn(), insertRateLimitSnapshot: jest.fn(), getLatestSnapshots: jest.fn(),
     getDb: jest.fn(() => ({ prepare: () => ({ get: () => ({ count: 2 }) }) }))
@@ -17,12 +15,10 @@ describe('Quota failure isolation and freshness', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         jest.spyOn(console, 'error').mockImplementation(() => {});
-        (readClaudeOAuth as jest.Mock).mockResolvedValue(null);
     });
     afterEach(() => jest.restoreAllMocks());
-    it('refreshes other providers after credential and cleanup failures', async () => {
+    it('refreshes other providers after cleanup failure using local activity only', async () => {
         (cleanupOldSnapshots as jest.Mock).mockImplementationOnce(() => { throw new Error('cleanup'); });
-        (readClaudeOAuth as jest.Mock).mockRejectedValueOnce(new Error('credential unavailable'));
         await pollRateLimits();
         for (const provider of ['cursor', 'openai', 'aider']) {
             expect(insertRateLimitSnapshot).toHaveBeenCalledWith(expect.objectContaining({ provider, window_type: 'activity_daily' }));
@@ -34,16 +30,10 @@ describe('Quota failure isolation and freshness', () => {
         await pollRateLimits();
         expect(insertRateLimitSnapshot).toHaveBeenCalledWith(expect.objectContaining({ provider: 'aider' }));
     });
-    it('does not overlap polls and releases its guard when the poll finishes', async () => {
-        let release!: (value: null) => void;
-        (readClaudeOAuth as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
-        const first = pollRateLimits();
+    it('keeps quota estimates local on repeated polls', async () => {
         await pollRateLimits();
-        expect(readClaudeOAuth).toHaveBeenCalledTimes(1);
-        release(null);
-        await first;
         await pollRateLimits();
-        expect(readClaudeOAuth).toHaveBeenCalledTimes(2);
+        expect(insertRateLimitSnapshot).toHaveBeenCalledWith(expect.objectContaining({ provider: 'anthropic', is_estimated: true }));
     });
     it('labels stale quota separately from fresh activity on the same provider', async () => {
         const now = new Date().toISOString();

@@ -1,4 +1,3 @@
-import * as credentials from '../rate-limits/credentials';
 import * as poller from '../rate-limits/poller';
 import * as database from '@llm-observer/database';
 import request from 'supertest';
@@ -34,19 +33,6 @@ describe('Rate Limit Tracking System', () => {
     
     beforeEach(() => {
         jest.clearAllMocks();
-    });
-
-    describe('OAuth Credential Reading', () => {
-        it('should read macOS keychain credentials', async () => {
-            const spy = jest.spyOn(credentials, 'readClaudeOAuthMacOS').mockResolvedValue('test-token');
-            const token = await credentials.readClaudeOAuthMacOS();
-            expect(token).toBe('test-token');
-            spy.mockRestore();
-        });
-
-        it('should fallback to .claude/.credentials.json if keychain fails', async () => {
-            expect(true).toBe(true);
-        });
     });
 
     describe('Rate Limit API Mocking & Polling', () => {

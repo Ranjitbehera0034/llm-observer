@@ -167,7 +167,7 @@ export const parse = async (onProgress?: (current: number, total: number) => voi
                 cache_read_tokens: cacheRead,
                 cache_write_tokens: cacheWrite,
                 cache_hit_rate: cacheHitRate,
-                estimated_cost_usd: row.cost || 0,
+                estimated_cost_usd: row.cost ?? null,
                 session_type: sessionType,
                 tool_calls_json: '{}',
                 has_subagents: children > 0,
@@ -178,7 +178,7 @@ export const parse = async (onProgress?: (current: number, total: number) => voi
                     parent_id: row.parent_id,
                     model_json: row.model,
                 }),
-                parent_cost_usd: row.cost || 0,
+                parent_cost_usd: row.cost ?? null,
                 file_path: dbPath,
                 file_modified_at: mtime,
             });
