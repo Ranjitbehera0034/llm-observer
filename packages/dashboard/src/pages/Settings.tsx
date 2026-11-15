@@ -1,4 +1,5 @@
 import { ActivityReporting } from '../components/ActivityReporting';
+import { LocalOnlyMode } from '../components/LocalOnlyMode';
 import { apiFetch } from '../utils/apiFetch';
 import { useEffect, useState } from 'react';
 import { Key, Save, Plus, Trash2, Copy, ShieldCheck, Globe, AlertTriangle, Settings as SettingsIcon, CreditCard, CheckCircle2, Zap, History, Layers, KeyRound, AlertCircle, Target, Eye, EyeOff, TerminalSquare, Database } from 'lucide-react';
@@ -673,6 +674,8 @@ export default function Settings() {
                                     </div>
                                 )}
                             </div>
+
+                            <LocalOnlyMode />
 
                             <div className="card">
                                 <div className="flex items-center justify-between mb-4">

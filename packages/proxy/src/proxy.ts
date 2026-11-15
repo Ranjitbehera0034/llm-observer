@@ -11,6 +11,7 @@ import { GroqProvider } from './providers/groq';
 import { CustomProvider } from './providers/custom';
 import { OllamaProvider } from './providers/ollama';
 import { redactDeep } from './security/piiRedaction';
+import { localOnlyEnabled, localOllamaTargetAllowed } from './security/localOnly';
 import { computeDrift } from './analysis/responseDrift';
 import { getSetting, getDriftBaseline, saveDriftBaseline, createAlert } from '@llm-observer/database';
 import chalk from 'chalk';
@@ -45,6 +46,11 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
     }
 
     const targetUrl = req.customTargetUrl || provider.getBaseUrl();
+    // Check before provider auth, logging, body rewriting, or any network I/O.
+    // A custom route cannot masquerade as local Ollama.
+    if (localOnlyEnabled() && !localOllamaTargetAllowed(providerName, targetUrl)) {
+        return res.status(403).json({ error: 'Local-only mode blocks remote model requests. Use a loopback Ollama endpoint or turn off Local-only mode in Security & Privacy.' });
+    }
     const authHeaders = provider.getAuthHeader(req);
 
     // Strip original auth headers from incoming request to avoid pass-through of Observer Keys

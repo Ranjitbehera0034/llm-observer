@@ -5,12 +5,12 @@ type Provider = { name: string; chat?: string; api?: string; apiTracked: string;
 
 // Official destinations only. Purchase and account status stay with the provider.
 const providers: Provider[] = [
-    { name: 'ChatGPT / OpenAI', chat: 'https://chatgpt.com/', api: 'https://platform.openai.com/', apiTracked: 'Proxy and account usage sync' },
-    { name: 'Claude / Anthropic', chat: 'https://claude.ai/', api: 'https://console.anthropic.com/', apiTracked: 'Proxy and account usage sync' },
+    { name: 'ChatGPT / OpenAI', chat: 'https://chatgpt.com/', api: 'https://platform.openai.com/settings/organization/billing/overview', apiTracked: 'Proxy and account usage sync' },
+    { name: 'Claude / Anthropic', chat: 'https://claude.ai/', api: 'https://platform.claude.com/settings/billing', apiTracked: 'Proxy and account usage sync' },
     { name: 'Gemini / Google', chat: 'https://gemini.google.com/', api: 'https://aistudio.google.com/', apiTracked: 'Proxy and supported local logs', note: 'Gemini app plans and Gemini API billing are separate.' },
     { name: 'DeepSeek', chat: 'https://chat.deepseek.com/', api: 'https://platform.deepseek.com/', apiTracked: 'Proxy traffic' },
     { name: 'Kimi / Moonshot', chat: 'https://kimi.com/', api: 'https://platform.kimi.ai/', apiTracked: 'Proxy traffic' },
-    { name: 'OpenRouter', api: 'https://openrouter.ai/', apiTracked: 'Proxy traffic', note: 'One API account can reach many supported provider models.' },
+    { name: 'OpenRouter', api: 'https://openrouter.ai/settings/credits', apiTracked: 'Proxy traffic', note: 'One API account can reach many supported provider models.' },
 ];
 
 function Destination({ href, children }: { href: string; children: React.ReactNode }) {

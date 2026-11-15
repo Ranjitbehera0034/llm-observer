@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 2.1.0-beta.1 release candidate (not yet published)
 - Added server-created Lemon Squeezy monthly/annual Pro checkout, provider-verified licenses, and optional owner customer reporting with distinct paid/trial status. Merchant configuration and staging purchase verification are required before sales.
 - Added opt-in installation activity reporting and authenticated forgetting. No usage reporting is enabled by default; unreported activity remains unknown.
+- Added a provider access hub for official chat/API purchase pages, and made subscription recording explicitly manual with actual customer-entered cost. Direct resale/one-checkout access needs provider authorization and a separate credit ledger.
+- Added local-only prompt mode: cloud proxy requests fail before forwarding, and Ollama is restricted to loopback. Direct calls outside Observer remain outside this control.
 - Added a persistent task inbox for manual tasks, local optimizer recommendations and saved AI analysis. Collection is local and does not autonomously execute tasks or call a paid model.
 - Added Moonshot/Kimi, DeepSeek, OpenRouter and xAI compatible proxy routes. New model IDs are captured; missing rates remain unpriced.
 - Corrected unknown/mixed-model session costs, Codex nested events, quota freshness, credential parsing and polling failure isolation. Added pricing history and preserved custom rates during catalog refresh.
