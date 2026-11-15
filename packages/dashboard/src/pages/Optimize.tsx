@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { useState, useEffect, useMemo } from 'react';
 import { 
     Zap, 
@@ -84,7 +85,7 @@ export default function Optimize() {
         
         try {
             const url = `${API_BASE_URL}/api/optimize?days=30${refresh ? '&refresh=true' : ''}`;
-            const res = await fetch(url);
+            const res = await apiFetch(url);
             if (res.ok) {
                 setData(await res.json());
             }

@@ -3,6 +3,19 @@ import { getDb, getSubscriptions } from '@llm-observer/database';
 
 const router = Router();
 
+// Replace a proxy estimate only where a priced sync bucket covers the same
+// provider and model. An active connection alone is not evidence of coverage.
+// Account-level reconciliation requires account IDs on proxy requests.
+const uncoveredProxy = (includedBucket: string) => `NOT EXISTS (
+    SELECT 1 FROM usage_records u
+    WHERE u.provider = requests.provider AND u.model = requests.model
+      AND u.cost_usd IS NOT NULL AND ${includedBucket}
+      AND julianday(requests.created_at) >= julianday(u.bucket_start)
+      AND julianday(requests.created_at) < julianday(u.bucket_start,
+        CASE u.bucket_width WHEN '1m' THEN '+1 minute'
+          WHEN '1h' THEN '+1 hour' WHEN '1d' THEN '+1 day' ELSE NULL END)
+)`;
+
 /**
  * Calculates the number of days a subscription was active within a date range.
  */
@@ -58,15 +71,11 @@ router.get('/', (req, res) => {
         const startStr = rangeStart.toISOString();
         const endStr = rangeEnd.toISOString();
 
-        // 1. Get List of active Sync Providers to avoid double counting
-        const syncConfigs = db.prepare("SELECT id FROM usage_sync_configs WHERE status = 'active'").all() as any[];
-        const syncProviderIds = syncConfigs.map(c => c.id);
-
         // 2. Aggregate Sync Cost
         const syncData = db.prepare(`
             SELECT provider, SUM(COALESCE(cost_usd, 0)) as total
             FROM usage_records
-            WHERE bucket_start BETWEEN ? AND ?
+            WHERE bucket_start BETWEEN ? AND ? AND cost_usd IS NOT NULL
             GROUP BY provider
         `).all(startStr, endStr) as any[];
 
@@ -74,9 +83,9 @@ router.get('/', (req, res) => {
         const proxyData = db.prepare(`
             SELECT provider, SUM(cost_usd) as total
             FROM requests
-            WHERE created_at BETWEEN ? AND ? AND provider NOT IN (${syncProviderIds.map(() => '?').join(',') || "''"})
+            WHERE created_at BETWEEN ? AND ? AND ${uncoveredProxy('u.bucket_start BETWEEN ? AND ?')}
             GROUP BY provider
-        `).all(startStr, endStr, ...syncProviderIds) as any[];
+        `).all(startStr, endStr, startStr, endStr) as any[];
 
         // 4. Calculate Subscriptions (Precise Proration)
         const allSubs = getSubscriptions(false);
@@ -92,7 +101,7 @@ router.get('/', (req, res) => {
         const subMonthlyTotal = activeSubs.filter(s => s.is_active).reduce((sum, sub) => sum + (sub.monthly_cost_usd || 0), 0);
         
         // 5. Merge Providers for Breakdown
-        const providers: Record<string, { total_usd: number, source: 'sync' | 'proxy' }> = {};
+        const providers: Record<string, { total_usd: number, source: 'sync' | 'proxy' | 'mixed' }> = {};
         
         syncData.forEach(r => {
             providers[r.provider] = { total_usd: r.total || 0, source: 'sync' };
@@ -100,7 +109,7 @@ router.get('/', (req, res) => {
         proxyData.forEach(r => {
             providers[r.provider] = { 
                 total_usd: (providers[r.provider]?.total_usd || 0) + (r.total || 0), 
-                source: providers[r.provider]?.source || 'proxy' 
+                source: providers[r.provider] ? 'mixed' : 'proxy'
             };
         });
 
@@ -137,8 +146,6 @@ router.get('/timeline', (req, res) => {
         const days = Math.min(parseInt(req.query.days as string) || 30, 90);
         const db = getDb();
         
-        const syncConfigs = db.prepare("SELECT id FROM usage_sync_configs WHERE status = 'active'").all() as any[];
-        const syncProviderIds = syncConfigs.map(c => c.id);
 
         // Tracked API Cost (Daily)
         const syncDaily = db.prepare(`
@@ -151,9 +158,9 @@ router.get('/timeline', (req, res) => {
         const proxyDaily = db.prepare(`
             SELECT date(created_at) as date, SUM(cost_usd) as total
             FROM requests
-            WHERE created_at >= date('now', ?) AND provider NOT IN (${syncProviderIds.map(() => '?').join(',') || "''"})
+            WHERE created_at >= date('now', ?) AND ${uncoveredProxy("u.bucket_start >= date('now', ?)")}
             GROUP BY date(created_at)
-        `).all(`-${days} days`, ...syncProviderIds) as any[];
+        `).all(`-${days} days`, `-${days} days`) as any[];
 
         // Subscriptions (Flat daily average per month)
         const activeSubs = getSubscriptions(true);
@@ -163,8 +170,8 @@ router.get('/timeline', (req, res) => {
         const timelineMap = new Map<string, any>();
         for (let i = days - 1; i >= 0; i--) {
             const d = new Date();
-            d.setHours(0, 0, 0, 0);
-            d.setDate(d.getDate() - i);
+            d.setUTCHours(0, 0, 0, 0);
+            d.setUTCDate(d.getUTCDate() - i);
             const dateStr = d.toISOString().split('T')[0];
             timelineMap.set(dateStr, { 
                 date: dateStr, 

@@ -55,7 +55,9 @@ router.get('/providers', (req, res) => {
 
 router.post('/refresh', async (req, res) => {
     try {
-        triggerParseCycle(); // non-blocking, runs in background
+        void triggerParseCycle().catch(err => {
+            console.error('[Parser Manager] Manual refresh failed:', err);
+        }); // non-blocking, with asynchronous failures handled
         res.json({ message: 'Parsing cycle triggered' });
     } catch (err: any) {
         res.status(500).json({ error: err.message });

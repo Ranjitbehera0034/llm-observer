@@ -25,24 +25,8 @@ export interface RateLimitConfig {
 export function insertRateLimitSnapshot(snapshot: Omit<RateLimitSnapshot, 'id'>): void {
     const db = getDb();
 
-    // Deduplication check: get most recent snapshot for this provider & window
-    const prevStmt = db.prepare(`
-        SELECT utilization_pct FROM rate_limit_snapshots 
-        WHERE provider = ? AND window_type = ? 
-        ORDER BY captured_at DESC LIMIT 1
-    `);
-    const prev = prevStmt.get(snapshot.provider, snapshot.window_type) as any;
-
-    if (
-        prev && 
-        prev.utilization_pct !== null && 
-        snapshot.utilization_pct !== null &&
-        Math.abs(prev.utilization_pct - snapshot.utilization_pct) < 0.02
-    ) {
-        // Less than 2% difference, skip inserting
-        return;
-    }
-
+    // Every successful observation carries freshness and reset information,
+    // even when utilization is unchanged. Retention bounds this history.
     const stmt = db.prepare(`
         INSERT INTO rate_limit_snapshots 
         (provider, window_type, total_allowed, total_used, utilization_pct, resets_at, is_estimated, captured_at)
@@ -67,10 +51,11 @@ export function getLatestSnapshots(provider: string): RateLimitSnapshot[] {
         SELECT *
         FROM rate_limit_snapshots t1
         WHERE provider = ?
-          AND captured_at = (
-            SELECT MAX(captured_at)
+          AND id = (
+            SELECT id
             FROM rate_limit_snapshots t2
             WHERE t1.provider = t2.provider AND t1.window_type = t2.window_type
+            ORDER BY captured_at DESC, id DESC LIMIT 1
           )
     `);
     const rows = stmt.all(provider) as any[];

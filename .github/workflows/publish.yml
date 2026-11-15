@@ -33,13 +33,15 @@ jobs:
 
       - run: npm install -g npm@latest && npm --version
 
-      - run: npm install
+      - run: npm ci
       # Not `npm run build --workspaces --if-present`: that has no
       # dependency ordering, and packages/cli's build copies
       # packages/proxy/dist/server.js -- it needs proxy built first.
       # build:ci is the already-correctly-ordered variant (and skips the
       # desktop Tauri build, irrelevant for an npm publish).
       - run: npm run build:ci
+        env:
+          LICENSE_SERVER_URL: ${{ vars.LICENSE_SERVER_URL }}
 
       - name: Checksum the package that will be published
         working-directory: packages/cli
@@ -54,5 +56,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: npm publish --provenance
+      - name: Publish to the appropriate npm channel
+        shell: bash
+        run: |
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            npm publish --provenance --tag beta
+          else
+            npm publish --provenance --tag latest
+          fi
         working-directory: packages/cli

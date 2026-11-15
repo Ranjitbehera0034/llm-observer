@@ -1,29 +1,35 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import Overview from './pages/Overview';
-import Requests from './pages/Requests';
-import Projects from './pages/Projects';
-import Alerts from './pages/Alerts';
-import Insights from './pages/Insights';
-import Settings from './pages/Settings';
-import Limits from './pages/Limits';
-import Sync from './pages/Sync';
-import Apps from './pages/Apps';
-import Wrapped from './pages/Wrapped';
-import Sessions from './pages/Sessions';
-import Agents from './pages/Agents';
-import Tools from './pages/Tools';
-import Optimize from './pages/Optimize';
-import Compare from './pages/Compare';
+const Tasks = lazy(() => import('./pages/Tasks'));
+const ModelAccess = lazy(() => import('./pages/ModelAccess'));
+const Overview = lazy(() => import('./pages/Overview'));
+const Requests = lazy(() => import('./pages/Requests'));
+const Projects = lazy(() => import('./pages/Projects'));
+const Alerts = lazy(() => import('./pages/Alerts'));
+const Insights = lazy(() => import('./pages/Insights'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Limits = lazy(() => import('./pages/Limits'));
+const Sync = lazy(() => import('./pages/Sync'));
+const Apps = lazy(() => import('./pages/Apps'));
+const Wrapped = lazy(() => import('./pages/Wrapped'));
+const Sessions = lazy(() => import('./pages/Sessions'));
+const Agents = lazy(() => import('./pages/Agents'));
+const Tools = lazy(() => import('./pages/Tools'));
+const Optimize = lazy(() => import('./pages/Optimize'));
+const Compare = lazy(() => import('./pages/Compare'));
 
 function App() {
   return (
     <Router>
       <Layout>
         <ErrorBoundary fallbackText="The dashboard failed to render this page. Error has been logged.">
+          <Suspense fallback={<div className="p-8 text-textMuted" role="status">Loading page…</div>}>
           <Routes>
             <Route path="/" element={<Overview />} />
+            <Route path="/tasks" element={<Tasks />} />
+            <Route path="/model-access" element={<ModelAccess />} />
             <Route path="/optimize" element={<Optimize />} />
             <Route path="/compare" element={<Compare />} />
             <Route path="/requests" element={<Requests />} />
@@ -39,6 +45,7 @@ function App() {
             <Route path="/sync" element={<Sync />} />
             <Route path="/apps" element={<Apps />} />
           </Routes>
+          </Suspense>
         </ErrorBoundary>
       </Layout>
     </Router>

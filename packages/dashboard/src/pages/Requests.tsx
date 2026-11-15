@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { RequestTable } from '../components/RequestTable';
 import type { RequestRow } from '../components/RequestTable';
@@ -29,7 +30,7 @@ export default function Requests() {
             model: modelSearch
         });
 
-        fetch(`${API_BASE_URL}/api/requests?${params.toString()}`)
+        apiFetch(`${API_BASE_URL}/api/requests?${params.toString()}`)
             .then(res => res.json())
             .then(resData => {
                 setRequests(resData.data ?? []);
@@ -100,7 +101,7 @@ export default function Requests() {
                         <Activity className="w-8 h-8 text-primary" />
                         Live Traffic
                     </h1>
-                    <p className="text-textMuted mt-1 font-medium pl-11">Granular inspection of every LLM interaction.</p>
+                    <p className="text-textMuted mt-1 font-medium pl-11">Tokens and estimated cost for each API call routed through Observer. One call may contain multiple messages.</p>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-primary font-bold bg-primary/10 px-4 py-2 rounded-2xl border border-primary/20 shadow-[0_0_15px_rgba(79,70,229,0.1)]">

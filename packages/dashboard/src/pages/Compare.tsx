@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { useState, useEffect } from 'react';
 import { GitCompare, DollarSign, Clock, Hash, AlertTriangle, ArrowRight, Info } from 'lucide-react';
 import { API_BASE_URL } from '../config';
@@ -68,7 +69,7 @@ export default function Compare() {
 
     useEffect(() => {
         setA(''); setB(''); setResult(null); setError(null);
-        fetch(`${API_BASE_URL}/api/compare/options?dimension=${dimension}`)
+        apiFetch(`${API_BASE_URL}/api/compare/options?dimension=${dimension}`)
             .then((r) => r.json())
             .then((d) => setOptions(d.values || []))
             .catch(() => setOptions([]));
@@ -79,7 +80,7 @@ export default function Compare() {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/compare?dimension=${dimension}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}&days=${days}`);
+            const res = await apiFetch(`${API_BASE_URL}/api/compare?dimension=${dimension}&a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}&days=${days}`);
             const data = await res.json();
             if (!res.ok) { setError(data.error); setResult(null); return; }
             setResult(data);

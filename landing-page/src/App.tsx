@@ -3,9 +3,10 @@ import { motion } from 'framer-motion';
 import { Shield, Zap, Bell, CreditCard, Terminal, Download, ArrowRight, Check, Mail } from 'lucide-react';
 
 const LEMONSQUEEZY_CHECKOUT_URL = import.meta.env.VITE_LEMONSQUEEZY_CHECKOUT_URL
-    || 'https://llmobserver.lemonsqueezy.com/checkout/buy/pro-monthly';
+    || '';
+const YEARLY_CHECKOUT_URL = import.meta.env.VITE_LEMONSQUEEZY_YEARLY_CHECKOUT_URL || '';
 const LICENSE_SERVER_URL = import.meta.env.VITE_LICENSE_SERVER_URL
-    || 'https://api.llmobserver.com';
+    || '';
 
 // Razorpay checkout: collect an email (the license key is delivered there),
 // ask the license server for a hosted Payment Link, then redirect.
@@ -33,12 +34,14 @@ function RazorpayCheckout() {
         }
     };
 
-    if (!open) {
+    if (!LICENSE_SERVER_URL) return <p role="status">UPI checkout is not available yet.</p>;
+
+  if (!open) {
         return (
             <button onClick={() => setOpen(true)}
                 className="w-full h-12 rounded-2xl border border-white/15 text-white/80 font-semibold hover:bg-white/5 transition-all flex items-center justify-center gap-2 text-sm">
                 <CreditCard className="w-4 h-4" />
-                Pay via UPI / Razorpay (INR)
+                UPI / Razorpay — ₹799 for 30 days, no auto-renewal
             </button>
         );
     }
@@ -248,9 +251,9 @@ const App: React.FC = () => {
                         <div className="p-10 rounded-[2.5rem] glass border-blue-500/20 relative overflow-hidden group">
                             <div className="absolute top-0 right-0 px-6 py-2 accent-gradient text-xs font-bold rounded-bl-2xl">POPULAR</div>
                             <span className="text-blue-400 font-semibold mb-2 uppercase tracking-widest text-xs">Professional</span>
-                            <h3 className="text-3xl font-bold mb-6">$19<span className="text-lg text-white/40">/mo</span></h3>
+                            <h3 className="text-3xl font-bold mb-6">$9<span className="text-lg text-white/40">/mo</span></h3>
                             <ul className="space-y-4 mb-10 flex-grow">
-                                {['Unlimited Projects', '90-day retention', 'Priority Support', 'Team Auditing (Beta)'].map(f => (
+                                {['100 Projects', '90-day retention', 'Priority Support', 'Team Auditing (Beta)'].map(f => (
                                     <li key={f} className="flex items-center gap-3 text-white">
                                         <Check className="w-4 h-4 text-blue-500" /> {f}
                                     </li>
@@ -258,13 +261,16 @@ const App: React.FC = () => {
                             </ul>
                             <div className="space-y-3">
                                 <a
-                                    href={LEMONSQUEEZY_CHECKOUT_URL}
+                                    href={LEMONSQUEEZY_CHECKOUT_URL || undefined} aria-disabled={!LEMONSQUEEZY_CHECKOUT_URL}
                                     target="_blank" rel="noopener noreferrer"
                                     className="w-full h-14 rounded-2xl bg-white text-black font-bold hover:bg-white/90 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] flex items-center justify-center gap-2">
                                     <ArrowRight className="w-4 h-4" />
-                                    Upgrade to Pro — $19/mo
+                                    {LEMONSQUEEZY_CHECKOUT_URL ? 'Upgrade to Pro — $9/mo' : 'Pro checkout coming soon'}
                                 </a>
-                                <RazorpayCheckout />
+                                <p className="text-sm">Or $79/year — billed annually. 100 projects; 90-day request retention.</p>
+                {YEARLY_CHECKOUT_URL && <a href={YEARLY_CHECKOUT_URL} target="_blank" rel="noreferrer">Choose annual Pro — $79/year</a>}
+                <p className="text-sm">Get your key by email, then paste it into Settings → License &amp; Billing. Local session tracking works free.</p>
+                <RazorpayCheckout />
                             </div>
                         </div>
                     </div>

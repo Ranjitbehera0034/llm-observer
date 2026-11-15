@@ -1,3 +1,6 @@
+import { ActivityReporting } from '../components/ActivityReporting';
+import { LocalOnlyMode } from '../components/LocalOnlyMode';
+import { apiFetch } from '../utils/apiFetch';
 import { useEffect, useState } from 'react';
 import { Key, Save, Plus, Trash2, Copy, ShieldCheck, Globe, AlertTriangle, Settings as SettingsIcon, CreditCard, CheckCircle2, Zap, History, Layers, KeyRound, AlertCircle, Target, Eye, EyeOff, TerminalSquare, Database } from 'lucide-react';
 import { BudgetsTab } from '../components/BudgetsTab';
@@ -13,7 +16,6 @@ interface ApiKeyData {
 
 export default function Settings() {
     const [activeTab, setActiveTab] = useState<'providers' | 'api_keys' | 'budgets' | 'security' | 'license'>('providers');
-    const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
 
     // Provider Tab State
     const [openAiKey, setOpenAiKey] = useState('');
@@ -31,6 +33,8 @@ export default function Settings() {
     const [showGoogleKey, setShowGoogleKey] = useState(false);
     const [showMistralKey, setShowMistralKey] = useState(false);
     const [showGroqKey, setShowGroqKey] = useState(false);
+    const [compatibleKeys, setCompatibleKeys] = useState<Record<string,string>>({});
+    const [saveError, setSaveError] = useState('');
     const [saved, setSaved] = useState(false);
 
     // API Keys Tab State
@@ -49,8 +53,6 @@ export default function Settings() {
     const [projectsCount, setProjectsCount] = useState(0);
 
     // Geolocation for Hybrid Payments
-    const [country, setCountry] = useState<string | null>(null);
-    const [detectingCountry, setDetectingCountry] = useState(true);
 
     // Network Monitor State (v1.5.0)
     const [monitorStatus, setMonitorStatus] = useState<any>(null);
@@ -62,7 +64,7 @@ export default function Settings() {
     useEffect(() => {
         const fetchSettings = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/api/settings`);
+                const res = await apiFetch(`${API_BASE_URL}/api/settings`);
                 const data = await res.json();
                 if (data.data) {
                     setOpenAiKey(data.data.openai_api_key || '');
@@ -70,6 +72,7 @@ export default function Settings() {
                     setGoogleKey(data.data.google_api_key || '');
                     setMistralKey(data.data.mistral_api_key || '');
                     setGroqKey(data.data.groq_api_key || '');
+                    setCompatibleKeys(Object.fromEntries(['moonshot','deepseek','openrouter','xai'].map(name => [name, data.data[`${name}_api_key`] || ''])));
                     setOllamaBaseUrl(data.data.ollama_base_url || '');
                     setPiiRedactionEnabled(data.data.pii_redaction_enabled === 'true');
                     setDriftDetectionEnabled(data.data.response_drift_detection_enabled === 'true');
@@ -83,7 +86,7 @@ export default function Settings() {
 
         const fetchMonitorStatus = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/api/network/status`);
+                const res = await apiFetch(`${API_BASE_URL}/api/network/status`);
                 const data = await res.json();
                 setMonitorStatus(data);
             } catch (err) {
@@ -94,7 +97,7 @@ export default function Settings() {
 
         const fetchSessionProviders = async () => {
             try {
-                const res = await fetch(`${API_BASE_URL}/api/sessions/providers`);
+                const res = await apiFetch(`${API_BASE_URL}/api/sessions/providers`);
                 const data = await res.json();
                 setSessionProviders(data);
             } catch (err) {
@@ -103,20 +106,6 @@ export default function Settings() {
         };
         fetchSessionProviders();
 
-        // Detect Country for Payments
-        const detectCountry = async () => {
-            try {
-                const res = await fetch('https://ipapi.co/json/');
-                const data = await res.json();
-                setCountry(data.country_code);
-            } catch (err) {
-                console.error('Failed to detect country:', err);
-                setCountry('US'); // Fallback to Global
-            } finally {
-                setDetectingCountry(false);
-            }
-        };
-        detectCountry();
     }, []);
 
     useEffect(() => {
@@ -131,7 +120,7 @@ export default function Settings() {
 
     const fetchLicenseStatus = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/license/status`);
+            const res = await apiFetch(`${API_BASE_URL}/api/license/status`);
             const data = await res.json();
             setLicenseInfo(data.data);
         } catch (err) {
@@ -141,7 +130,7 @@ export default function Settings() {
 
     const fetchProjectsCount = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/projects`);
+            const res = await apiFetch(`${API_BASE_URL}/api/projects`);
             const data = await res.json();
             setProjectsCount(data.data?.length || 0);
         } catch (err) {
@@ -155,7 +144,7 @@ export default function Settings() {
         setActivationError(null);
         setActivationSuccess(null);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/license/activate`, {
+            const res = await apiFetch(`${API_BASE_URL}/api/license/activate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ key: activationKey })
@@ -177,7 +166,7 @@ export default function Settings() {
 
     const fetchApiKeys = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/auth/keys`);
+            const res = await apiFetch(`${API_BASE_URL}/api/auth/keys`);
             const data = await res.json();
             setApiKeys(data.data || []);
         } catch (err) {
@@ -188,7 +177,7 @@ export default function Settings() {
     const handleCreateKey = async () => {
         if (!newKeyName.trim()) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/api/auth/keys`, {
+            const res = await apiFetch(`${API_BASE_URL}/api/auth/keys`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: newKeyName })
@@ -207,7 +196,7 @@ export default function Settings() {
     const handleDeleteKey = async (id: string) => {
         if (!confirm('Are you sure you want to revoke this API key?')) return;
         try {
-            await fetch(`${API_BASE_URL}/api/auth/keys/${id}`, { method: 'DELETE' });
+            await apiFetch(`${API_BASE_URL}/api/auth/keys/${id}`, { method: 'DELETE' });
             fetchApiKeys();
         } catch (err) {
             console.error(err);
@@ -215,11 +204,13 @@ export default function Settings() {
     };
 
     const handleSave = async () => {
+        setSaveError('');
         try {
-            await fetch(`${API_BASE_URL}/api/settings`, {
+            const response = await apiFetch(`${API_BASE_URL}/api/settings`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    ...Object.fromEntries(Object.entries(compatibleKeys).map(([name,key]) => [`${name}_api_key`,key])),
                     openai_api_key: openAiKey,
                     anthropic_api_key: anthropicKey,
                     google_api_key: googleKey,
@@ -228,17 +219,18 @@ export default function Settings() {
                     ollama_base_url: ollamaBaseUrl,
                 })
             });
+            if (!response.ok) throw new Error('Could not save provider settings');
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
         } catch (err) {
-            console.error('Failed to save settings:', err);
+            setSaveError('Could not save provider settings. Please retry.');
         }
     };
 
     const toggleMonitor = async () => {
         const action = monitorStatus?.running ? 'stop' : 'start';
         try {
-            const res = await fetch(`${API_BASE_URL}/api/network/${action}`, { method: 'POST' });
+            const res = await apiFetch(`${API_BASE_URL}/api/network/${action}`, { method: 'POST' });
             if (res.ok) {
                 const data = await res.json();
                 setMonitorStatus((prev: any) => ({ ...prev, running: data.running }));
@@ -252,7 +244,7 @@ export default function Settings() {
         const next = !piiRedactionEnabled;
         setSavingPiiToggle(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/settings`, {
+            const res = await apiFetch(`${API_BASE_URL}/api/settings`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ pii_redaction_enabled: String(next) })
@@ -269,7 +261,7 @@ export default function Settings() {
         const next = !driftDetectionEnabled;
         setSavingDriftToggle(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/settings`, {
+            const res = await apiFetch(`${API_BASE_URL}/api/settings`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ response_drift_detection_enabled: String(next) })
@@ -285,7 +277,7 @@ export default function Settings() {
     const updateScanInterval = async (val: string) => {
         setScanInterval(val);
         try {
-            await fetch(`${API_BASE_URL}/api/settings`, {
+            await apiFetch(`${API_BASE_URL}/api/settings`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ network_monitor_interval: val })
@@ -300,6 +292,7 @@ export default function Settings() {
             <div className="flex items-center gap-3 mb-8">
                 <SettingsIcon className="w-8 h-8 text-primary" />
                 <div>
+                    <ActivityReporting />
                     <h1 className="text-3xl font-bold text-white">Settings</h1>
                     <p className="text-textMuted mt-1">Configure your proxy upstreams and access keys.</p>
                 </div>
@@ -341,6 +334,11 @@ export default function Settings() {
                         <div className="space-y-6">
                             <div className="card">
                                 <h2 className="text-xl font-bold text-white mb-6">Global Upstream Keys</h2>
+                                {saveError && <p role="alert">{saveError}</p>}
+                                <div className="space-y-3 mb-6">{['moonshot','deepseek','openrouter','xai'].map(name => <label key={name} className="block text-sm">{name === 'moonshot' ? 'Moonshot / Kimi' : name} API key
+                                    <input aria-label={`${name} API key`} type="password" value={compatibleKeys[name] || ''} onChange={e => setCompatibleKeys({...compatibleKeys,[name]:e.target.value})} className="block w-full bg-background border border-border rounded px-4 py-2 mt-1" />
+                                    <span className="text-textMuted">Proxy base URL: http://localhost:4000/v1/{name}</span>
+                                </label>)}</div>
                                 <p className="text-sm text-textMuted mb-8">
                                     These keys are used by the proxy when a request doesn't provide its own `Authorization` header.
                                 </p>
@@ -664,7 +662,7 @@ export default function Settings() {
                                             <button 
                                                 onClick={async () => {
                                                     if (confirm('Clear all recorded network connection history? This cannot be undone.')) {
-                                                        const res = await fetch(`${API_BASE_URL}/api/network/history`, { method: 'DELETE' });
+                                                        const res = await apiFetch(`${API_BASE_URL}/api/network/history`, { method: 'DELETE' });
                                                         if (res.ok) alert('History cleared.');
                                                     }
                                                 }}
@@ -676,6 +674,8 @@ export default function Settings() {
                                     </div>
                                 )}
                             </div>
+
+                            <LocalOnlyMode />
 
                             <div className="card">
                                 <div className="flex items-center justify-between mb-4">
@@ -770,7 +770,7 @@ export default function Settings() {
                                             <div className="flex justify-between text-xs mb-1.5 px-0.5">
                                                 <span className="text-textMuted font-medium">Project Capacity</span>
                                                 <span className="text-white font-mono italic">
-                                                    {projectsCount} / {licenseInfo?.limits.maxProjects === 100 ? '∞' : licenseInfo?.limits.maxProjects}
+                                                    {projectsCount} / {licenseInfo?.limits.maxProjects}
                                                 </span>
                                             </div>
                                             <div className="h-2 bg-background rounded-full overflow-hidden border border-border">
@@ -798,17 +798,11 @@ export default function Settings() {
                                         <div className="mt-8 pt-6 border-t border-border">
                                             <div className="flex items-center justify-between mb-4">
                                                 <h4 className="text-xs font-bold text-textMuted uppercase tracking-widest">Why Upgrade?</h4>
-                                                {detectingCountry ? (
-                                                    <span className="text-[10px] text-textMuted animate-pulse">Detecting local regional pricing...</span>
-                                                ) : (
-                                                    <span className="text-[10px] text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
-                                                        {country === 'IN' ? '🇮🇳 Local Pricing Available' : '🌍 Global Coverage'}
-                                                    </span>
-                                                )}
+
                                             </div>
                                             <ul className="space-y-3">
                                                 {[
-                                                    { text: 'Unlimited Local Projects', icon: Layers },
+                                                    { text: '100 Local Projects', icon: Layers },
                                                     { text: 'Extended 90-Day Log Retention', icon: History },
                                                     { text: 'Full Cost Optimizer Insights', icon: Zap },
                                                     { text: 'Priority Feature Access', icon: ShieldCheck }
@@ -839,21 +833,6 @@ export default function Settings() {
                                             : 'Unlock unlimited potential with our flat-rate pricing.'}
                                     </p>
 
-                                    {!licenseInfo?.isPro && (
-                                        <div className="flex bg-background/50 border border-border p-1 rounded-lg mb-6 w-fit">
-                                            <button
-                                                onClick={() => setBillingCycle('monthly')}
-                                                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${billingCycle === 'monthly' ? 'bg-primary text-white shadow-sm' : 'text-textMuted hover:text-white'}`}>
-                                                Monthly
-                                            </button>
-                                            <button
-                                                onClick={() => setBillingCycle('yearly')}
-                                                className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${billingCycle === 'yearly' ? 'bg-amber-500 text-slate-900 shadow-sm' : 'text-textMuted hover:text-white'}`}>
-                                                Yearly <span className="opacity-70 ml-1 font-medium">(Save 15%)</span>
-                                            </button>
-                                        </div>
-                                    )}
-
                                     {activationError && (
                                         <div className="mb-6 p-4 bg-danger/10 border border-danger/30 rounded-lg flex items-center gap-3">
                                             <AlertTriangle className="w-5 h-5 text-danger" />
@@ -878,7 +857,7 @@ export default function Settings() {
                                                     type="password"
                                                     value={activationKey}
                                                     onChange={(e) => setActivationKey(e.target.value)}
-                                                    placeholder="sk_live_..."
+                                                    placeholder="PRO_..."
                                                     className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary group-hover:border-slate-500 transition-all font-mono text-sm"
                                                 />
                                                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
@@ -901,58 +880,15 @@ export default function Settings() {
                                         </button>
 
                                         {!licenseInfo?.isPro && (
-                                            <div className="pt-2">
-                                                {country === 'IN' ? (
-                                                    <a
-                                                        href={billingCycle === 'monthly' ? "https://rzp.io/l/llm-observer-monthly" : "https://rzp.io/l/llm-observer-yearly"}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="block text-center text-sm text-white hover:text-primary transition-colors py-4 font-bold bg-primary/10 hover:bg-primary/20 rounded-xl border border-primary/30 mt-4 group"
-                                                    >
-                                                        Pay <span className="text-primary group-hover:scale-110 inline-block transition-transform">{billingCycle === 'monthly' ? '₹299' : '₹2,499'}</span> with UPI &rarr;
-                                                        <span className="block text-[10px] text-textMuted font-medium mt-1 uppercase tracking-widest">Local India Region Pricing</span>
-                                                    </a>
-                                                ) : (
-                                                    <a
-                                                        href={billingCycle === 'monthly' ? "https://llmobserver.lemonsqueezy.com/checkout/buy/pro-monthly" : "https://llmobserver.lemonsqueezy.com/checkout/buy/pro-yearly"}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="block text-center text-sm text-white hover:text-primary transition-colors py-4 font-bold bg-primary/10 hover:bg-primary/20 rounded-xl border border-primary/30 mt-4 group"
-                                                    >
-                                                        Pay <span className="text-primary group-hover:scale-110 inline-block transition-transform">{billingCycle === 'monthly' ? '$9' : '$79'}</span> via Lemon Squeezy &rarr;
-                                                        <span className="block text-[10px] text-textMuted font-medium mt-1 uppercase tracking-widest">Global Flat-Rate Pricing</span>
-                                                    </a>
-                                                )}
-
-                                                <div className="mt-8 pt-6 border-t border-border">
-                                                    <p className="text-[10px] text-textMuted font-medium uppercase tracking-widest mb-3">Already have a key?</p>
-                                                    <div className="space-y-4">
-                                                        <div>
-                                                            <div className="relative group">
-                                                                <input
-                                                                    type="password"
-                                                                    value={activationKey}
-                                                                    onChange={(e) => setActivationKey(e.target.value)}
-                                                                    placeholder="sk_live_..."
-                                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-white placeholder:text-slate-600 focus:outline-none focus:border-primary group-hover:border-slate-500 transition-all font-mono text-xs"
-                                                                />
-                                                            </div>
-                                                        </div>
-
-                                                        <button
-                                                            onClick={handleActivate}
-                                                            disabled={activating || !activationKey}
-                                                            className={`w-full py-2 rounded-lg font-bold text-xs transition-all active:scale-[0.98] ${activating
-                                                                ? 'bg-surfaceHighlight text-textMuted cursor-not-allowed'
-                                                                : 'bg-surfaceHighlight hover:bg-surfaceHighlight/80 text-white border border-border'
-                                                                }`}
-                                                        >
-                                                            {activating ? 'Validating...' : 'Activate License'}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                            <a href="https://www.llm-observer.com/#pricing" target="_blank" rel="noopener noreferrer"
+                                                className="block text-center py-4 rounded-xl bg-primary/10 text-primary font-bold">
+                                                See Pro plans — $9/month or $79/year
+                                            </a>
                                         )}
+                                        <p className="text-xs text-textMuted">Local tracking works free. Pro requires internet for activation and periodic payment checks. Keep your purchase email to recover your key or use another device.</p>
+                                        {licenseInfo?.validUntil && <p className="text-sm text-textMuted">Access verified through {new Date(licenseInfo.validUntil).toLocaleDateString()}.</p>}
+                                        {licenseInfo?.portalUrl && <a className="text-primary underline" href={licenseInfo.portalUrl} target="_blank" rel="noopener noreferrer">Manage subscription and receipts</a>}
+
                                     </div>
                                 </div>
 
@@ -964,7 +900,7 @@ export default function Settings() {
                                         <div>
                                             <p className="text-xs text-amber-200/80 leading-relaxed">
                                                 <strong className="text-amber-400 font-bold block mb-1">Billing Note</strong>
-                                                Subscriptions are managed externaly. To cancel or modify your payment method, please visit the portal linked in your activation email.
+                                                Lemon Squeezy subscriptions can be managed through the customer portal. Razorpay passes last 30 days and do not auto-renew. Your license email contains setup and support instructions.
                                             </p>
                                         </div>
                                     </div>

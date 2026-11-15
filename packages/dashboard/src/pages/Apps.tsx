@@ -1,3 +1,5 @@
+import { apiFetch } from '../utils/apiFetch';
+import { visibleInterval } from '../utils/visibleInterval';
 import { useState, useEffect, useCallback } from 'react';
 import { 
     MonitorSmartphone, 
@@ -67,8 +69,8 @@ export default function Apps() {
     const fetchData = useCallback(async () => {
         try {
             const [appsRes, statusRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/api/apps?period=${period}`),
-                fetch(`${API_BASE_URL}/api/network/status`)
+                apiFetch(`${API_BASE_URL}/api/apps?period=${period}`),
+                apiFetch(`${API_BASE_URL}/api/network/status`)
             ]);
             if (appsRes.ok) setData(await appsRes.json());
             if (statusRes.ok) setStatus(await statusRes.json());
@@ -81,7 +83,7 @@ export default function Apps() {
 
     const fetchAppDetail = useCallback(async (name: string) => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/apps/${name}/detail?days=30`);
+            const res = await apiFetch(`${API_BASE_URL}/api/apps/${name}/detail?days=30`);
             if (res.ok) {
                 setAppDetail(await res.json());
             }
@@ -92,8 +94,8 @@ export default function Apps() {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 60000);
-        return () => clearInterval(interval);
+        const interval = visibleInterval(fetchData, 60000);
+        return () => interval?.();
     }, [fetchData]);
 
     useEffect(() => {
@@ -107,7 +109,7 @@ export default function Apps() {
     const toggleMonitor = async () => {
         const action = status?.running ? 'stop' : 'start';
         try {
-            const res = await fetch(`${API_BASE_URL}/api/network/${action}`, { method: 'POST' });
+            const res = await apiFetch(`${API_BASE_URL}/api/network/${action}`, { method: 'POST' });
             if (res.ok) {
                 fetchData();
             }
@@ -119,7 +121,7 @@ export default function Apps() {
     const handleRename = async (processName: string) => {
         if (!newName.trim()) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/api/apps/${processName}/alias`, {
+            const res = await apiFetch(`${API_BASE_URL}/api/apps/${processName}/alias`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ display_name: newName })

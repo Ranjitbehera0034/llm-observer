@@ -55,7 +55,7 @@ export class CustomProvider implements IProvider {
             completionTokens,
             totalTokens,
             costUsd: costResult.costUsd,
-            pricing_unknown: costResult.unknown,
+            pricing_unknown: costResult.unknown || !responseBody?.usage,
             hasTools: requestData.hasTools,
         };
     }

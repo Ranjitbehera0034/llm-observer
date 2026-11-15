@@ -1,3 +1,5 @@
+import { tasksRouter } from './tasks.routes';
+import { activityRouter } from './activity.routes';
 import { Router } from 'express';
 import express from 'express';
 import { getDb } from '@llm-observer/database';
@@ -7,7 +9,6 @@ import { requestsRouter, requestEventEmitter } from './requests.routes';
 import { authRouter } from './auth.routes';
 import { settingsRouter } from './settings.routes';
 import { licenseRouter } from './license.routes';
-import { webhooksRouter } from './webhooks.routes';
 import budgetsRouter from './budgets.routes';
 import alertsRouter from './alerts.routes';
 import appsRouter from './apps.routes';
@@ -24,13 +25,15 @@ export function createDashboardRouter(): Router {
     const router = Router();
 
     // Payment webhooks (MUST be mounted before express.json() so it can read raw body)
-    router.use('/webhooks', webhooksRouter);
+    // Payment webhooks belong on the cloud license service, never a customer's desktop.
 
     // Re-add global JSON parsing for dashboard routes
     router.use(express.json());
 
     // Stats
     router.use('/stats', statsRouter);
+    router.use('/tasks', tasksRouter);
+    router.use('/activity', activityRouter);
 
     // Projects
     router.use('/projects', projectsRouter);

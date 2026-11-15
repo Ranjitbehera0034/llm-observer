@@ -7,7 +7,9 @@ import {
     getAlerts,
     acknowledgeAlert,
     getAllSettings,
-    updateSettings
+    updateSettings,
+    getSetting,
+    updateSetting
 } from '@llm-observer/database';
 
 export const settingsRouter = Router();
@@ -68,6 +70,18 @@ settingsRouter.put('/alerts/:id/ack', (req, res) => {
     }
 });
 
+// --- Privacy policy ---
+settingsRouter.get('/privacy/local-only', (_req, res) => {
+    res.json({ enabled: process.env.LLM_OBSERVER_LOCAL_ONLY === '1' || getSetting('privacy_local_only') === 'true', locked: process.env.LLM_OBSERVER_LOCAL_ONLY === '1' });
+});
+
+settingsRouter.put('/privacy/local-only', express.json(), (req, res) => {
+    if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
+    if (process.env.LLM_OBSERVER_LOCAL_ONLY === '1' && req.body.enabled === false) return res.status(403).json({ error: 'Local-only mode is locked by server configuration' });
+    updateSetting('privacy_local_only', String(req.body.enabled));
+    return res.json({ enabled: req.body.enabled, locked: process.env.LLM_OBSERVER_LOCAL_ONLY === '1' });
+});
+
 // --- Settings ---
 // GET /api/settings
 settingsRouter.get('/settings', (req, res) => {
@@ -76,6 +90,9 @@ settingsRouter.get('/settings', (req, res) => {
         // Redact sensitive API key values
         const redacted: Record<string, string> = {};
         for (const [key, value] of Object.entries(settingsMap)) {
+            // The billing API exposes only public entitlement status. Never
+            // expose saved keys, HMACs, or signed portal links in settings.
+            if (key.startsWith('license_') || key.startsWith('activity_') || key === 'privacy_local_only') continue;
             if (key.endsWith('_api_key') && value && (value as string).length > 8) {
                 const v = value as string;
                 redacted[key] = v.substring(0, 4) + '****' + v.substring(v.length - 4);
@@ -93,6 +110,10 @@ settingsRouter.get('/settings', (req, res) => {
 settingsRouter.put('/settings', express.json(), (req, res) => {
     try {
         const payload = req.body;
+        // Only verified license activation may change entitlement state.
+        if (Object.keys(payload).some(key => key.startsWith('license_') || key.startsWith('activity_') || key === 'privacy_local_only')) {
+            return res.status(400).json({ error: 'Protected settings must be changed through their dedicated controls.' });
+        }
         const filteredPayload: Record<string, string> = {};
         for (const [key, value] of Object.entries(payload)) {
             // Ignore any values that contain the redact mask "****"

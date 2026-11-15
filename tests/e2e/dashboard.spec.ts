@@ -74,7 +74,7 @@ test.describe('Settings Page', () => {
         if (await licenseTab.isVisible()) {
             await licenseTab.click();
 
-            const keyInput = page.locator('input[placeholder="sk_live_..."]').first();
+            const keyInput = page.locator('input[placeholder="PRO_..."]').first();
             if (await keyInput.isVisible()) {
                 await keyInput.fill('PRO_TEST_KEY_123');
                 await expect(keyInput).toHaveValue('PRO_TEST_KEY_123');

@@ -1,3 +1,4 @@
+import { CompatibleProvider, COMPATIBLE_PROVIDERS } from './providers/compatible';
 import { Request, Response } from 'express';
 import httpProxy from 'http-proxy';
 import { Readable } from 'stream';
@@ -10,6 +11,7 @@ import { GroqProvider } from './providers/groq';
 import { CustomProvider } from './providers/custom';
 import { OllamaProvider } from './providers/ollama';
 import { redactDeep } from './security/piiRedaction';
+import { localOnlyEnabled, localOllamaTargetAllowed } from './security/localOnly';
 import { computeDrift } from './analysis/responseDrift';
 import { getSetting, getDriftBaseline, saveDriftBaseline, createAlert } from '@llm-observer/database';
 import chalk from 'chalk';
@@ -27,6 +29,7 @@ export const proxy = httpProxy.createProxyServer({
 
 
 const providers: Record<string, IProvider> = {
+    ...Object.fromEntries(Object.entries(COMPATIBLE_PROVIDERS).map(([name,url]) => [name,new CompatibleProvider(name,url)])),
     openai: new OpenAIProvider(),
     anthropic: new AnthropicProvider(),
     google: new GoogleProvider(),
@@ -43,6 +46,11 @@ export const handleProxyRequest = async (req: Request, res: Response, providerNa
     }
 
     const targetUrl = req.customTargetUrl || provider.getBaseUrl();
+    // Check before provider auth, logging, body rewriting, or any network I/O.
+    // A custom route cannot masquerade as local Ollama.
+    if (localOnlyEnabled() && !localOllamaTargetAllowed(providerName, targetUrl)) {
+        return res.status(403).json({ error: 'Local-only mode blocks remote model requests. Use a loopback Ollama endpoint or turn off Local-only mode in Security & Privacy.' });
+    }
     const authHeaders = provider.getAuthHeader(req);
 
     // Strip original auth headers from incoming request to avoid pass-through of Observer Keys
@@ -243,7 +251,7 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
             if (requestInfo.isStreaming && extractedUsage) {
                 let p = extractedUsage.prompt_tokens || 0;
                 let c = extractedUsage.completion_tokens || 0;
-                const costResult = providers[providerName].calculateCost(requestInfo.model, p, c);
+                const costResult = providers[providerName].calculateCost(requestInfo.model, p, c, extractedUsage.cached_tokens ?? 0);
                 usage = {
                     promptTokens: p,
                     completionTokens: c,
@@ -334,7 +342,7 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
                 status: statusCode >= 400 ? 'error' : 'success',
                 is_streaming: requestInfo.isStreaming ? 1 : 0,
                 has_tools: requestInfo.hasTools ? 1 : 0,
-                pricing_unknown: usage?.pricing_unknown ? 1 : 0,
+                pricing_unknown: !usage || usage.pricing_unknown ? 1 : 0,
                 tags: (req.headers['x-tags'] || req.headers['x-llm-observer-tags']) as string || undefined,
                 request_body: requestBodyStr,
                 response_body: dbResponseBody,
@@ -349,7 +357,13 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
                 incrementSpendCache(cacheKey, usage.costUsd);
             }
 
-            requestEventEmitter.emit('new_request', reqRecord);
+            requestEventEmitter.emit('new_request', {
+                ...reqRecord,
+                prompt_tokens: usage ? reqRecord.prompt_tokens : null,
+                completion_tokens: usage ? reqRecord.completion_tokens : null,
+                total_tokens: usage ? reqRecord.total_tokens : null,
+                cost_usd: reqRecord.pricing_unknown ? null : reqRecord.cost_usd
+            });
 
             internalLogger.add({
                 ...reqRecord,
@@ -361,11 +375,10 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
                 metadata: reqRecord.metadata
             }).catch((err: any) => console.error('Failed to enqueue request log:', err));
 
-            console.log(chalk.green(`✓ [${providerName}] ${requestInfo.model} | ${usage?.totalTokens || 0} tokens | ${latency}ms | $${(usage?.costUsd || 0).toFixed(6)}`));
+            console.log(chalk.green(`✓ [${providerName}] ${requestInfo.model} | ${usage?.totalTokens || 0} tokens | ${latency}ms | $${reqRecord.pricing_unknown ? 'unpriced' : reqRecord.cost_usd.toFixed(6)}`));
 
         } catch (err) {
             console.error('Error logging request:', err);
         }
     }
 });
-

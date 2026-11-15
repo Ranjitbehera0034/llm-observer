@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  See every dollar across 7 AI coding tools: Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI — without changing how you work.
+  See every dollar across supported AI coding tools: Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, OpenAI Codex CLI, and OpenCode — without changing how you work.
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
 
 ## Quickstart
 
-**Prerequisites:** Node.js 18+ (`node --version` to check)
+**Prerequisites:** Node.js 22+ (`node --version` to check)
 
 ### Option 1 — npm (recommended)
 
@@ -60,7 +60,7 @@ On first launch, LLM Observer automatically detects your installed AI tools, par
 
 ### Session Tracking (Zero Config)
 
-- **Auto-Detection** — Automatically finds Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, and OpenAI Codex CLI data on your machine
+- **Auto-Detection** — Automatically finds Claude Code, Cursor, Aider, GitHub Copilot, Windsurf, Cline, OpenAI Codex CLI, and OpenCode data on your machine
 - **Session Explorer** — Browse every AI conversation with cost, duration, tokens, model, and project
 - **Incremental Parsing** — Only new/modified files are re-parsed on startup (fast after first run)
 - **Session Type Labels** — Automatically classifies sessions as "interactive" or "agentic"
@@ -166,7 +166,7 @@ Setup: Enable in Settings               Setup: Route traffic through proxy
 Gives: Per-app attribution              Gives: Per-request detail + kill switch
 ```
 
-**All data stays local.** SQLite database on your machine. No cloud. No telemetry. No account.
+**Session usage is stored locally.** SQLite database on your machine. No usage telemetry. No account for free tracking. Pro licensing contacts the payment service for activation and periodic entitlement checks.
 
 **Data priority:** When multiple engines report cost for the same provider, Usage API sync (billing-accurate) takes precedence. Session parser provides per-session breakdown. They complement each other.
 
@@ -249,19 +249,20 @@ llm-observer stop                    # Graceful shutdown
 LLM_OBSERVER_PORT=3000 llm-observer start
 ```
 
-> **License activation and upgrading to Pro currently happen in the Dashboard** (Settings → License & Billing), not the CLI — `llm-observer activate`/`billing`/`upgrade`/`team` exist as commands but are placeholders pending a follow-up to wire them to the same backend the dashboard already uses.
+> **Pro activation:** use Settings → License & Billing or `llm-observer activate <key>`. `llm-observer billing` shows your current limits; `llm-observer upgrade` explains purchase options. Pro is $9/month or $79/year; the India option is a ₹799 pass for 30 days without automatic renewal. Checkout must be configured by the distributor before sales open. Teams remain a pilot.
 
 ### Auto-Detected Session Files
 
 | Tool | Location | Format |
 |------|----------|--------|
 | Claude Code | `~/.claude/projects/` | JSONL |
-| Cursor IDE | `~/.cursor/ai-tracking/ai-code-tracking.db` | SQLite |
+| Cursor IDE | Database detection only; import unavailable in this beta | No synthetic usage |
 | Aider | `~/.aider/analytics.jsonl` | JSONL |
 | GitHub Copilot | `~/Library/.../github.copilot-chat/state.vscdb` | SQLite |
 | Windsurf | `~/Library/.../Windsurf/User/globalStorage/*/state.vscdb` | SQLite |
 | Cline / Roo Code | `~/Library/.../globalStorage/{extensionId}/tasks/*/api_conversation_history.json` | JSON |
 | OpenAI Codex CLI | `~/.codex/sessions/*.jsonl` | JSONL |
+| OpenCode | `~/.local/share/opencode/opencode.db` | SQLite |
 
 All files are read in **read-only mode**. LLM Observer never modifies any AI tool's data.
 
@@ -272,7 +273,7 @@ All files are read in **read-only mode**. LLM Observer never modifies any AI too
 - **Does not store your prompts or responses** — Database contains token counts, costs, and metadata only, for data parsed passively from editor session logs. (The optional local proxy is the one path that does store `request_body`/`response_body` — it's an explicit opt-in, off by default, and exists specifically to give you per-request detail when you choose to route traffic through it.)
 - **Does not redact anything by default** — PII redaction exists but is opt-in; off until you turn it on in Settings
 - **Does not intercept traffic by default** — Proxy is optional and off by default
-- **Does not send data anywhere** — No telemetry, no cloud, no analytics. The one opt-in exception is the AI Analyst, which sends only aggregated metadata (never prompts/responses) to Claude, and only if you supply your own API key. Separately, the CLI does a background check against the public npm registry for newer versions (no data sent beyond the package name, same as running `npm outdated`) — disable with `NO_UPDATE_NOTIFIER=1` or `--no-update-notifier`.
+- **No default activity reporting** — Optional installation activity is off by default and sends no prompts or responses. Pro licensing contacts the configured license service; optional team sync sends aggregated statistics. AI Analyst sends aggregate usage to your chosen model only when you trigger it with your own API key. The CLI checks the public npm registry for newer versions; disable this with `NO_UPDATE_NOTIFIER=1` or `--no-update-notifier`.
 - **Does not require root privileges** — Runs as your user account
 - **Does not modify AI tool behavior** — Unless you explicitly enable proxy with kill switch
 - **Does not claim compliance certifications it doesn't have** — no SOC 2, no HIPAA. Everything here is "your data never leaves your machine unless you tell it to," which is a real, verifiable property — not a substitute for a real audited compliance program
@@ -299,7 +300,7 @@ Editors change their session-log format without warning, which is how token coun
 
 ## Tech Stack
 
-- **Runtime**: Node.js 20+ / 22 + Express
+- **Runtime**: Node.js 22+ + Express
 - **Database**: SQLite (`better-sqlite3`) for the local app; MongoDB/Mongoose for the optional team-server
 - **Frontend**: React 18 + Vite + Tailwind CSS
 - **Desktop**: Tauri 2 (see [packages/desktop](packages/desktop) and [SIGNING.md](packages/desktop/SIGNING.md))
@@ -429,7 +430,7 @@ Session-estimated costs are within ~5% of actual billing. For exact numbers, add
 <details>
 <summary><strong>Is my data safe?</strong></summary>
 <br />
-Everything stays in a local SQLite database. No cloud, no telemetry, no account. Admin keys are AES-256-GCM encrypted. The database stores costs and metadata — never prompts or responses, except for the optional local proxy (off by default) which you'd explicitly route traffic through.
+Session and request data stays in a local SQLite database by default. Free tracking needs no account. Optional connected features and Pro licensing use network services as described above. The local session parser stores costs and metadata, not prompts or responses; the optional local proxy stores request and response bodies when you route traffic through it.
 </details>
 
 <details>
@@ -469,3 +470,14 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
   Every feature answers at least one of:<br />
   <strong>How much am I spending?</strong> · <strong>Can I stop overspending?</strong> · <strong>Where can I spend less?</strong> · <strong>Is it worth it?</strong>
 </p>
+
+
+## Parser support in this beta
+
+Claude Code has recorded-format regression fixtures. Other editor parsers are experimental and format-dependent; estimates are not invoices or subscription charges. Cursor's detected database does not yet have a validated usage importer and is explicitly reported as unsupported. No sample sessions are inserted. Verify imported totals against your tool/provider records before making billing decisions.
+
+## Release validation and resource usage
+
+See `docs/release-2.1.0.md` for test results, release limitations, and commercial launch checks. The dashboard pauses polling when hidden, loads pages on demand, and skips unchanged parser aggregation. Network monitoring remains opt-in. `LLM_OBSERVER_DISABLE_PARSERS=1` disables local session discovery for isolated tests; normal installs automatically discover supported tools.
+
+Cursor installations can be detected, but session import is unavailable until its database format is verified. The app never fabricates Cursor sessions.

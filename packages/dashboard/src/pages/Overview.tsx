@@ -1,3 +1,5 @@
+import { apiFetch } from '../utils/apiFetch';
+import { visibleInterval } from '../utils/visibleInterval';
 import { useState, useEffect, useCallback } from 'react';
 import { 
     LayoutDashboard, 
@@ -39,7 +41,7 @@ interface OverviewData {
     total_usd: number;
     tracked_api: {
         total_usd: number;
-        providers: Record<string, { total_usd: number; source: 'sync' | 'proxy' }>;
+        providers: Record<string, { total_usd: number; source: 'sync' | 'proxy' | 'mixed' }>;
     };
     subscriptions: {
         total_monthly_commitment_usd: number;
@@ -77,6 +79,8 @@ export default function Overview() {
     const [topSessions, setTopSessions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [showAddSub, setShowAddSub] = useState(false);
+    const [selectedService, setSelectedService] = useState<string | null>(null);
+    const [subscriptionAmount, setSubscriptionAmount] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'today' | 'week' | 'month'>('today');
     const [optScore, setOptScore] = useState<{ score: number; totalSavingsUsd: number; planValue?: { valueMultiple: number; planCostMonthlyUsd: number } } | null>(null);
@@ -85,15 +89,15 @@ export default function Overview() {
     const fetchData = useCallback(async () => {
         try {
             const [todayRes, weekRes, monthRes, timelineRes, budgetsRes, appsRes, sessionsRes, scoreRes, limitsRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/api/overview?period=today`),
-                fetch(`${API_BASE_URL}/api/overview?period=week`),
-                fetch(`${API_BASE_URL}/api/overview?period=month`),
-                fetch(`${API_BASE_URL}/api/overview/timeline?days=30`),
-                fetch(`${API_BASE_URL}/api/budgets`),
-                fetch(`${API_BASE_URL}/api/apps?period=today`),
-                fetch(`${API_BASE_URL}/api/sessions/expensive?limit=3`),
-                fetch(`${API_BASE_URL}/api/optimize/score`),
-                fetch(`${API_BASE_URL}/api/limits`)
+                apiFetch(`${API_BASE_URL}/api/overview?period=today`),
+                apiFetch(`${API_BASE_URL}/api/overview?period=week`),
+                apiFetch(`${API_BASE_URL}/api/overview?period=month`),
+                apiFetch(`${API_BASE_URL}/api/overview/timeline?days=30`),
+                apiFetch(`${API_BASE_URL}/api/budgets`),
+                apiFetch(`${API_BASE_URL}/api/apps?period=today`),
+                apiFetch(`${API_BASE_URL}/api/sessions/expensive?limit=3`),
+                apiFetch(`${API_BASE_URL}/api/optimize/score`),
+                apiFetch(`${API_BASE_URL}/api/limits`)
             ]);
             
             if (todayRes.ok) setTodayData(await todayRes.json());
@@ -120,19 +124,21 @@ export default function Overview() {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 60_000);
-        return () => clearInterval(interval);
+        const interval = visibleInterval(fetchData, 60_000);
+        return () => interval?.();
     }, [fetchData]);
 
     const handleAddSub = async (preset: Partial<SubscriptionRecord>) => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/subscriptions`, {
+            const res = await apiFetch(`${API_BASE_URL}/api/subscriptions`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(preset)
             });
             if (res.ok) {
                 setShowAddSub(false);
+                setSelectedService(null);
+                setSubscriptionAmount('');
                 fetchData();
             }
         } catch (err) {
@@ -143,7 +149,7 @@ export default function Overview() {
     const handleDeleteSub = async (id: number) => {
         if (!confirm('Remove this subscription?')) return;
         try {
-            await fetch(`${API_BASE_URL}/api/subscriptions/${id}`, { method: 'DELETE' });
+            await apiFetch(`${API_BASE_URL}/api/subscriptions/${id}`, { method: 'DELETE' });
             fetchData();
         } catch (err) {
             console.error('Failed to delete subscription', err);
@@ -275,6 +281,7 @@ export default function Overview() {
                                 <div className="flex items-center gap-2">
                                     <div className={`w-1.5 h-1.5 rounded-full ${p.source === 'sync' ? 'bg-indigo-400' : 'bg-slate-500'}`} />
                                     <span className="text-[10px] font-bold text-white uppercase">{id}</span>
+                                    <span className="text-[9px] text-slate-400">{p.source === 'mixed' ? 'Synced + estimated' : p.source === 'sync' ? 'Synced' : 'Estimated'}</span>
                                 </div>
                                 <span className="text-[10px] font-mono text-slate-400">${p.total_usd?.toFixed(2)}</span>
                             </div>
@@ -374,7 +381,7 @@ export default function Overview() {
                                         <span className="text-[10px] font-bold text-white uppercase truncate max-w-[100px]">{session.project_name}</span>
                                         <span className="text-[8px] text-slate-500 font-mono capitalize">{session.provider.replace('-', ' ')}</span>
                                     </div>
-                                    <span className="text-[10px] font-black text-emerald-400">${(session.estimated_cost_usd || 0).toFixed(2)}</span>
+                                    <span className="text-[10px] font-black text-emerald-400">{session.estimated_cost_usd == null ? 'Unpriced' : `$${session.estimated_cost_usd.toFixed(2)}`}</span>
                                 </div>
                             ))
                         )}
@@ -493,7 +500,7 @@ export default function Overview() {
             {/* Subscriptions Grid */}
             <div>
                 <div className="flex items-center justify-between mb-8">
-                    <h3 className="text-xl font-bold text-white tracking-tight">Active Subscriptions</h3>
+                    <h3 className="text-xl font-bold text-white tracking-tight">Manually tracked subscriptions</h3>
                 </div>
                 {data?.subscriptions.active.length === 0 ? (
                     <div className="bg-slate-900/50 border-2 border-dashed border-slate-800 rounded-3xl p-12 text-center group cursor-pointer hover:border-indigo-500/50 transition-all" onClick={() => setShowAddSub(true)}>
@@ -501,7 +508,7 @@ export default function Overview() {
                             <Plus className="w-8 h-8 text-slate-500 group-hover:text-indigo-400" />
                         </div>
                         <h4 className="text-white font-bold text-lg">No active subscriptions</h4>
-                        <p className="text-slate-500 text-sm mt-1">Track fixed costs like Cursor Pro or ChatGPT Plus here.</p>
+                        <p className="text-slate-500 text-sm mt-1">Purchased a plan from a provider? Record its actual monthly cost here.</p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -542,7 +549,7 @@ export default function Overview() {
                             <div className="flex items-center justify-between mb-8">
                                 <div>
                                     <h2 className="text-3xl font-black text-white tracking-tight">Add Subscription</h2>
-                                    <p className="text-slate-400 font-medium">Select a service to start tracking its cost.</p>
+                                    <p className="text-slate-400 font-medium">Only record a plan you already purchased from its provider.</p>
                                 </div>
                                 <button onClick={() => setShowAddSub(false)} className="bg-slate-800 p-2 rounded-xl text-slate-400 hover:text-white transition-all">
                                     <Info className="w-6 h-6 rotate-45" />
@@ -561,6 +568,21 @@ export default function Overview() {
                                 />
                             </div>
 
+                            <Link to="/model-access" onClick={() => setShowAddSub(false)} className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-300 hover:underline mb-6">Explore official provider plans <ChevronRight className="w-4 h-4" /></Link>
+                            {selectedService && <form onSubmit={(event) => {
+                                event.preventDefault();
+                                const amount = Number(subscriptionAmount);
+                                if (!Number.isFinite(amount) || amount < 0) return;
+                                const preset = SUBSCRIPTION_PRESETS.find(p => p.service_name === selectedService);
+                                if (preset) void handleAddSub({ ...preset, monthly_cost_usd: amount, notes: 'Manually recorded; purchase not verified by LLM Observer' });
+                            }} className="rounded-2xl border border-indigo-500/30 bg-indigo-500/5 p-4 mb-6 space-y-3">
+                                <p className="text-white font-semibold">Record {selectedService}</p>
+                                <p className="text-xs text-slate-400">This does not buy or activate the plan. Enter what your provider actually charges per month.</p>
+                                <label className="block text-xs text-slate-300">Monthly cost in USD
+                                    <input type="number" min="0" step="0.01" required value={subscriptionAmount} onChange={e => setSubscriptionAmount(e.target.value)} className="mt-2 w-full bg-black border border-slate-700 rounded-lg p-3 text-white" />
+                                </label>
+                                <button type="submit" className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Record subscription</button>
+                            </form>}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                                 {filteredPresets.map(preset => {
                                     const isDuplicate = todayData?.subscriptions.active.some(s => s.service_name === preset.service_name);
@@ -573,7 +595,8 @@ export default function Overview() {
                                                     alert(`You already have an active ${preset.service_name} subscription.`);
                                                     return;
                                                 }
-                                                handleAddSub(preset);
+                                                setSelectedService(preset.service_name);
+                                                setSubscriptionAmount('');
                                             }}
                                             className={`bg-black/40 border p-6 rounded-2xl text-left transition-all flex items-center justify-between group ${
                                                 isDuplicate ? 'opacity-50 border-slate-800 grayscale cursor-not-allowed' : 'border-slate-800 hover:border-indigo-500/50 hover:bg-black'
@@ -581,7 +604,7 @@ export default function Overview() {
                                         >
                                             <div>
                                                 <h4 className="font-bold text-white mb-1">{preset.service_name}</h4>
-                                                <span className="text-lg font-black text-indigo-400">${preset.monthly_cost_usd} <span className="text-[10px] text-slate-600 uppercase">/ mo</span></span>
+                                                <span className="text-xs text-slate-400">Enter your actual charge after purchase</span>
                                                 {isDuplicate && <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Already Tracking</p>}
                                             </div>
                                             {!isDuplicate && <ChevronRight className="w-5 h-5 text-slate-800 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />}

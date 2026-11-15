@@ -1,3 +1,5 @@
+import { apiFetch } from '../utils/apiFetch';
+import { visibleInterval } from '../utils/visibleInterval';
 import { useEffect, useState, useRef } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { API_BASE_URL } from '../config';
@@ -15,7 +17,7 @@ export function CostChart() {
     const sseRef = useRef<EventSource | null>(null);
 
     const fetchChart = () => {
-        fetch(`${API_BASE_URL}/api/stats/chart`)
+        apiFetch(`${API_BASE_URL}/api/stats/chart`)
             .then(res => res.json())
             .then(resData => {
                 if (resData.data) {
@@ -49,11 +51,11 @@ export function CostChart() {
             } catch (e) { }
         };
 
-        const intervalId = setInterval(fetchChart, 60000); // Less frequent poll since we have SSE
+        const intervalId = visibleInterval(fetchChart, 60000); // Less frequent poll since we have SSE
 
         return () => {
             sseRef.current?.close();
-            clearInterval(intervalId);
+            intervalId?.();
         };
     }, []);
 

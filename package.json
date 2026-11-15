@@ -1,6 +1,6 @@
 {
   "name": "llm-observer-monorepo",
-  "version": "2.0.0",
+  "version": "2.1.0-beta.1",
   "private": true,
   "description": "Privacy-first LLM cost tracking for developers",
   "workspaces": [
@@ -23,7 +23,8 @@
     "test:load:artillery": "artillery run tests/load/artillery-proxy.yml",
     "test:load:k6": "k6 run tests/load/k6-proxy-load.js",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "clean": "rm -rf node_modules packages/*/dist packages/*/node_modules"
+    "clean": "rm -rf node_modules packages/*/dist packages/*/node_modules",
+    "test:performance": "node scripts/resource-audit.cjs"
   },
   "repository": {
     "type": "git",
@@ -36,7 +37,7 @@
   },
   "homepage": "https://github.com/Ranjitbehera0034/llm-observer#readme",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",

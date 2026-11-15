@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Box, CheckCircle, Copy, Code, MessageSquare, Terminal, Wrench, AlertTriangle, GitBranch } from 'lucide-react';
 import { StatusBadge, formatTimeAgo } from '../components/StatusBadge';
@@ -58,7 +59,7 @@ export function RequestDetail({ requestId, onBack }: RequestDetailProps) {
     const [view, setView] = useState<'chain' | 'raw'>('chain');
 
     useEffect(() => {
-        fetch(`${API_BASE_URL}/api/requests/${requestId}`)
+        apiFetch(`${API_BASE_URL}/api/requests/${requestId}`)
             .then(res => res.json())
             .then(resData => {
                 setDetail(resData.data);
@@ -152,8 +153,8 @@ export function RequestDetail({ requestId, onBack }: RequestDetailProps) {
                 {[
                     { label: 'Provider & Model', value: detail.provider, sub: detail.model, color: 'text-primary' },
                     { label: 'Latency', value: `${detail.latency_ms}ms`, sub: detail.is_streaming ? 'Streaming' : 'REST (Blocking)', color: 'text-white' },
-                    { label: 'Token Usage', value: detail.total_tokens.toLocaleString(), sub: `P: ${detail.prompt_tokens} / C: ${detail.completion_tokens}`, color: 'text-white' },
-                    { label: 'Cost Est.', value: `$${detail.cost_usd.toFixed(6)}`, sub: 'USD (Computed)', color: 'text-danger' },
+                    { label: 'Token Usage', value: detail.total_tokens == null ? 'Unknown' : detail.total_tokens.toLocaleString(), sub: `Input: ${detail.prompt_tokens ?? '—'} / Output: ${detail.completion_tokens ?? '—'}`, color: 'text-white' },
+                    { label: 'Cost Est.', value: detail.cost_usd == null ? 'Unpriced' : `$${detail.cost_usd.toFixed(6)}`, sub: 'USD (Computed)', color: 'text-danger' },
                 ].map((stat, i) => (
                     <div key={i} className="glass-panel p-6 border-white/5 shadow-xl relative overflow-hidden group">
                         <div className="absolute top-0 left-0 w-1 h-full bg-primary opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -266,4 +267,3 @@ export function RequestDetail({ requestId, onBack }: RequestDetailProps) {
         </div>
     );
 }
-

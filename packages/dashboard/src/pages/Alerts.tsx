@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { useState, useEffect } from 'react';
 import { Bell, AlertTriangle, Plus, Trash2, CheckCircle, X } from 'lucide-react';
 import { API_BASE_URL } from '../config';
@@ -30,7 +31,7 @@ export default function Alerts() {
 
     const fetchRules = async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/alert-rules`);
+            const res = await apiFetch(`${API_BASE_URL}/api/alert-rules`);
             const data = await res.json();
             setRules(data.data || []);
         } catch (err) {
@@ -41,7 +42,7 @@ export default function Alerts() {
     const handleCreateRule = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await fetch(`${API_BASE_URL}/api/alert-rules`, {
+            await apiFetch(`${API_BASE_URL}/api/alert-rules`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -64,7 +65,7 @@ export default function Alerts() {
     const handleDeleteRule = async (id: string) => {
         if (!confirm('Are you sure you want to delete this alert rule?')) return;
         try {
-            await fetch(`${API_BASE_URL}/api/alert-rules/${id}`, { method: 'DELETE' });
+            await apiFetch(`${API_BASE_URL}/api/alert-rules/${id}`, { method: 'DELETE' });
             fetchRules();
         } catch (err) {
             console.error(err);

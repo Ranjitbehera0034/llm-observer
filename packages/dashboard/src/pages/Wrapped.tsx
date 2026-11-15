@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { useState, useEffect, useCallback } from 'react';
 import { 
     Gift, 
@@ -90,11 +91,14 @@ export default function Wrapped() {
         show_insights: true
     });
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
     const [generatingCard, setGeneratingCard] = useState(false);
 
     const fetchInitialData = useCallback(async () => {
+        setLoadError('');
         try {
-            const res = await fetch(`${API_BASE_URL}/api/wrapped/available-periods`);
+            const res = await apiFetch(`${API_BASE_URL}/api/wrapped/available-periods`);
+            if (!res.ok) throw new Error('Could not load available reports');
             if (res.ok) {
                 const data = await res.json();
                 setAvailablePeriods(data);
@@ -103,12 +107,15 @@ export default function Wrapped() {
                 }
             }
 
-            const prefRes = await fetch(`${API_BASE_URL}/api/wrapped/preferences`);
+            const prefRes = await apiFetch(`${API_BASE_URL}/api/wrapped/preferences`);
             if (prefRes.ok) {
                 setPrefs(await prefRes.json());
             }
         } catch (err) {
             console.error('Failed to fetch initial wrapped data', err);
+            setLoadError('Could not load reports. Check that LLM Observer is running, then retry.');
+        } finally {
+            setLoading(false);
         }
     }, []);
 
@@ -119,7 +126,7 @@ export default function Wrapped() {
             const url = type === 'monthly' 
                 ? `${API_BASE_URL}/api/wrapped/monthly?month=${period}`
                 : `${API_BASE_URL}/api/wrapped/yearly?year=${period}`;
-            const res = await fetch(url);
+            const res = await apiFetch(url);
             if (res.ok) {
                 setReport(await res.json());
             }
@@ -144,7 +151,7 @@ export default function Wrapped() {
         const newPrefs = { ...prefs, [key]: !prefs[key] };
         setPrefs(newPrefs);
         try {
-            await fetch(`${API_BASE_URL}/api/wrapped/preferences`, {
+            await apiFetch(`${API_BASE_URL}/api/wrapped/preferences`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newPrefs)
@@ -158,7 +165,7 @@ export default function Wrapped() {
         if (!selectedPeriod) return;
         setGeneratingCard(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/wrapped/card?period=${selectedPeriod}&type=${periodType}&format=svg`);
+            const res = await apiFetch(`${API_BASE_URL}/api/wrapped/card?period=${selectedPeriod}&type=${periodType}&format=svg`);
             if (res.ok) {
                 const svgBlob = await res.blob();
                 const url = URL.createObjectURL(svgBlob);
@@ -187,6 +194,7 @@ export default function Wrapped() {
 
     return (
         <div className="max-w-7xl mx-auto space-y-10 py-10 px-6 animate-in fade-in slide-in-from-bottom-2 duration-700">
+            {loadError && <div role="alert" className="p-4 border border-danger rounded-xl">{loadError} <button className="underline" onClick={fetchInitialData}>Retry</button></div>}
             {/* Header & Period Selector */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>

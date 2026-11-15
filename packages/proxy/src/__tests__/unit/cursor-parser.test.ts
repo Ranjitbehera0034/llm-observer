@@ -1,4 +1,11 @@
-import { groupCursorEventsIntoSessions, CursorEvent } from '../../parsers/cursor';
+import { groupCursorEventsIntoSessions, CursorEvent, detector, parse } from '../../parsers/cursor';
+import fs from 'fs';
+import { insertSession, upsertParsedFile } from '@llm-observer/database';
+
+jest.mock('@llm-observer/database', () => ({
+    insertSession: jest.fn(),
+    upsertParsedFile: jest.fn()
+}));
 
 describe('Cursor Parser > Session Grouping', () => {
     
@@ -66,5 +73,31 @@ describe('Cursor Parser > Session Grouping', () => {
         expect(sessions).toHaveLength(2);
         expect(sessions[0].map(e => e.id)).toEqual(['1', '2', '3']);
         expect(sessions[1].map(e => e.id)).toEqual(['4']);
+    });
+});
+
+
+describe('Cursor Parser > Unsupported local format', () => {
+    afterEach(() => { jest.restoreAllMocks(); jest.clearAllMocks(); });
+
+    it('keeps an existing store detectable without fabricating sessions or reporting success', async () => {
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+        const progress = jest.fn();
+        expect(detector()).toBe(true);
+        await expect(parse(progress)).rejects.toMatchObject({
+            code: 'UNSUPPORTED_FORMAT',
+            message: expect.stringContaining('No session data was imported')
+        });
+        expect(progress).toHaveBeenCalledWith(0, 1);
+        expect(insertSession).not.toHaveBeenCalled();
+        expect(upsertParsedFile).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when no local store exists', async () => {
+        jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+        expect(detector()).toBe(false);
+        await expect(parse()).resolves.toBeUndefined();
+        expect(insertSession).not.toHaveBeenCalled();
+        expect(upsertParsedFile).not.toHaveBeenCalled();
     });
 });

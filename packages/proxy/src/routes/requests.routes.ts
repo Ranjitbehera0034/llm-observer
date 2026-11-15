@@ -57,10 +57,9 @@ requestsRouter.get('/', (req, res) => {
         const dataStmt = db.prepare(`
       SELECT
         id, provider, model, endpoint,
-        COALESCE(prompt_tokens, 0)    AS prompt_tokens,
-        COALESCE(completion_tokens, 0) AS completion_tokens,
-        COALESCE(total_tokens, 0)     AS total_tokens,
-        COALESCE(cost_usd, 0)         AS cost_usd,
+        prompt_tokens, completion_tokens, total_tokens,
+        CASE WHEN pricing_unknown = 1 THEN NULL ELSE cost_usd END AS cost_usd,
+        pricing_unknown,
         latency_ms, status_code, status, is_streaming, metadata, created_at
       FROM requests
       ${whereClause}
@@ -122,10 +121,8 @@ requestsRouter.get('/:id', (req, res) => {
         const db = getDb();
         const stmt = db.prepare(`
       SELECT *,
-        COALESCE(prompt_tokens, 0)     AS prompt_tokens,
-        COALESCE(completion_tokens, 0) AS completion_tokens,
-        COALESCE(total_tokens, 0)      AS total_tokens,
-        COALESCE(cost_usd, 0)          AS cost_usd
+        prompt_tokens, completion_tokens, total_tokens,
+        CASE WHEN pricing_unknown = 1 THEN NULL ELSE cost_usd END AS cost_usd
       FROM requests
       WHERE id = ?
     `);

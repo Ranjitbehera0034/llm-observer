@@ -1,3 +1,5 @@
+import { apiFetch } from '../utils/apiFetch';
+import { visibleInterval } from '../utils/visibleInterval';
 import React, { useState, useEffect, useCallback } from 'react';
 import { StatusBadge } from '../components/StatusBadge';
 import { API_BASE_URL } from '../config';
@@ -128,7 +130,7 @@ const Sync: React.FC = () => {
 
     const fetchStatus = useCallback(async () => {
         try {
-            const res = await fetch(`${API_BASE_URL}/api/sync/status`);
+            const res = await apiFetch(`${API_BASE_URL}/api/sync/status`);
             const data = await res.json();
             setConfigs(data);
         } catch (err) {
@@ -142,8 +144,8 @@ const Sync: React.FC = () => {
         try {
             const providerQuery = activeTab === 'all' ? '' : `&provider=${activeTab}`;
             const [dailyRes, modelRes] = await Promise.all([
-                fetch(`${API_BASE_URL}/api/sync/usage/daily?days=30${providerQuery}`),
-                fetch(`${API_BASE_URL}/api/sync/usage/today?${providerQuery}`),
+                apiFetch(`${API_BASE_URL}/api/sync/usage/daily?days=30${providerQuery}`),
+                apiFetch(`${API_BASE_URL}/api/sync/usage/today?${providerQuery}`),
             ]);
             if (dailyRes.ok) setDailyData(await dailyRes.json());
             if (modelRes.ok) setModelData(await modelRes.json());
@@ -155,8 +157,8 @@ const Sync: React.FC = () => {
     useEffect(() => {
         fetchStatus();
         fetchUsageData();
-        const interval = setInterval(() => { fetchStatus(); fetchUsageData(); }, 60_000);
-        return () => clearInterval(interval);
+        const interval = visibleInterval(() => Promise.all([fetchStatus(), fetchUsageData()]), 60_000);
+        return () => interval?.();
     }, [fetchStatus, fetchUsageData]);
 
     const handleSaveKey = async (providerId: string, adminKey: string) => {
@@ -164,7 +166,7 @@ const Sync: React.FC = () => {
         setTestError(null);
 
         try {
-            const res = await fetch(`${API_BASE_URL}/api/sync/providers/${providerId}/key`, {
+            const res = await apiFetch(`${API_BASE_URL}/api/sync/providers/${providerId}/key`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ adminKey })
@@ -188,7 +190,7 @@ const Sync: React.FC = () => {
         const name = configs.find(c => c.id === providerId)?.display_name || providerId;
         if (!confirm(`Are you sure you want to disconnect ${name}? Historical data will be preserved.`)) return;
         try {
-            await fetch(`${API_BASE_URL}/api/sync/providers/${providerId}/key`, { method: 'DELETE' });
+            await apiFetch(`${API_BASE_URL}/api/sync/providers/${providerId}/key`, { method: 'DELETE' });
             await fetchStatus();
             await fetchUsageData();
         } catch (err) {

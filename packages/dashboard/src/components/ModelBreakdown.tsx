@@ -1,3 +1,5 @@
+import { apiFetch } from '../utils/apiFetch';
+import { visibleInterval } from '../utils/visibleInterval';
 import { useEffect, useState, useRef } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { API_BASE_URL } from '../config';
@@ -17,7 +19,7 @@ export function ModelBreakdown() {
     const sseRef = useRef<EventSource | null>(null);
 
     const fetchModels = () => {
-        fetch(`${API_BASE_URL}/api/stats/models`)
+        apiFetch(`${API_BASE_URL}/api/stats/models`)
             .then(res => res.json())
             .then(resData => {
                 setData(resData.data || []);
@@ -43,11 +45,11 @@ export function ModelBreakdown() {
             } catch (e) { }
         };
 
-        const intervalId = setInterval(fetchModels, 60000);
+        const intervalId = visibleInterval(fetchModels, 60000);
 
         return () => {
             sseRef.current?.close();
-            clearInterval(intervalId);
+            intervalId?.();
         };
     }, []);
 

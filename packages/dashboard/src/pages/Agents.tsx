@@ -1,3 +1,4 @@
+import { apiFetch } from '../utils/apiFetch';
 import { useState, useEffect } from 'react';
 import { Bot, TrendingUp, DollarSign, Activity, ChevronRight, Search, Layout, PenTool, CheckCircle } from 'lucide-react';
 import { formatCurrency } from '../utils/format';
@@ -8,7 +9,7 @@ export default function Agents() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch(`${API_BASE_URL}/api/agents/summary`)
+        apiFetch(`${API_BASE_URL}/api/agents/summary`)
             .then(res => res.json())
             .then(data => {
                 setStats(data);

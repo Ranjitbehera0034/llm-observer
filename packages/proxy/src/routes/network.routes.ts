@@ -22,7 +22,7 @@ router.post('/start', async (req, res) => {
     try {
         updateSetting('network_monitor_enabled', 'true');
         await networkMonitor.start();
-        res.json({ success: true, running: true });
+        res.json({ success: true, running: networkMonitor.getStatus().running });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }

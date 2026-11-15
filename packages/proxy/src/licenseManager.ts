@@ -1,5 +1,5 @@
 import { getDb, getSetting, updateSetting } from '@llm-observer/database';
-import { createHash, createHmac } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import os from 'os';
 
 /**
@@ -29,7 +29,6 @@ function verifyLicenseKeyIntegrity(key: string, storedHmac: string | null): bool
     // Constant-time comparison
     if (expected.length !== storedHmac.length) return false;
     try {
-        const { timingSafeEqual } = require('crypto');
         return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(storedHmac, 'hex'));
     } catch {
         return false;
@@ -39,6 +38,8 @@ function verifyLicenseKeyIntegrity(key: string, storedHmac: string | null): bool
 export interface LicenseInfo {
     isPro: boolean;
     licenseKey?: string;
+    validUntil?: string;
+    portalUrl?: string;
     status: 'active' | 'cancelled' | 'free';
     limits: {
         maxProjects: number;
@@ -59,6 +60,7 @@ const PRO_LIMITS = {
 // Simple cache to avoid DB hits on every request
 let cachedLicense: LicenseInfo | null = null;
 let lastCheckTime = 0;
+let cachedAccessExpiresAt = 0;
 const CACHE_TTL = 60 * 1000; // 1 minute
 
 /**
@@ -78,19 +80,12 @@ export function getMachineId(): string {
 
 export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo> {
     const now = Date.now();
-    if (cachedLicense && !forceRefresh && (now - lastCheckTime < CACHE_TTL)) {
+    if (cachedLicense && !forceRefresh && (now - lastCheckTime < CACHE_TTL) && (!cachedLicense.isPro || now < cachedAccessExpiresAt)) {
         return cachedLicense;
     }
 
     const licenseKey = getSetting('license_key');
     const licenseStatus = getSetting('license_status');
-
-    // Cancelled subscription always becomes free regardless of stored key
-    if (licenseStatus === 'cancelled') {
-        cachedLicense = { isPro: false, licenseKey: undefined, status: 'cancelled', limits: FREE_LIMITS };
-        lastCheckTime = now;
-        return cachedLicense;
-    }
 
     const isPro = !!licenseKey && (
         licenseKey.startsWith('PRO_') ||
@@ -108,9 +103,29 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
         }
     }
 
+    // Revalidate at most once every six hours, with a bounded offline lease.
+    // Provider denial revokes access immediately; outages cannot grant new Pro.
+    if (isPro) {
+        const lastVerified = Number(getSetting('license_verified_at') || 0);
+        const validUntil = Date.parse(getSetting('license_valid_until') || '');
+        const lastAttempt = Number(getSetting('license_last_attempt_at') || 0);
+        if ((now - lastVerified >= 6 * 3600000 || !Number.isFinite(validUntil) || validUntil <= now || licenseStatus === 'cancelled') && now - lastAttempt >= 5 * 60000) {
+            await refreshEntitlement(licenseKey!);
+        }
+        const refreshedUntil = Date.parse(getSetting('license_valid_until') || '');
+        const verifiedAt = Number(getSetting('license_verified_at') || 0);
+        cachedAccessExpiresAt = Math.min(refreshedUntil, verifiedAt + 72 * 3600000);
+        if (getSetting('license_status') !== 'active' || !Number.isFinite(cachedAccessExpiresAt) || cachedAccessExpiresAt <= Date.now()) {
+            cachedLicense = { isPro: false, status: 'free', limits: FREE_LIMITS, portalUrl: billingPortal(licenseKey) };
+            lastCheckTime = now;
+            return cachedLicense;
+        }
+    }
+
     cachedLicense = {
         isPro,
-        licenseKey: licenseKey || undefined,
+        validUntil: getSetting('license_valid_until') || undefined,
+        portalUrl: billingPortal(licenseKey),
         status: isPro ? 'active' : 'free',
         limits: isPro ? PRO_LIMITS : FREE_LIMITS
     };
@@ -119,66 +134,61 @@ export async function getLicenseInfo(forceRefresh = false): Promise<LicenseInfo>
     return cachedLicense;
 }
 
-const VALIDATOR_URL = process.env.LICENSE_SERVER_URL || 'https://api.llmobserver.com/validate';
+function billingPortal(key: string | null): string | undefined {
+    // A durable sign-in URL remains useful after expiry, payment failure, or an
+    // outage. Provider-signed portal links expire after 24 hours.
+    if (key?.startsWith('PRO_LS_')) return 'https://app.lemonsqueezy.com/my-orders';
+    return undefined;
+}
+
+// Release builds can bake a verified public URL in via tsup. No secret is bundled.
+declare const __LICENSE_SERVER_URL__: string;
+const VALIDATOR_URL = process.env.LICENSE_SERVER_URL || (typeof __LICENSE_SERVER_URL__ !== 'undefined' ? __LICENSE_SERVER_URL__ : '');
+let refreshPromise: Promise<{ success: boolean; message: string }> | null = null;
+
+async function verifyRemote(key: string): Promise<{ success: boolean; message: string }> {
+    if (!VALIDATOR_URL) return { success: false, message: 'Pro activation is not configured in this build. Contact support; free tracking remains available.' };
+    try {
+        const url = new URL(VALIDATOR_URL);
+        if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) throw new Error('HTTPS required');
+        updateSetting('license_last_attempt_at', String(Date.now()));
+        const response = await fetch(url.toString(), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ license_key: key }), signal: AbortSignal.timeout(8000)
+        });
+        const data = await response.json() as any;
+        const until = Date.parse(data.valid_until || '');
+        if (response.ok && data.valid === true && Number.isFinite(until) && until > Date.now()) {
+            updateSetting('license_key', key);
+            updateSetting('license_key_hmac', signLicenseKey(key));
+            updateSetting('license_status', 'active');
+            updateSetting('license_valid_until', new Date(until).toISOString());
+            updateSetting('license_verified_at', String(Date.now()));
+            const portal = typeof data.portal_url === 'string' && /^https:\/\/[^/]+\.lemonsqueezy\.com\//.test(data.portal_url) ? data.portal_url : '';
+            updateSetting('license_portal_url', portal);
+            cachedLicense = null;
+            return { success: true, message: 'License activated. Pro access is verified through ' + new Date(until).toLocaleDateString() + '.' };
+        }
+        // A temporary provider outage must not revoke a previously valid lease.
+        if (data.valid === false && response.status < 500 && key === getSetting('license_key')) {
+            updateSetting('license_status', 'cancelled');
+            updateSetting('license_valid_until', '');
+            cachedLicense = null;
+        }
+        return { success: false, message: data.error || 'License could not be verified. Please retry.' };
+    } catch {
+        return { success: false, message: 'License service unavailable. Please retry. Your existing verified access remains available until its offline limit.' };
+    }
+}
+
+async function refreshEntitlement(key: string) {
+    if (!refreshPromise) refreshPromise = verifyRemote(key).finally(() => { refreshPromise = null; });
+    return refreshPromise;
+}
 
 export async function activateLicense(key: string): Promise<{ success: boolean; message: string }> {
-    if (!key.startsWith('PRO_') && !key.startsWith('sk_live_')) {
-        return { success: false, message: 'Invalid format. Keys should start with PRO_ or sk_live_.' };
-    }
-
-    try {
-        // PRO_ prefix is for local dev/testing — no seat enforcement
-        if (key.startsWith('PRO_')) {
-            updateSetting('license_key', key);
-            updateSetting('license_key_hmac', signLicenseKey(key));
-            updateSetting('license_status', 'active');
-            cachedLicense = null;
-            return { success: true, message: 'License activated successfully! (Dev Mode)' };
-        }
-
-        // FIX SEC-01: Send machine fingerprint to license server for seat enforcement
-        const machineId = getMachineId();
-        const keyHash = createHash('sha256').update(key).digest('hex');
-
-        console.log(`[LICENSE] Validating key ${key.substring(0, 8)}... via ${VALIDATOR_URL}`);
-
-        const response = await fetch(VALIDATOR_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            // Only send the hash and machine ID — never the raw key over the wire
-            body: JSON.stringify({ machine_id: machineId, key_hash: keyHash })
-        });
-
-        const data = await response.json() as any;
-
-        if (response.ok && data.valid) {
-            updateSetting('license_key', key);
-            updateSetting('license_key_hmac', signLicenseKey(key));
-            updateSetting('license_status', 'active');
-            updateSetting('license_machine_id', machineId);
-            cachedLicense = null;
-            const seatsMsg = data.seats_used ? ` (Seat ${data.seats_used}/${data.max_seats})` : '';
-            return { success: true, message: `License activated successfully! Enjoy Pro features.${seatsMsg}` };
-        }
-
-        if (response.status === 409) {
-            return {
-                success: false,
-                message: `Seat limit reached. This license is already active on ${data.seats_used} devices (max: ${data.max_seats}). Deactivate another device or upgrade your plan.`
-            };
-        }
-
-        return {
-            success: false,
-            message: data.error || 'Invalid license key. Please check your key or contact support.'
-        };
-    } catch (err) {
-        console.error('License validation failed:', err);
-        return {
-            success: false,
-            message: 'Validation server unreachable. Please try again later.'
-        };
-    }
+    if (typeof key !== 'string' || !key.trim().startsWith('PRO_') || key.length > 256) return { success: false, message: 'Enter the PRO_ license key from your purchase email.' };
+    return verifyRemote(key.trim());
 }
 
 export async function checkProjectLimit(): Promise<boolean> {

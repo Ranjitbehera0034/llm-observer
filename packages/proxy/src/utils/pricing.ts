@@ -21,7 +21,8 @@ export const initPricingCache = async () => {
         refreshPricingCache();
         
         // Auto-refresh cache periodically in case CLI modifies DB
-        setInterval(refreshPricingCache, 1000 * 60 * 5); // 5 mins
+        setInterval(refreshPricingCache, 1000 * 60 * 5).unref();
+        setInterval(() => { void syncRemotePricing().then(refreshPricingCache); }, 24 * 60 * 60 * 1000).unref(); // 5 mins
     } catch (err) {
         console.error('Failed to init pricing cache', err);
     }
@@ -38,8 +39,8 @@ const syncRemotePricing = async () => {
             const mappedData = rawData.map(item => ({
                 provider: item.provider,
                 model: item.model,
-                input: item.input ?? item.input_cost_per_1m ?? 0,
-                output: item.output ?? item.output_cost_per_1m ?? 0,
+                input: item.input ?? item.input_cost_per_1m,
+                output: item.output ?? item.output_cost_per_1m,
                 cached: item.cached ?? item.cached_input_cost_per_1m ?? null
             }));
             // Upsert instead of wipe-and-replace: models seeded locally but absent
@@ -57,7 +58,7 @@ export const getPricingWithFuzzy = (provider: string, model: string): any | unde
 
     if (!pricing) {
         for (const [key, val] of pricingCache.entries()) {
-            if (val.provider === provider && model.startsWith(val.model)) {
+            if (val.provider === provider && /^-(?:\d{8}|\d{4}-\d{2}-\d{2})$/.test(model.slice(val.model.length)) && model.startsWith(val.model)) {
                 if (!pricing || val.model.length > pricing.model.length) {
                     pricing = val;
                 }
@@ -67,13 +68,18 @@ export const getPricingWithFuzzy = (provider: string, model: string): any | unde
     return pricing;
 };
 
-export const calculateSharedCost = (provider: string, model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean } => {
+export const calculateSharedCost = (provider: string, model: string, promptTokens: number, completionTokens: number, cachedTokens = 0): { costUsd: number, unknown: boolean } => {
     let pricing = getPricingWithFuzzy(provider, model);
 
     if (!pricing) return { costUsd: 0, unknown: true };
+    const inputRate = pricing.input_cost_per_1m ?? pricing.input;
+    const outputRate = pricing.output_cost_per_1m ?? pricing.output;
+    if (![promptTokens, completionTokens, cachedTokens, inputRate, outputRate].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)) return { costUsd: 0, unknown: true };
 
-    const inputCost = (promptTokens / 1_000_000) * (pricing.input_cost_per_1m || pricing.input || 0);
-    const outputCost = (completionTokens / 1_000_000) * (pricing.output_cost_per_1m || pricing.output || 0);
+    const cachedRate = pricing.cached_input_cost_per_1m ?? pricing.cached;
+    if (cachedTokens > promptTokens || (cachedTokens > 0 && (typeof cachedRate !== 'number' || !Number.isFinite(cachedRate) || cachedRate < 0))) return { costUsd: 0, unknown: true };
+    const inputCost = ((promptTokens - cachedTokens) * inputRate + cachedTokens * (cachedRate ?? 0)) / 1_000_000;
+    const outputCost = (completionTokens / 1_000_000) * outputRate;
 
     return { costUsd: inputCost + outputCost, unknown: false };
 };

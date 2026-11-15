@@ -1,89 +1,13 @@
 import { test, expect } from '@playwright/test';
-
-/**
- * E2E: License & Geo-Payment Flow
- *
- * Mocks the ipapi.co response to test both the India (Razorpay)
- * and Global (Lemon Squeezy) payment path rendering.
- */
-
-test.describe('Geo-based Payment Flow', () => {
-    test('shows Razorpay UPI when country is India (IN)', async ({ page }) => {
-        // Intercept license API to ensure we see the pricing UI (isPro = false)
-        await page.route('**/api/license/status', async route => {
-            await route.fulfill({ json: { data: { isPro: false, limits: { maxProjects: 1 } } } });
-        });
-
-        // Intercept the ipapi.co geolocation call and return India
-        await page.route('https://ipapi.co/json/', (route) => {
-            route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({ country_code: 'IN', country_name: 'India' }),
-            });
-        });
-
-        await page.goto('/settings');
-
-        // Go to License tab
-        const licenseTab = page.getByRole('button', { name: /license/i });
-        if (await licenseTab.isVisible()) {
-            await licenseTab.click();
-
-            // India pricing badge should appear
-            await expect(page.getByText(/Local Pricing Available|₹/i).first()).toBeVisible({ timeout: 6000 });
-        }
-    });
-
-    test('shows Lemon Squeezy when country is US (Global)', async ({ page }) => {
-        await page.route('**/api/license/status', async route => {
-            await route.fulfill({ json: { data: { isPro: false, limits: { maxProjects: 1 } } } });
-        });
-
-        // Intercept and return United States
-        await page.route('https://ipapi.co/json/', (route) => {
-            route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({ country_code: 'US', country_name: 'United States' }),
-            });
-        });
-
-        await page.goto('/settings');
-
-        const licenseTab = page.getByRole('button', { name: /license/i });
-        if (await licenseTab.isVisible()) {
-            await licenseTab.click();
-
-            // Global pricing badge should appear
-            await expect(page.getByText(/Global Coverage|\$9|\$79/i).first()).toBeVisible({ timeout: 6000 });
-        }
-    });
-
-    test('shows yearly prices when yearly toggle is selected (India)', async ({ page }) => {
-        await page.route('**/api/license/status', async route => {
-            await route.fulfill({ json: { data: { isPro: false, limits: { maxProjects: 1 } } } });
-        });
-
-        await page.route('https://ipapi.co/json/', (route) => {
-            route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({ country_code: 'IN', country_name: 'India' }),
-            });
-        });
-
-        await page.goto('/settings');
-
-        const licenseTab = page.getByRole('button', { name: /license/i });
-        if (await licenseTab.isVisible()) {
-            await licenseTab.click();
-
-            const yearlyBtn = page.getByRole('button', { name: /yearly/i });
-            if (await yearlyBtn.isVisible()) {
-                await yearlyBtn.click();
-                await expect(page.getByText('₹2,499')).toBeVisible({ timeout: 5000 });
-            }
-        }
-    });
+test('billing has one activation form, clear pricing, and no geolocation request', async ({ page }) => {
+    const external: string[] = [];
+    page.on('request', request => { if (request.url().includes('ipapi.co')) external.push(request.url()); });
+    await page.goto('/settings');
+    await page.getByRole('button', { name: /license.*billing/i }).click();
+    await expect(page.getByPlaceholder('PRO_...')).toHaveCount(1);
+    await expect(page.getByRole('link', { name: /See Pro plans/ })).toContainText('$9/month or $79/year');
+    await page.getByPlaceholder('PRO_...').fill('not-a-license');
+    await page.getByRole('button', { name: 'Activate Pro Features' }).click();
+    await expect(page.getByText('Enter the PRO_ license key from your purchase email.')).toBeVisible();
+    expect(external).toEqual([]);
 });

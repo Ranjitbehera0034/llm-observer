@@ -98,15 +98,15 @@ describe('C1 — GET /api/requests', () => {
         expect(res.body.data.length).toBeLessThanOrEqual(100);
     });
 
-    it('C1.7 — Corner: Rows with null total_tokens return 0 not null', async () => {
+    it('C1.7 — Corner: Missing token usage stays unknown rather than becoming zero', async () => {
         db.prepare(`INSERT INTO requests (id, project_id, provider, model, cost_usd, status, is_streaming, has_tools, pricing_unknown)
                     VALUES ('null-tokens', 'default', 'openai', 'gpt-4', 0, 'success', 0, 0, 0)`).run();
         const res = await supertest(app).get('/api/requests?projectId=default');
         expect(res.status).toBe(200);
         const row = res.body.data.find((r: any) => r.id === 'null-tokens');
         expect(row).toBeDefined();
-        expect(row.total_tokens).toBe(0);
-        expect(row.prompt_tokens).toBe(0);
+        expect(row.total_tokens).toBeNull();
+        expect(row.prompt_tokens).toBeNull();
         expect(row.cost_usd).toBe(0);
     });
 
