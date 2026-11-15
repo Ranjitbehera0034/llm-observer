@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 const Tasks = lazy(() => import('./pages/Tasks'));
+const ModelAccess = lazy(() => import('./pages/ModelAccess'));
 const Overview = lazy(() => import('./pages/Overview'));
 const Requests = lazy(() => import('./pages/Requests'));
 const Projects = lazy(() => import('./pages/Projects'));
@@ -28,6 +29,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Overview />} />
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/model-access" element={<ModelAccess />} />
             <Route path="/optimize" element={<Optimize />} />
             <Route path="/compare" element={<Compare />} />
             <Route path="/requests" element={<Requests />} />
