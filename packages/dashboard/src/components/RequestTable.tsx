@@ -6,9 +6,9 @@ export interface RequestRow {
     provider: string;
     model: string;
     endpoint: string;
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
+    prompt_tokens: number | null;
+    completion_tokens: number | null;
+    total_tokens: number | null;
     cost_usd: number | null;
     latency_ms: number;
     status_code: number;
@@ -116,11 +116,11 @@ export function RequestTable({ requests, onRowClick }: RequestTableProps) {
                                     <td className="p-4 whitespace-nowrap text-right hidden lg:table-cell">
                                         <div className="inline-flex flex-col items-end">
                                             <div className="flex items-center gap-1 text-sm font-bold text-textMain tabular-nums">
-                                                {req.total_tokens.toLocaleString()}
+                                                {req.total_tokens == null ? 'Unknown' : req.total_tokens.toLocaleString()}
                                                 <Database className="w-3 h-3 text-textMuted" />
                                             </div>
                                             <span className="text-[9px] text-textMuted font-bold tracking-tighter">
-                                                P: {req.prompt_tokens} / C: {req.completion_tokens}
+                                                Input: {req.prompt_tokens ?? '—'} / Output: {req.completion_tokens ?? '—'}
                                             </span>
                                         </div>
                                     </td>
@@ -151,4 +151,3 @@ export function RequestTable({ requests, onRowClick }: RequestTableProps) {
         </div>
     );
 }
-

@@ -357,7 +357,13 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
                 incrementSpendCache(cacheKey, usage.costUsd);
             }
 
-            requestEventEmitter.emit('new_request', { ...reqRecord, cost_usd: reqRecord.pricing_unknown ? null : reqRecord.cost_usd });
+            requestEventEmitter.emit('new_request', {
+                ...reqRecord,
+                prompt_tokens: usage ? reqRecord.prompt_tokens : null,
+                completion_tokens: usage ? reqRecord.completion_tokens : null,
+                total_tokens: usage ? reqRecord.total_tokens : null,
+                cost_usd: reqRecord.pricing_unknown ? null : reqRecord.cost_usd
+            });
 
             internalLogger.add({
                 ...reqRecord,
@@ -376,4 +382,3 @@ proxy.on('proxyRes', function (proxyRes, req: any, res: any) {
         }
     }
 });
-
