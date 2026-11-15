@@ -21,3 +21,9 @@ Requests that bypass the proxy and do not appear in supported logs or connected 
 ## What the agents do
 
 The Agents page shows observed subagent activity from supported logs. AI Analyst is a user-triggered paid API analysis of aggregate usage. Task inbox collects local optimizer recommendations and saved analyst advice and tracks user-controlled status. These are different capabilities. The app does not automatically read all conversations, import all task services, execute arbitrary work, or bypass model/service limits.
+
+## Current model IDs checked on 15 November 2026
+
+The Moonshot proxy preserves `kimi-k3`, `kimi-k3.1-pro`, and `kimi-k3.1-pro-highspeed`; DeepSeek preserves `deepseek-flash` and `deepseek-v4-pro`. These are current IDs in the [Kimi API guide](https://platform.kimi.ai/docs/guide/kimi-k3-1-pro-quickstart) and [DeepSeek model page](https://api-docs.deepseek.com/quick_start/pricing/). The Anthropic adapter accepts the current `claude-opus-5-5` and `claude-sonnet-5-5` IDs listed in [Claude model docs](https://platform.claude.com/docs/en/models/overview). No adapter enforces a fixed model allowlist.
+
+A newly released model is usable for observed text/chat calls when its provider accepts it. Observer records the exact returned ID and reported tokens. Unknown or complex pricing remains explicitly unpriced until a verified catalog rate or custom rate is added; provider-specific tool fees, time-based discounts, cache writes, and multimodal charges may require additional billing support. An API key and routing through the proxy or a supported log source are still required. Current-model tests use recorded response shapes, not live provider credentials.

@@ -48,28 +48,31 @@ export class OpenAIProvider implements IProvider {
         let totalTokens = 0;
 
         if (responseBody && responseBody.usage) {
-            promptTokens = responseBody.usage.prompt_tokens || 0;
-            completionTokens = responseBody.usage.completion_tokens || 0;
-            totalTokens = responseBody.usage.total_tokens || 0;
+            promptTokens = responseBody.usage.prompt_tokens ?? responseBody.usage.input_tokens ?? 0;
+            completionTokens = responseBody.usage.completion_tokens ?? responseBody.usage.output_tokens ?? 0;
+            totalTokens = promptTokens + completionTokens;
         }
 
-        const costResult = this.calculateCost(requestData.model, promptTokens, completionTokens);
+        const model = typeof responseBody?.model === 'string' && responseBody.model ? responseBody.model : requestData.model;
+        const cached = responseBody?.usage?.prompt_tokens_details?.cached_tokens ?? responseBody?.usage?.input_tokens_details?.cached_tokens ?? 0;
+        const validUsage = [responseBody?.usage?.prompt_tokens ?? responseBody?.usage?.input_tokens, responseBody?.usage?.completion_tokens ?? responseBody?.usage?.output_tokens].every(n => Number.isSafeInteger(n) && n >= 0);
+        const costResult = this.calculateCost(model, promptTokens, completionTokens, cached);
 
         return {
             provider: 'openai',
-            model: requestData.model,
+            model,
             isStreaming: requestData.isStreaming,
             promptTokens,
             completionTokens,
             totalTokens,
             costUsd: costResult.costUsd,
-            pricing_unknown: costResult.unknown || !responseBody?.usage,
+            pricing_unknown: costResult.unknown || !validUsage,
             hasTools: requestData.hasTools,
         };
     }
 
 
-    calculateCost(model: string, promptTokens: number, completionTokens: number): { costUsd: number, unknown: boolean } {
-        return calculateSharedCost('openai', model, promptTokens, completionTokens);
+    calculateCost(model: string, promptTokens: number, completionTokens: number, cachedTokens = 0): { costUsd: number, unknown: boolean } {
+        return calculateSharedCost('openai', model, promptTokens, completionTokens, cachedTokens);
     }
 }
